@@ -1,91 +1,625 @@
 import { useState, useEffect, useCallback } from 'react';
-  import { useSearchParams } from 'react-router-dom';
-  import ProductCard from '../components/ProductCard.jsx';
-  import { productService } from '../services/index.js';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import ProductCard from '../components/ProductCard.jsx';
+import { productService, cartService, wishlistService } from '../services/index.js';
+import { useAuth } from '../context/AuthContext.jsx';
+import toast from 'react-hot-toast';
 
-  export default function Products() {
-    const [searchParams, setSearchParams] = useSearchParams();
-    const [products, setProducts] = useState([]);
-    const [categories, setCategories] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [page, setPage] = useState(1);
-    const [hasMore, setHasMore] = useState(true);
 
-    const [filters, setFilters] = useState({
-      search: searchParams.get('search') || '',
-      category: searchParams.get('category') || '',
-      minPrice: '', maxPrice: '',
-    });
+const SORT_OPTIONS = [
+  { value: 'featured',   label: 'Featured' },
+  { value: 'price_asc',  label: 'Price: Low to High' },
+  { value: 'price_desc', label: 'Price: High to Low' },
+  { value: 'newest',     label: 'Newest Arrivals' },
+  { value: 'rating',     label: 'Avg. Customer Review' },
+  { value: 'discount',   label: 'Best Discount' },
+];
 
-    const fetchProducts = useCallback(async (p = 1, reset = false) => {
-      setLoading(true);
-      try {
-        const params = { page: p, limit: 20 };
-        if (filters.search) params.search = filters.search;
-        if (filters.category) params.category = filters.category;
-        if (filters.minPrice) params.minPrice = filters.minPrice;
-        if (filters.maxPrice) params.maxPrice = filters.maxPrice;
-        const data = await productService.listProducts(params);
-        const list = Array.isArray(data) ? data : [];
-        setProducts(prev => reset ? list : [...prev, ...list]);
-        setHasMore(list.length === 20);
-      } catch { setProducts([]); } finally { setLoading(false); }
-    }, [filters]);
+const PRICE_RANGES = [
+  { label: 'Under ₹500',         min: '',     max: '500'   },
+  { label: '₹500 – ₹1,000',     min: '500',  max: '1000'  },
+  { label: '₹1,000 – ₹5,000',   min: '1000', max: '5000'  },
+  { label: '₹5,000 – ₹10,000',  min: '5000', max: '10000' },
+  { label: 'Above ₹10,000',      min: '10000',max: ''      },
+];
 
-    useEffect(() => {
-      productService.getCategories().then(c => setCategories(Array.isArray(c) ? c : [])).catch(() => {});
-    }, []);
+const STAR_OPTIONS = [4, 3, 2, 1];
 
-    useEffect(() => { setPage(1); fetchProducts(1, true); }, [filters.category, filters.search, filters.minPrice, filters.maxPrice]);
+/* ── Mini star row ── */
+function StarRow({ n }) {
+  return (
+    <span style={{ display: 'inline-flex', gap: 2, alignItems: 'center' }}>
+      {[1,2,3,4,5].map(i => (
+        <svg key={i} width="12" height="12" viewBox="0 0 20 20"
+          fill={i <= n ? '#f59e0b' : '#d1d5db'}>
+          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+        </svg>
+      ))}
+      <span style={{ fontSize: '0.75rem', color: '#374151', marginLeft: 4 }}>&amp; Up</span>
+    </span>
+  );
+}
 
-    const handleSearch = (e) => { e.preventDefault(); fetchProducts(1, true); };
+/* ── Loading skeleton card ── */
+function Skeleton() {
+  return (
+    <div style={{ background: '#fff', borderRadius: 8, overflow: 'hidden', border: '1px solid #e5e7eb' }}>
+      <div style={{
+        height: 200,
+        background: 'linear-gradient(90deg,#f3f4f6 25%,#e5e7eb 50%,#f3f4f6 75%)',
+        backgroundSize: '400% 100%',
+        animation: 'hk-shimmer 1.4s infinite',
+      }} />
+      <div style={{ padding: 14 }}>
+        {[80, 60, 40].map((w, i) => (
+          <div key={i} style={{ height: 12, width: `${w}%`, background: '#f3f4f6', borderRadius: 6, marginBottom: 10, animation: 'hk-shimmer 1.4s infinite' }} />
+        ))}
+      </div>
+    </div>
+  );
+}
 
-    const loadMore = () => { const next = page + 1; setPage(next); fetchProducts(next, false); };
+/* ── Sidebar content ── */
+function SidebarContent({ categories, filters, setFilters, minCustom, maxCustom, setMinCustom, setMaxCustom, applyPriceRange, clearAll, activeFilterCount }) {
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#111' }}>
+          Filters
+          {activeFilterCount > 0 && (
+            <span style={{ background: '#2a5298', color: '#fff', borderRadius: '50%', width: 18, height: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', marginLeft: 6 }}>
+              {activeFilterCount}
+            </span>
+          )}
+        </span>
+        {activeFilterCount > 0 && (
+          <button onClick={clearAll} style={{ fontSize: '0.75rem', color: '#2a5298', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+            Clear All
+          </button>
+        )}
+      </div>
 
-    return (
-      <div className="page-wrap">
-        <h1 className="page-title">All Products</h1>
+      {/* Category */}
+      <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid #f3f4f6' }}>
+        <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#9ca3af', marginBottom: 10 }}>
+          Category
+        </div>
+        {['', ...categories].map(c => (
+          <label key={c} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 4px', borderRadius: 6, cursor: 'pointer' }}
+            onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+            <input type="radio" name="hk-cat" checked={filters.category === c}
+              onChange={() => setFilters(f => ({ ...f, category: c }))}
+              style={{ accentColor: '#2a5298', width: 15, height: 15, cursor: 'pointer' }} />
+            <span style={{ fontSize: '0.86rem', color: '#374151', fontWeight: filters.category === c ? 600 : 400 }}>
+              {c === '' ? 'All Categories' : c}
+            </span>
+          </label>
+        ))}
+      </div>
 
-        <div className="filter-bar">
-          <form onSubmit={handleSearch} style={{ display: 'flex', gap: 8, flex: 1, minWidth: 200 }}>
-            <input type="text" placeholder="Search products…" value={filters.search} onChange={e => setFilters(p => ({ ...p, search: e.target.value }))} style={{ flex: 1 }} />
-            <button type="submit" className="btn-primary btn-sm">Search</button>
-          </form>
-          <select value={filters.category} onChange={e => setFilters(p => ({ ...p, category: e.target.value }))}>
-            <option value="">All Categories</option>
-            {categories.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <input type="number" placeholder="Min ₹" style={{ width: 100 }} value={filters.minPrice} onChange={e => setFilters(p => ({ ...p, minPrice: e.target.value }))} />
-          <input type="number" placeholder="Max ₹" style={{ width: 100 }} value={filters.maxPrice} onChange={e => setFilters(p => ({ ...p, maxPrice: e.target.value }))} />
-          {(filters.search || filters.category || filters.minPrice || filters.maxPrice) && (
-            <button className="btn-outline btn-sm" onClick={() => setFilters({ search: '', category: '', minPrice: '', maxPrice: '' })}>Clear</button>
+      {/* Price Range */}
+      <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid #f3f4f6' }}>
+        <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#9ca3af', marginBottom: 10 }}>
+          Price Range
+        </div>
+        {PRICE_RANGES.map(r => {
+          const active = filters.minPrice === r.min && filters.maxPrice === r.max && (r.min !== '' || r.max !== '');
+          return (
+            <button key={r.label} onClick={() => applyPriceRange(r.min, r.max)}
+              style={{ display: 'block', width: '100%', padding: '7px 10px', marginBottom: 5, border: `1.5px solid ${active ? '#2a5298' : '#e5e7eb'}`, background: active ? '#eef2ff' : '#fff', color: active ? '#1e3c72' : '#374151', fontWeight: active ? 600 : 400, borderRadius: 6, fontSize: '0.82rem', cursor: 'pointer', textAlign: 'left', transition: 'all 0.18s', fontFamily: 'inherit' }}>
+              {r.label}
+            </button>
+          );
+        })}
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: '0.74rem', color: '#6b7280', marginBottom: 6, fontWeight: 500 }}>Custom Range</div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input type="number" placeholder="Min ₹" value={minCustom} onChange={e => setMinCustom(e.target.value)}
+              style={{ width: '50%', padding: '7px 8px', border: '1.5px solid #e5e7eb', borderRadius: 6, fontSize: '0.82rem', outline: 'none', fontFamily: 'inherit' }}
+              onFocus={e => e.target.style.borderColor = '#2a5298'} onBlur={e => e.target.style.borderColor = '#e5e7eb'} />
+            <input type="number" placeholder="Max ₹" value={maxCustom} onChange={e => setMaxCustom(e.target.value)}
+              style={{ width: '50%', padding: '7px 8px', border: '1.5px solid #e5e7eb', borderRadius: 6, fontSize: '0.82rem', outline: 'none', fontFamily: 'inherit' }}
+              onFocus={e => e.target.style.borderColor = '#2a5298'} onBlur={e => e.target.style.borderColor = '#e5e7eb'} />
+          </div>
+          <button onClick={() => applyPriceRange(minCustom, maxCustom)}
+            style={{ width: '100%', marginTop: 8, padding: '9px', background: 'linear-gradient(135deg,#2a5298,#1e3c72)', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+            Apply
+          </button>
+        </div>
+      </div>
+
+      {/* Customer Rating */}
+      <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid #f3f4f6' }}>
+        <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#9ca3af', marginBottom: 10 }}>
+          Customer Rating
+        </div>
+        {['', ...STAR_OPTIONS.map(String)].map(n => (
+          <label key={n} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 4px', borderRadius: 6, cursor: 'pointer' }}
+            onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+            <input type="radio" name="hk-rating" checked={filters.rating === n}
+              onChange={() => setFilters(f => ({ ...f, rating: n }))}
+              style={{ accentColor: '#2a5298', width: 15, height: 15, cursor: 'pointer' }} />
+            {n === '' ? (
+              <span style={{ fontSize: '0.86rem', color: '#374151', fontWeight: filters.rating === '' ? 600 : 400 }}>All Ratings</span>
+            ) : (
+              <StarRow n={Number(n)} />
+            )}
+          </label>
+        ))}
+      </div>
+
+      {/* Availability */}
+      <div>
+        <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#9ca3af', marginBottom: 10 }}>
+          Availability
+        </div>
+        {['In Stock Only', 'On Sale', 'Free Delivery'].map(label => (
+          <label key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 4px', borderRadius: 6, cursor: 'pointer' }}
+            onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+            <input type="checkbox" style={{ accentColor: '#2a5298', width: 15, height: 15, cursor: 'pointer' }} />
+            <span style={{ fontSize: '0.86rem', color: '#374151' }}>{label}</span>
+          </label>
+        ))}
+      </div>
+    </>
+  );
+}
+
+/* ── List-view product row (fully wired) ── */
+function ListProductCard({ product }) {
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+
+  const FALLBACK = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'%3E%3Crect width='200' height='200' fill='%23f3f4f6'/%3E%3Ctext x='100' y='108' text-anchor='middle' font-family='sans-serif' font-size='13' fill='%239ca3af'%3ENo Image%3C/text%3E%3C/svg%3E";
+
+  const resolveImg = (url) => {
+    if (!url) return FALLBACK;
+    if (url.startsWith('http')) return url;
+    const norm = url.startsWith('/uploads') ? url.replace('/uploads', '/seller-uploads') : `/seller-uploads${url.startsWith('/') ? '' : '/'}${url}`;
+    return norm;
+  };
+
+  const [imgSrc, setImgSrc] = useState(() => resolveImg(product.imageUrl));
+  const discount = product.holdPrice && product.holdPrice !== product.retailPrice && product.retailPrice > 0
+    ? Math.round((1 - product.holdPrice / product.retailPrice) * 100) : 0;
+
+  const handleCart = async (e) => {
+    e.stopPropagation();
+    if (!isAuthenticated) { navigate('/login'); return; }
+    try {
+      await cartService.addToCart({ productId: product.productId, quantity: 1 });
+      toast.success('Added to cart!');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to add to cart');
+    }
+  };
+
+  const handleWishlist = async (e) => {
+    e.stopPropagation();
+    if (!isAuthenticated) { navigate('/login'); return; }
+    try {
+      await wishlistService.addToWishlist({ productId: product.productId });
+      toast.success('Added to wishlist!');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to add to wishlist');
+    }
+  };
+
+  return (
+    <div onClick={() => navigate(`/product/${product.productId}`)}
+      style={{ display: 'flex', background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden', cursor: 'pointer', transition: 'box-shadow 0.2s' }}
+      onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.1)'}
+      onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}>
+
+      {/* Image */}
+      <div style={{ width: 180, minWidth: 180, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', padding: 12 }}>
+        <img src={imgSrc} alt={product.name} onError={() => setImgSrc(FALLBACK)}
+          style={{ width: '100%', height: 150, objectFit: 'contain' }} />
+        {discount > 0 && (
+          <div style={{ position: 'absolute', top: 8, left: 8, background: '#dc2626', color: '#fff', fontSize: '0.7rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4 }}>
+            -{discount}%
+          </div>
+        )}
+      </div>
+
+      {/* Details */}
+      <div style={{ flex: 1, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ fontSize: '0.72rem', color: '#2a5298', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          {product.category}
+        </div>
+        <div style={{ fontWeight: 600, fontSize: '1rem', color: '#111', lineHeight: 1.4 }}>{product.name}</div>
+
+        {product.avgRating > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ background: '#16a34a', color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: '0.75rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+              {product.avgRating.toFixed(1)} ★
+            </div>
+            {product.reviewCount > 0 && (
+              <span style={{ fontSize: '0.78rem', color: '#6b7280' }}>({product.reviewCount} reviews)</span>
+            )}
+          </div>
+        )}
+
+        {product.description && (
+          <p style={{ fontSize: '0.83rem', color: '#6b7280', lineHeight: 1.6, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+            {product.description}
+          </p>
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 4 }}>
+          <span style={{ fontSize: '1.3rem', fontWeight: 800, color: '#111' }}>
+            ₹{(product.holdPrice && product.holdPrice !== product.retailPrice ? product.holdPrice : product.retailPrice)?.toLocaleString('en-IN')}
+          </span>
+          {product.holdPrice && product.holdPrice !== product.retailPrice && (
+            <>
+              <span style={{ fontSize: '0.88rem', color: '#9ca3af', textDecoration: 'line-through' }}>
+                ₹{product.retailPrice?.toLocaleString('en-IN')}
+              </span>
+              <span style={{ fontSize: '0.82rem', color: '#16a34a', fontWeight: 700 }}>{discount}% off</span>
+            </>
           )}
         </div>
 
-        {loading && products.length === 0 ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 20 }}>
-            {[...Array(12)].map((_, i) => <div key={i} style={{ background: '#fff', borderRadius: 12, height: 320, opacity: 0.6 }} />)}
-          </div>
-        ) : products.length === 0 ? (
-          <div className="empty-state">
-            <div className="icon">🔍</div>
-            <h3>No products found</h3>
-            <p>Try adjusting your search or filters</p>
-          </div>
-        ) : (
-          <>
-            <p style={{ color: 'var(--muted)', fontSize: '0.88rem', marginBottom: 16 }}>{products.length} product{products.length !== 1 ? 's' : ''} found</p>
-            <div className="product-grid">
-              {products.map(p => <ProductCard key={p.productId} product={p} />)}
-            </div>
-            {hasMore && (
-              <div style={{ textAlign: 'center', marginTop: 32 }}>
-                <button className="btn-outline" onClick={loadMore} disabled={loading}>{loading ? 'Loading…' : 'Load More'}</button>
-              </div>
-            )}
-          </>
-        )}
+        <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+          <button onClick={handleCart}
+            style={{ padding: '8px 20px', background: 'linear-gradient(135deg,#2a5298,#1e3c72)', color: '#fff', border: 'none', borderRadius: 6, fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            🛒 Add to Cart
+          </button>
+          <button onClick={handleWishlist}
+            style={{ padding: '8px 16px', background: '#fff', color: '#dc2626', border: '1.5px solid #fca5a5', borderRadius: 6, fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            ♡ Wishlist
+          </button>
+        </div>
       </div>
-    );
-  }
-  
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MAIN PAGE COMPONENT
+════════════════════════════════════════════════════════════ */
+export default function Products() {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const [products, setProducts]       = useState([]);
+  const [categories, setCategories]   = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [page, setPage]               = useState(1);
+  const [hasMore, setHasMore]         = useState(true);
+  const [view, setView]               = useState('grid');
+  const [sort, setSort]               = useState('featured');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [minCustom, setMinCustom]     = useState('');
+  const [maxCustom, setMaxCustom]     = useState('');
+
+  const [filters, setFilters] = useState({
+    search:   searchParams.get('search')   || '',
+    category: searchParams.get('category') || '',
+    minPrice: '',
+    maxPrice: '',
+    rating:   '',
+  });
+
+  /* ── client-side sort helper ── */
+  const sortProducts = useCallback((list, sortKey) => {
+    const arr = [...list];
+    switch (sortKey) {
+      case 'price_asc':  return arr.sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
+      case 'price_desc': return arr.sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
+      case 'newest':     return arr.sort((a, b) => new Date(b.createdAt ?? 0) - new Date(a.createdAt ?? 0));
+      case 'rating':     return arr.sort((a, b) => (b.avgRating ?? 0) - (a.avgRating ?? 0));
+      case 'discount':   return arr.sort((a, b) => {
+        const da = a.originalPrice > a.price ? (1 - a.price / a.originalPrice) : 0;
+        const db = b.originalPrice > b.price ? (1 - b.price / b.originalPrice) : 0;
+        return db - da;
+      });
+      default: return arr;
+    }
+  }, []);
+
+  /* ── fetch products ── */
+  const fetchProducts = useCallback(async (p = 1, reset = false) => {
+    setLoading(true);
+    try {
+      const params = { page: p, limit: 20 };
+      if (filters.search)   params.search   = filters.search;
+      if (filters.category) params.category = filters.category;
+      if (filters.minPrice) params.minPrice = filters.minPrice;
+      if (filters.maxPrice) params.maxPrice = filters.maxPrice;
+      if (filters.rating)   params.rating   = filters.rating;
+
+      const data = await productService.listProducts(params);
+      const rawList = Array.isArray(data) ? data : (data?.products ?? []);
+      const sorted  = sortProducts(rawList, sort);
+      setProducts(prev => (reset ? sorted : sortProducts([...prev, ...rawList], sort)));
+      setHasMore(rawList.length === 20);
+    } catch {
+      if (page === 1) setProducts([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [filters, sort, sortProducts, page]);
+
+  /* ── re-sort in place when sort changes (no re-fetch needed for client sort) ── */
+  useEffect(() => {
+    setProducts(prev => sortProducts(prev, sort));
+  }, [sort, sortProducts]);
+
+  useEffect(() => {
+    productService.getCategories()
+      .then(c => setCategories(Array.isArray(c) ? c : []))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    setPage(1);
+    fetchProducts(1, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.category, filters.search, filters.minPrice, filters.maxPrice, filters.rating]);
+
+  /* ── helpers ── */
+  const applyPriceRange = (min, max) => {
+    setMinCustom(min);
+    setMaxCustom(max);
+    setFilters(f => ({ ...f, minPrice: min, maxPrice: max }));
+  };
+
+  const clearAll = () => {
+    setFilters({ search: '', category: '', minPrice: '', maxPrice: '', rating: '' });
+    setMinCustom('');
+    setMaxCustom('');
+    setSort('featured');
+    setSearchParams({});
+  };
+
+  const removeFilter = (key) => {
+    if (key === 'price') applyPriceRange('', '');
+    else setFilters(f => ({ ...f, [key]: '' }));
+  };
+
+  const loadMore = () => {
+    const next = page + 1;
+    setPage(next);
+    fetchProducts(next, false);
+  };
+
+  const activeFilters = [
+    filters.search   && { key: 'search',   label: `"${filters.search}"`,  icon: '🔍' },
+    filters.category && { key: 'category', label: filters.category,        icon: '📦' },
+    (filters.minPrice || filters.maxPrice) && { key: 'price', label: `₹${filters.minPrice||'0'} – ₹${filters.maxPrice||'∞'}`, icon: '₹' },
+    filters.rating   && { key: 'rating',   label: `${filters.rating}+ Stars`, icon: '⭐' },
+  ].filter(Boolean);
+
+  return (
+    <>
+      <style>{`
+        @keyframes hk-shimmer {
+          0%   { background-position: -400px 0; }
+          100% { background-position:  400px 0; }
+        }
+        @keyframes hk-spin { to { transform: rotate(360deg); } }
+
+        .hk-sort-pill {
+          padding: 6px 14px; border-radius: 20px; font-size: 0.82rem; font-weight: 500;
+          cursor: pointer; border: 1.5px solid #e5e7eb; background: #fff; color: #374151;
+          transition: all 0.18s; font-family: inherit; white-space: nowrap; flex-shrink: 0;
+        }
+        .hk-sort-pill:hover  { border-color: #2a5298; color: #2a5298; }
+        .hk-sort-pill.active { background: #2a5298; color: #fff; border-color: #2a5298; }
+
+        .hk-view-btn {
+          width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+          border-radius: 6px; border: 1.5px solid #e5e7eb; background: #fff; cursor: pointer;
+          transition: all 0.18s; color: #6b7280;
+        }
+        .hk-view-btn.active { background: #2a5298; border-color: #2a5298; color: #fff; }
+
+        .hk-chip {
+          display: inline-flex; align-items: center; gap: 5px;
+          background: #eef2ff; color: #1e3c72; border: 1px solid #c7d2fe;
+          padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600;
+          cursor: pointer; transition: background 0.18s; white-space: nowrap;
+        }
+        .hk-chip:hover { background: #dde6ff; }
+        .hk-chip-clear { background: #fee2e2; color: #dc2626; border-color: #fecaca; }
+        .hk-chip-clear:hover { background: #fecaca; }
+
+        .hk-product-item { transition: box-shadow 0.2s, transform 0.2s; }
+        .hk-product-item:hover { box-shadow: 0 6px 24px rgba(0,0,0,0.12) !important; transform: translateY(-3px); }
+
+        .hk-overlay {
+          display: none; position: fixed; inset: 0;
+          background: rgba(0,0,0,0.5); z-index: 199;
+        }
+        .hk-drawer {
+          display: none; position: fixed; top: 0; left: 0; width: 280px; height: 100vh;
+          background: #fff; z-index: 200; overflow-y: auto; padding: 20px;
+          box-shadow: 4px 0 20px rgba(0,0,0,0.15);
+        }
+        .hk-overlay.open { display: block; }
+        .hk-drawer.open  { display: block; }
+
+        @media (max-width: 900px) {
+          .hk-sidebar-sticky      { display: none !important; }
+          .hk-mobile-filter-btn   { display: flex !important; }
+          .hk-sort-scroll         { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+        }
+      `}</style>
+
+      <div style={{ paddingTop: 112 }}>
+
+      {/* ── Active filter chips strip (only shown when filters are active) ── */}
+      {activeFilters.length > 0 && (
+        <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            {activeFilters.map(f => (
+              <span key={f.key} className="hk-chip" onClick={() => removeFilter(f.key)}>
+                {f.icon} {f.label} <b style={{ marginLeft: 2 }}>×</b>
+              </span>
+            ))}
+            {activeFilters.length > 1 && (
+              <span className="hk-chip hk-chip-clear" onClick={clearAll}>
+                Clear All
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════
+          MAIN BODY  — full width
+      ══════════════════════════════════════ */}
+      <div style={{ background: '#f4f6fa', minHeight: '80vh' }}>
+        <div style={{ padding: '14px 20px 48px' }}>
+
+          {/* ── Sort / View bar ── */}
+          <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', padding: '10px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+              {/* Mobile filter button */}
+              <button className="hk-mobile-filter-btn"
+                onClick={() => setSidebarOpen(true)}
+                style={{ display: 'none', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 6, border: '1.5px solid #2a5298', background: '#eef2ff', color: '#2a5298', fontWeight: 600, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                  <path d="M4 6h16M7 12h10M10 18h4"/>
+                </svg>
+                Filters
+              </button>
+
+              <span style={{ fontSize: '0.82rem', color: '#6b7280', fontWeight: 500, flexShrink: 0 }}>Sort by:</span>
+
+              <div className="hk-sort-scroll" style={{ display: 'flex', gap: 6, flex: 1, minWidth: 0 }}>
+                {SORT_OPTIONS.map(o => (
+                  <button key={o.value} className={`hk-sort-pill${sort === o.value ? ' active' : ''}`}
+                    onClick={() => setSort(o.value)}>
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+              {!loading && products.length > 0 && (
+                <span style={{ fontSize: '0.82rem', color: '#6b7280', whiteSpace: 'nowrap' }}>
+                  <b style={{ color: '#111' }}>{products.length}</b> products
+                </span>
+              )}
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button className={`hk-view-btn${view === 'grid' ? ' active' : ''}`} onClick={() => setView('grid')} title="Grid view">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <rect x="0"  y="0"  width="6" height="6" rx="1"/>
+                    <rect x="10" y="0"  width="6" height="6" rx="1"/>
+                    <rect x="0"  y="10" width="6" height="6" rx="1"/>
+                    <rect x="10" y="10" width="6" height="6" rx="1"/>
+                  </svg>
+                </button>
+                <button className={`hk-view-btn${view === 'list' ? ' active' : ''}`} onClick={() => setView('list')} title="List view">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <rect x="0" y="1"  width="16" height="3" rx="1"/>
+                    <rect x="0" y="7"  width="16" height="3" rx="1"/>
+                    <rect x="0" y="13" width="16" height="3" rx="1"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Layout: Sidebar + Products ── */}
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+
+            {/* Desktop sidebar */}
+            <aside className="hk-sidebar-sticky"
+              style={{ width: 240, flexShrink: 0, background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', padding: 16, position: 'sticky', top: 14, maxHeight: 'calc(100vh - 28px)', overflowY: 'auto' }}>
+              <SidebarContent
+                categories={categories} filters={filters} setFilters={setFilters}
+                minCustom={minCustom} maxCustom={maxCustom}
+                setMinCustom={setMinCustom} setMaxCustom={setMaxCustom}
+                applyPriceRange={applyPriceRange} clearAll={clearAll}
+                activeFilterCount={activeFilters.length}
+              />
+            </aside>
+
+            {/* Mobile drawer */}
+            <div className={`hk-overlay${sidebarOpen ? ' open' : ''}`} onClick={() => setSidebarOpen(false)} />
+            <div className={`hk-drawer${sidebarOpen ? ' open' : ''}`}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <span style={{ fontWeight: 700, fontSize: '1rem' }}>Filters</span>
+                <button onClick={() => setSidebarOpen(false)}
+                  style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#374151', lineHeight: 1 }}>×</button>
+              </div>
+              <SidebarContent
+                categories={categories} filters={filters} setFilters={setFilters}
+                minCustom={minCustom} maxCustom={maxCustom}
+                setMinCustom={setMinCustom} setMaxCustom={setMaxCustom}
+                applyPriceRange={applyPriceRange} clearAll={clearAll}
+                activeFilterCount={activeFilters.length}
+              />
+            </div>
+
+            {/* ── Products area ── */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+
+              {loading && products.length === 0 ? (
+                <div style={{ display: 'grid', gridTemplateColumns: view === 'list' ? '1fr' : 'repeat(auto-fill,minmax(195px,1fr))', gap: 12 }}>
+                  {[...Array(12)].map((_, i) => <Skeleton key={i} />)}
+                </div>
+
+              ) : products.length === 0 ? (
+                <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', padding: '72px 20px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '4rem', marginBottom: 16 }}>🔍</div>
+                  <h3 style={{ fontWeight: 700, fontSize: '1.2rem', marginBottom: 8, color: '#111' }}>No products found</h3>
+                  <p style={{ color: '#6b7280', fontSize: '0.92rem', maxWidth: 340, margin: '0 auto 28px' }}>
+                    We couldn't find products matching your current search or filters.
+                  </p>
+                  <button onClick={clearAll}
+                    style={{ padding: '10px 28px', background: 'linear-gradient(135deg,#2a5298,#1e3c72)', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem', fontFamily: 'inherit' }}>
+                    Clear All Filters
+                  </button>
+                </div>
+
+              ) : view === 'grid' ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(195px,1fr))', gap: 12 }}>
+                  {products.map(p => (
+                    <div key={p.productId} className="hk-product-item"
+                      style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                      <ProductCard product={p} />
+                    </div>
+                  ))}
+                </div>
+
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {products.map(p => <ListProductCard key={p.productId} product={p} />)}
+                </div>
+              )}
+
+              {/* Load more */}
+              {products.length > 0 && (
+                <div style={{ marginTop: 28, display: 'flex', justifyContent: 'center' }}>
+                  {hasMore ? (
+                    <button onClick={loadMore} disabled={loading}
+                      style={{ padding: '11px 40px', background: loading ? '#e5e7eb' : 'linear-gradient(135deg,#2a5298,#1e3c72)', color: loading ? '#9ca3af' : '#fff', border: 'none', borderRadius: 8, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', fontSize: '0.9rem', fontFamily: 'inherit', boxShadow: loading ? 'none' : '0 4px 14px rgba(42,82,152,0.3)' }}>
+                      {loading ? (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ width: 16, height: 16, border: '2px solid #9ca3af', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'hk-spin 0.7s linear infinite' }} />
+                          Loading…
+                        </span>
+                      ) : '↓ Load More Products'}
+                    </button>
+                  ) : (
+                    <p style={{ color: '#9ca3af', fontSize: '0.85rem', padding: '12px 0' }}>
+                      ✓ Showing all {products.length} products
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+    </>
+  );
+}

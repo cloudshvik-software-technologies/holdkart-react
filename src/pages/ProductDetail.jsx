@@ -107,9 +107,16 @@ export default function ProductDetail() {
             </div>
           )}
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 20 }}>
-            <span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--blue-dark)' }}>₹{product.retailPrice?.toLocaleString()}</span>
+            <span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--blue-dark)' }}>
+              ₹{(product.holdPrice && product.holdPrice !== product.retailPrice ? product.holdPrice : product.retailPrice)?.toLocaleString()}
+            </span>
             {product.holdPrice && product.holdPrice !== product.retailPrice && (
-              <span style={{ fontSize: '1rem', color: 'var(--muted)', textDecoration: 'line-through' }}>₹{product.holdPrice?.toLocaleString()}</span>
+              <span style={{ fontSize: '1rem', color: 'var(--muted)', textDecoration: 'line-through' }}>₹{product.retailPrice?.toLocaleString()}</span>
+            )}
+            {product.holdPrice && product.holdPrice !== product.retailPrice && product.retailPrice > 0 && (
+              <span style={{ fontSize: '0.9rem', background: '#dcfce7', color: '#16a34a', borderRadius: 6, padding: '2px 8px', fontWeight: 700 }}>
+                {Math.round((1 - product.holdPrice / product.retailPrice) * 100)}% off
+              </span>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 28 }}>

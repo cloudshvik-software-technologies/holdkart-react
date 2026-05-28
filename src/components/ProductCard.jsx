@@ -59,9 +59,13 @@ export default function ProductCard({ product }) {
           </div>
         )}
         <div className="product-card-price">
-          <span className="price-retail">₹{product.retailPrice?.toLocaleString()}</span>
-          {product.holdPrice && product.holdPrice !== product.retailPrice && (
-            <span className="price-hold">₹{product.holdPrice?.toLocaleString()}</span>
+          {product.holdPrice && product.holdPrice !== product.retailPrice ? (
+            <>
+              <span className="price-retail">₹{product.holdPrice?.toLocaleString()}</span>
+              <span className="price-hold">₹{product.retailPrice?.toLocaleString()}</span>
+            </>
+          ) : (
+            <span className="price-retail">₹{product.retailPrice?.toLocaleString()}</span>
           )}
         </div>
         <div className="product-card-actions">
