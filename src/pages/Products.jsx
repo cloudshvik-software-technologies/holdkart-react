@@ -45,7 +45,7 @@ function Skeleton() {
   return (
     <div style={{ background: '#fff', borderRadius: 8, overflow: 'hidden', border: '1px solid #e5e7eb' }}>
       <div style={{
-        height: 200,
+        height: 160,
         background: 'linear-gradient(90deg,#f3f4f6 25%,#e5e7eb 50%,#f3f4f6 75%)',
         backgroundSize: '400% 100%',
         animation: 'hk-shimmer 1.4s infinite',
@@ -183,8 +183,13 @@ function ListProductCard({ product }) {
   };
 
   const [imgSrc, setImgSrc] = useState(() => resolveImg(product.imageUrl));
-  const discount = product.holdPrice && product.holdPrice !== product.retailPrice && product.retailPrice > 0
-    ? Math.round((1 - product.holdPrice / product.retailPrice) * 100) : 0;
+  const discount = product.holdTarget > 0
+    ? Math.min(product.currentHold || 0, product.holdTarget)
+    : (product.holdPrice && product.holdPrice !== product.retailPrice && product.retailPrice > 0
+        ? Math.round((1 - product.holdPrice / product.retailPrice) * 100) : 0);
+  const listDisplayPrice = discount > 0 && product.holdTarget > 0
+    ? Math.round(product.retailPrice * (1 - discount / 100))
+    : (product.holdPrice && product.holdPrice !== product.retailPrice ? product.holdPrice : product.retailPrice);
 
   const handleCart = async (e) => {
     e.stopPropagation();
@@ -223,9 +228,9 @@ function ListProductCard({ product }) {
       onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}>
 
       {/* Image */}
-      <div style={{ width: 180, minWidth: 180, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', padding: 12 }}>
+      <div style={{ width: 160, minWidth: 160, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', padding: 0 }}>
         <img src={imgSrc} alt={product.name} onError={() => setImgSrc(FALLBACK)}
-          style={{ width: '100%', height: 150, objectFit: 'contain' }} />
+          style={{ width: '100%', height: 140, objectFit: 'cover' }} />
         {discount > 0 && (
           <div style={{ position: 'absolute', top: 8, left: 8, background: '#dc2626', color: '#fff', fontSize: '0.7rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4 }}>
             -{discount}%
@@ -257,11 +262,36 @@ function ListProductCard({ product }) {
           </p>
         )}
 
+        {/* Group Deal progress */}
+        {product.holdTarget > 0 && (() => {
+          const safeHold   = Math.min(product.currentHold || 0, product.holdTarget);
+          const discPct    = safeHold;
+          const progressPct = Math.round((safeHold / product.holdTarget) * 100);
+          return (
+            <div style={{ marginTop: 6 }}>
+              <div style={{ height: 4, background: '#e5e7eb', borderRadius: 99, overflow: 'hidden', marginBottom: 4 }}>
+                <div style={{
+                  height: '100%', width: `${progressPct}%`, borderRadius: 99,
+                  background: progressPct >= 100 ? '#16a34a' : '#2a5298',
+                  transition: 'width 0.4s ease',
+                }} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#6b7280' }}>
+                <span>{safeHold}/{product.holdTarget} joined</span>
+                {discPct > 0
+                  ? <span style={{ color: '#16a34a', fontWeight: 600 }}>{discPct}% off</span>
+                  : <span>Group Deal</span>
+                }
+              </div>
+            </div>
+          );
+        })()}
+
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 4 }}>
           <span style={{ fontSize: '1.3rem', fontWeight: 800, color: '#111' }}>
-            ₹{(product.holdPrice && product.holdPrice !== product.retailPrice ? product.holdPrice : product.retailPrice)?.toLocaleString('en-IN')}
+            ₹{listDisplayPrice?.toLocaleString('en-IN')}
           </span>
-          {product.holdPrice && product.holdPrice !== product.retailPrice && (
+          {discount > 0 && (
             <>
               <span style={{ fontSize: '0.88rem', color: '#9ca3af', textDecoration: 'line-through' }}>
                 ₹{product.retailPrice?.toLocaleString('en-IN')}

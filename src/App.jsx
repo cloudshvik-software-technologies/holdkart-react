@@ -4,7 +4,7 @@ import SessionGuard from './components/SessionGuard.jsx';
 import Header from './components/Header.jsx';
 import Footer from './components/Footer.jsx';
 
-import Dashboard     from './pages/Dashboard.jsx';
+import Home          from './pages/Home.jsx';
 import Login         from './pages/Login.jsx';
 import Register      from './pages/Register.jsx';
 import Forgot        from './pages/Forgot.jsx';
@@ -61,7 +61,7 @@ function AppRoutes() {
       <Routes>
 
         <Route element={<PublicLayout />}>
-          <Route path="/" element={<Dashboard isGuest />} />
+          <Route path="/" element={<Home isGuest />} />
           <Route path="/products"    element={<Products />} />
           <Route path="/product/:id" element={<ProductDetail />} />
           <Route path="/cart"        element={<Cart />} />
@@ -78,7 +78,7 @@ function AppRoutes() {
 
         <Route element={<ProtectedRoute />}>
           <Route element={<AppLayout />}>
-            <Route path="/home"           element={<Dashboard />} />
+            <Route path="/home"           element={<Home />} />
             <Route path="/campaigns"      element={<Campaigns />} />
             <Route path="/campaigns/:id"  element={<CampaignDetail />} />
             <Route path="/checkout"       element={<Checkout />} />
