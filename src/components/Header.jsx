@@ -17,10 +17,15 @@ const CATEGORIES = [
   { name: 'Accessories', icon: '🎒', path: '/products?category=Accessories' },
 ];
 
+const AUTH_PAGES = ['/login', '/register', '/forgot', '/reset-password'];
+
 export default function Header() {
   const { customer, isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Hide header completely on login/register/forgot/reset pages
+  if (AUTH_PAGES.some(p => location.pathname === p)) return null;
   const [unread, setUnread]         = useState(0);
   const [scrolled, setScrolled]     = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -58,7 +63,7 @@ export default function Header() {
   const handleLogout = async () => {
     try { await authService.logout({ customerId: customer?.id }); } catch {}
     logout();
-    navigate('/login');
+    navigate('/');
     toast.success('Logged out successfully');
     setAccountOpen(false);
   };
@@ -151,7 +156,7 @@ export default function Header() {
 
           {/* ── LOGO ── */}
           <Link
-            to={isAuthenticated ? '/dashboard' : '/'}
+            to={isAuthenticated ? '/home' : '/'}
             style={{
               display: 'flex', alignItems: 'center', gap: 10,
               textDecoration: 'none', flexShrink: 0,
@@ -183,22 +188,19 @@ export default function Header() {
             </div>
           </Link>
 
-          {/* ── DELIVER TO (authenticated) ── */}
-          {isAuthenticated && (
-            <Link to="/profile" className="hk-nav-action" style={{ flexShrink: 0 }}>
-              <span className="top">Deliver to</span>
-              <span className="bot" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <svg width="10" height="13" viewBox="0 0 10 13" fill="none">
-                  <path d="M5 0C2.79 0 1 1.79 1 4c0 3 4 9 4 9s4-6 4-9c0-2.21-1.79-4-4-4zm0 5.5A1.5 1.5 0 1 1 5 2.5a1.5 1.5 0 0 1 0 3z" fill="white"/>
-                </svg>
-                India
-              </span>
-            </Link>
-          )}
+          {/* ── DELIVER TO — always visible ── */}
+          <Link to={isAuthenticated ? '/profile' : '/login'} className="hk-nav-action" style={{ flexShrink: 0 }}>
+            <span className="top">Deliver to</span>
+            <span className="bot" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <svg width="10" height="13" viewBox="0 0 10 13" fill="none">
+                <path d="M5 0C2.79 0 1 1.79 1 4c0 3 4 9 4 9s4-6 4-9c0-2.21-1.79-4-4-4zm0 5.5A1.5 1.5 0 1 1 5 2.5a1.5 1.5 0 0 1 0 3z" fill="white"/>
+              </svg>
+              India
+            </span>
+          </Link>
 
-          {/* ── SEARCH BAR (authenticated only) ── */}
-          {isAuthenticated && (
-            <form onSubmit={handleSearch} style={{
+          {/* ── SEARCH BAR — always visible ── */}
+          <form onSubmit={handleSearch} style={{
               flex: 1, display: 'flex', maxWidth: 700,
               height: 44, borderRadius: 10, overflow: 'hidden',
               border: `2px solid ${searchFocused ? '#FF6B00' : 'transparent'}`,
@@ -224,8 +226,7 @@ export default function Header() {
                   <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                 </svg>
               </button>
-            </form>
-          )}
+          </form>
 
           {/* ── RIGHT ACTIONS ── */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', flexShrink: 0 }}>
@@ -293,7 +294,19 @@ export default function Header() {
                       ))}
 
                       <div style={{ borderTop: '1px solid #F5F5F5', marginTop: 6, paddingTop: 6 }}>
-                        <button onClick={handleLogout} className="hk-drop-item" style={{ width: '100%', background: 'none', border: 'none', color: '#ef4444', fontWeight: 700 }}>
+                        <button
+                          onClick={handleLogout}
+                          style={{
+                            width: '100%', background: 'none', border: 'none',
+                            display: 'flex', alignItems: 'center', gap: 11,
+                            padding: '10px 18px', borderRadius: 8, cursor: 'pointer',
+                            color: '#ef4444', fontWeight: 700, fontSize: '0.88rem',
+                            fontFamily: "'Plus Jakarta Sans',sans-serif",
+                            transition: 'background 0.12s',
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#FEF2F2'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                        >
                           <span style={{ fontSize: '1.05rem', width: 22, textAlign: 'center' }}>🚪</span>
                           Logout
                         </button>
@@ -342,82 +355,214 @@ export default function Header() {
                 </Link>
               </>
             ) : (
-              /* Guest */
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                <Link to="/login" style={{
-                  color: '#fff', border: '1.5px solid rgba(255,255,255,0.35)',
-                  borderRadius: 8, padding: '9px 22px', fontSize: '0.92rem',
-                  fontWeight: 700, textDecoration: 'none', transition: 'all 0.15s',
-                  fontFamily: "'Plus Jakarta Sans',sans-serif",
-                }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.35)'; e.currentTarget.style.background = 'none'; }}>
-                  Login
-                </Link>
-                <Link to="/register" style={{
-                  background: '#FF6B00', color: '#fff', borderRadius: 8,
-                  padding: '9px 22px', fontSize: '0.92rem', fontWeight: 800,
-                  textDecoration: 'none', transition: 'background 0.15s',
-                  boxShadow: '0 4px 12px rgba(255,107,0,0.35)',
-                  fontFamily: "'Plus Jakarta Sans',sans-serif",
-                }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#E85D04'}
-                  onMouseLeave={e => e.currentTarget.style.background = '#FF6B00'}>
-                  Sign Up Free →
-                </Link>
-              </div>
+              /* ── GUEST: show full header items, actions redirect to login ── */
+              <>
+                {/* Account & Lists — guest version */}
+                <div ref={accountRef} style={{ position: 'relative' }}>
+                  <button
+                    onClick={() => setAccountOpen(o => !o)}
+                    className="hk-nav-action"
+                    style={{
+                      borderColor: accountOpen ? 'rgba(255,255,255,0.4)' : 'transparent',
+                      background: accountOpen ? 'rgba(255,255,255,0.08)' : 'none',
+                    }}
+                  >
+                    <span className="top">Hello, sign in</span>
+                    <span className="bot" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      Account &amp; Lists
+                      <svg width="10" height="6" viewBox="0 0 10 6" fill="none" style={{ transition: 'transform 0.2s', transform: accountOpen ? 'rotate(180deg)' : 'none' }}>
+                        <path d="M1 1l4 4 4-4" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </span>
+                  </button>
+
+                  {accountOpen && (
+                    <div style={{
+                      position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+                      width: 300, background: '#fff', borderRadius: 14,
+                      boxShadow: '0 16px 56px rgba(0,0,0,0.18)', zIndex: 9999,
+                      padding: '18px 18px 12px',
+                      border: '1px solid #EBEBEB',
+                    }}>
+                      {/* Sign in button */}
+                      <Link
+                        to="/login"
+                        onClick={() => setAccountOpen(false)}
+                        style={{
+                          display: 'block', textAlign: 'center',
+                          background: '#FF6B00', color: '#fff',
+                          borderRadius: 9, padding: '11px 0',
+                          fontWeight: 800, fontSize: '0.95rem',
+                          textDecoration: 'none', marginBottom: 10,
+                          fontFamily: "'Plus Jakarta Sans',sans-serif",
+                          letterSpacing: '0.01em',
+                          boxShadow: '0 3px 10px rgba(255,107,0,0.3)',
+                        }}
+                      >
+                        Sign in
+                      </Link>
+
+                      {/* New customer */}
+                      <p style={{ textAlign: 'center', fontSize: '0.8rem', color: '#6b7280', margin: '0 0 14px' }}>
+                        New customer?{' '}
+                        <Link to="/register" onClick={() => setAccountOpen(false)} style={{ color: '#FF6B00', fontWeight: 700, textDecoration: 'none' }}>
+                          Start here
+                        </Link>
+                      </p>
+
+                      {/* Divider */}
+                      <div style={{ borderTop: '1px solid #F0F0F0', marginBottom: 12 }} />
+
+                      {/* Two-column list */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 8px' }}>
+                        {/* Your Lists */}
+                        <div>
+                          <div style={{
+                            fontSize: '0.72rem', fontWeight: 800, color: '#374151',
+                            textTransform: 'uppercase', letterSpacing: '0.06em',
+                            marginBottom: 6, paddingLeft: 4,
+                            fontFamily: "'Plus Jakarta Sans',sans-serif",
+                          }}>
+                            Your Lists
+                          </div>
+                          {[
+                            { icon: '❤️', label: 'Wishlist' },
+                            { icon: '🎯', label: 'Hold Deals' },
+                          ].map(item => (
+                            <Link
+                              key={item.label}
+                              to="/login"
+                              onClick={() => setAccountOpen(false)}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: 8,
+                                padding: '7px 4px', borderRadius: 7,
+                                textDecoration: 'none', color: '#1A1A2E',
+                                fontSize: '0.85rem', fontWeight: 500,
+                                fontFamily: "'Plus Jakarta Sans',sans-serif",
+                                transition: 'background 0.12s',
+                              }}
+                              onMouseEnter={e => e.currentTarget.style.background = '#FFF3E0'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                            >
+                              <span style={{ fontSize: '1rem', width: 20, textAlign: 'center', flexShrink: 0 }}>{item.icon}</span>
+                              <span>{item.label}</span>
+                            </Link>
+                          ))}
+                        </div>
+
+                        {/* Your Account */}
+                        <div>
+                          <div style={{
+                            fontSize: '0.72rem', fontWeight: 800, color: '#374151',
+                            textTransform: 'uppercase', letterSpacing: '0.06em',
+                            marginBottom: 6, paddingLeft: 4,
+                            fontFamily: "'Plus Jakarta Sans',sans-serif",
+                          }}>
+                            Your Account
+                          </div>
+                          {[
+                            { icon: '👤', label: 'Your Account' },
+                            { icon: '📦', label: 'Your Orders' },
+                            { icon: '🔔', label: 'Notifications' },
+                            { icon: '💬', label: 'Support' },
+                          ].map(item => (
+                            <Link
+                              key={item.label}
+                              to="/login"
+                              onClick={() => setAccountOpen(false)}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: 8,
+                                padding: '7px 4px', borderRadius: 7,
+                                textDecoration: 'none', color: '#1A1A2E',
+                                fontSize: '0.85rem', fontWeight: 500,
+                                fontFamily: "'Plus Jakarta Sans',sans-serif",
+                                transition: 'background 0.12s',
+                              }}
+                              onMouseEnter={e => e.currentTarget.style.background = '#FFF3E0'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                            >
+                              <span style={{ fontSize: '1rem', width: 20, textAlign: 'center', flexShrink: 0 }}>{item.icon}</span>
+                              <span>{item.label}</span>
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Returns & Orders */}
+                <button onClick={() => navigate('/login')} className="hk-nav-action" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                  <span className="top">Returns &</span>
+                  <span className="bot">My Orders</span>
+                </button>
+
+                {/* Cart — clicking goes to login */}
+                <button
+                  onClick={() => navigate('/login')}
+                  className="hk-nav-action"
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8, background: 'rgba(255,107,0,0.12)', border: '1.5px solid rgba(255,107,0,0.3)', cursor: 'pointer' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,107,0,0.22)'; e.currentTarget.style.borderColor = '#FF6B00'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,107,0,0.12)'; e.currentTarget.style.borderColor = 'rgba(255,107,0,0.3)'; }}
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FF6B00" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+                    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+                  </svg>
+                  <span style={{ fontWeight: 800, fontSize: '0.92rem', color: '#FF6B00', fontFamily: "'Plus Jakarta Sans',sans-serif" }}>Cart</span>
+                </button>
+              </>
             )}
           </div>
         </div>
 
-        {/* ── CATEGORY STRIP ── */}
-        {isAuthenticated && (
-          <div style={{ background: 'rgba(0,0,0,0.15)', borderTop: '1px solid rgba(255,255,255,0.12)' }}>
-            <div
-              className="hk-cat-strip"
-              style={{
-                display: 'flex', alignItems: 'center',
-                overflowX: 'auto', padding: '0 28px',
-                maxWidth: 1600, margin: '0 auto', gap: 0,
-              }}
+        {/* ── CATEGORY STRIP — always visible ── */}
+        <div style={{ background: 'rgba(0,0,0,0.15)', borderTop: '1px solid rgba(255,255,255,0.12)' }}>
+          <div
+            className="hk-cat-strip"
+            style={{
+              display: 'flex', alignItems: 'center',
+              overflowX: 'auto', padding: '0 28px',
+              maxWidth: 1600, margin: '0 auto', gap: 0,
+            }}
+          >
+            {/* All Products — public */}
+            <button
+              className={`hk-cat-btn${isActive('/products') ? ' active' : ''}`}
+              onClick={() => navigate('/products')}
             >
-              {/* All */}
+              ☰ All
+            </button>
+
+            {CATEGORIES.map(cat => (
               <button
-                className={`hk-cat-btn${isActive('/products') ? ' active' : ''}`}
-                onClick={() => navigate('/products')}
+                key={cat.name}
+                className={`hk-cat-btn${isActive(cat.path) ? ' active' : ''}`}
+                onClick={() => navigate(cat.path)}
               >
-                ☰ All
+                {cat.icon} {cat.name}
               </button>
+            ))}
 
-              {CATEGORIES.map(cat => (
-                <button
-                  key={cat.name}
-                  className={`hk-cat-btn${isActive(cat.path) ? ' active' : ''}`}
-                  onClick={() => navigate(cat.path)}
-                >
-                  {cat.icon} {cat.name}
-                </button>
-              ))}
+            <div style={{ width: 1, height: 18, background: 'rgba(255,255,255,0.15)', margin: '0 8px', flexShrink: 0 }} />
 
-              <div style={{ width: 1, height: 18, background: 'rgba(255,255,255,0.15)', margin: '0 8px', flexShrink: 0 }} />
-
-              {[
-                { label: '🎯 Hold Deals',    path: '/campaigns' },
-                { label: '❤️ Wishlist',      path: '/wishlist' },
-                { label: '💬 Support',       path: '/complaints' },
-                { label: '🔔 Notifications', path: '/notifications' },
-              ].map(l => (
-                <button
-                  key={l.label}
-                  className={`hk-cat-btn${isActive(l.path) ? ' active' : ''}`}
-                  onClick={() => navigate(l.path)}
-                >
-                  {l.label}
-                </button>
-              ))}
-            </div>
+            {/* These pages require login */}
+            {[
+              { label: '🎯 Hold Deals',    path: '/campaigns' },
+              { label: '❤️ Wishlist',      path: '/wishlist' },
+              { label: '💬 Support',       path: '/complaints' },
+              { label: '🔔 Notifications', path: '/notifications' },
+            ].map(l => (
+              <button
+                key={l.label}
+                className={`hk-cat-btn${isActive(l.path) ? ' active' : ''}`}
+                onClick={() => isAuthenticated ? navigate(l.path) : navigate('/login')}
+              >
+                {l.label}
+              </button>
+            ))}
           </div>
-        )}
+        </div>
       </header>
     </>
   );

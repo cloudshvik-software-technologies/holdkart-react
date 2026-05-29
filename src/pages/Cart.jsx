@@ -17,7 +17,7 @@ import { useState, useEffect } from 'react';
       catch {} finally { setLoading(false); }
     };
 
-    useEffect(() => { if (!isAuthenticated) { navigate('/login'); return; } fetchCart(); }, [isAuthenticated]);
+    useEffect(() => { if (isAuthenticated) { fetchCart(); } else { setLoading(false); } }, [isAuthenticated]);
 
     const updateQty = async (productId, qty) => {
       try { await cartService.updateCartItem({ productId, quantity: qty }); fetchCart(); }
@@ -32,6 +32,19 @@ import { useState, useEffect } from 'react';
     const total = cart.reduce((sum, item) => sum + item.retailPrice * item.quantity, 0);
 
     if (loading) return <div className="page-wrap" style={{ textAlign: 'center' }}>Loading cart…</div>;
+
+    if (!isAuthenticated) return (
+      <div className="page-wrap">
+        <h1 className="page-title">Shopping Cart</h1>
+        <div className="empty-state">
+          <div className="icon">🔒</div>
+          <h3>Sign in to view your cart</h3>
+          <p>Your cart is saved when you're signed in</p>
+          <Link to="/login" className="btn-primary" style={{ display: 'inline-flex', marginTop: 20 }}>Sign In</Link>
+          <p style={{ marginTop: 12, fontSize: '0.85rem', color: 'var(--muted)' }}>New customer? <Link to="/register" style={{ color: 'var(--blue)' }}>Start here</Link></p>
+        </div>
+      </div>
+    );
 
     return (
       <div className="page-wrap">
@@ -80,7 +93,7 @@ import { useState, useEffect } from 'react';
                 <span>Total</span>
                 <span style={{ color: 'var(--blue-dark)' }}>₹{total.toLocaleString()}</span>
               </div>
-              <button className="btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '14px', marginTop: 16 }} onClick={() => navigate('/checkout')}>
+              <button className="btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '14px', marginTop: 16 }} onClick={() => { if (!isAuthenticated) { toast.error('Please sign in to proceed to checkout'); navigate('/login'); return; } navigate('/checkout'); }}>
                 Proceed to Checkout →
               </button>
               <Link to="/products" className="btn-outline" style={{ display: 'flex', justifyContent: 'center', marginTop: 12, padding: '10px' }}>Continue Shopping</Link>
@@ -90,4 +103,3 @@ import { useState, useEffect } from 'react';
       </div>
     );
   }
-  

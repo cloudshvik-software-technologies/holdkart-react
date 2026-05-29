@@ -188,7 +188,11 @@ function ListProductCard({ product }) {
 
   const handleCart = async (e) => {
     e.stopPropagation();
-    if (!isAuthenticated) { navigate('/login'); return; }
+    if (!isAuthenticated) {
+      toast.error('Please sign in to add items to cart');
+      navigate('/login');
+      return;
+    }
     try {
       await cartService.addToCart({ productId: product.productId, quantity: 1 });
       toast.success('Added to cart!');
@@ -199,7 +203,11 @@ function ListProductCard({ product }) {
 
   const handleWishlist = async (e) => {
     e.stopPropagation();
-    if (!isAuthenticated) { navigate('/login'); return; }
+    if (!isAuthenticated) {
+      toast.error('Please sign in to add to wishlist');
+      navigate('/login');
+      return;
+    }
     try {
       await wishlistService.addToWishlist({ productId: product.productId });
       toast.success('Added to wishlist!');

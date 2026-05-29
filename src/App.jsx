@@ -4,7 +4,6 @@ import SessionGuard from './components/SessionGuard.jsx';
 import Header from './components/Header.jsx';
 import Footer from './components/Footer.jsx';
 
-import Home          from './pages/Home.jsx';
 import Dashboard     from './pages/Dashboard.jsx';
 import Login         from './pages/Login.jsx';
 import Register      from './pages/Register.jsx';
@@ -21,23 +20,31 @@ import Profile       from './pages/Profile.jsx';
 import Notifications from './pages/Notifications.jsx';
 import Complaints    from './pages/Complaints.jsx';
 import Campaigns     from './pages/Campaigns.jsx';
+import CampaignDetail from './pages/CampaignDetail.jsx';
 
-/* Redirect unauthenticated users to /login */
 function ProtectedRoute() {
   const { isAuthenticated, isLoading } = useAuth();
   if (isLoading) return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', color: '#6b7280' }}>Loading…</div>;
   return isAuthenticated ? <Outlet /> : <Navigate to="/login" replace />;
 }
 
-/* Redirect already-logged-in users away from auth pages */
 function GuestRoute() {
   const { isAuthenticated, isLoading } = useAuth();
   if (isLoading) return null;
-  return !isAuthenticated ? <Outlet /> : <Navigate to="/dashboard" replace />;
+  return !isAuthenticated ? <Outlet /> : <Navigate to="/home" replace />;
 }
 
-/* Layout wrapper with Header + Footer (used on all pages) */
 function AppLayout() {
+  return (
+    <>
+      <Header />
+      <Outlet />
+      <Footer />
+    </>
+  );
+}
+
+function PublicLayout() {
   return (
     <>
       <Header />
@@ -52,10 +59,14 @@ function AppRoutes() {
     <BrowserRouter>
       <SessionGuard />
       <Routes>
-        {/* ── Public landing page — no header/footer wrapper ── */}
-        <Route path="/" element={<Home />} />
 
-        {/* ── Auth pages (guest only) — WITH header/footer ── */}
+        <Route element={<PublicLayout />}>
+          <Route path="/" element={<Dashboard isGuest />} />
+          <Route path="/products"    element={<Products />} />
+          <Route path="/product/:id" element={<ProductDetail />} />
+          <Route path="/cart"        element={<Cart />} />
+        </Route>
+
         <Route element={<AppLayout />}>
           <Route element={<GuestRoute />}>
             <Route path="/login"          element={<Login />} />
@@ -65,26 +76,24 @@ function AppRoutes() {
           </Route>
         </Route>
 
-        {/* ── Protected app pages with header/footer ── */}
         <Route element={<ProtectedRoute />}>
           <Route element={<AppLayout />}>
-            <Route path="/dashboard"    element={<Dashboard />} />
-            <Route path="/products"     element={<Products />} />
-            <Route path="/product/:id"  element={<ProductDetail />} />
-            <Route path="/campaigns"    element={<Campaigns />} />
-            <Route path="/cart"         element={<Cart />} />
-            <Route path="/checkout"     element={<Checkout />} />
-            <Route path="/orders"       element={<Orders />} />
-            <Route path="/order/:id"    element={<OrderDetail />} />
-            <Route path="/wishlist"     element={<Wishlist />} />
-            <Route path="/profile"      element={<Profile />} />
-            <Route path="/notifications" element={<Notifications />} />
-            <Route path="/complaints"   element={<Complaints />} />
+            <Route path="/home"           element={<Dashboard />} />
+            <Route path="/campaigns"      element={<Campaigns />} />
+            <Route path="/campaigns/:id"  element={<CampaignDetail />} />
+            <Route path="/checkout"       element={<Checkout />} />
+            <Route path="/orders"         element={<Orders />} />
+            <Route path="/order/:id"      element={<OrderDetail />} />
+            <Route path="/wishlist"       element={<Wishlist />} />
+            <Route path="/profile"        element={<Profile />} />
+            <Route path="/notifications"  element={<Notifications />} />
+            <Route path="/complaints"     element={<Complaints />} />
           </Route>
         </Route>
 
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/dashboard" element={<Navigate to="/home" replace />} />
+        <Route path="*"          element={<Navigate to="/" replace />} />
+
       </Routes>
     </BrowserRouter>
   );

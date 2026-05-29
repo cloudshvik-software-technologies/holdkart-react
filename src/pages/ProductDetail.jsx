@@ -47,24 +47,40 @@ export default function ProductDetail() {
   const getImgUrl = (url) => resolveSellerImg(url);
 
   const handleCart = async () => {
-    if (!isAuthenticated) { navigate('/login'); return; }
+    if (!isAuthenticated) {
+      toast.error('Please sign in to add items to cart');
+      navigate('/login');
+      return;
+    }
     try { await cartService.addToCart({ productId: product.productId, quantity: qty }); toast.success('Added to cart!'); } catch(e) { toast.error(e?.response?.data?.message || 'Failed'); }
   };
 
   const handleWishlist = async () => {
-    if (!isAuthenticated) { navigate('/login'); return; }
+    if (!isAuthenticated) {
+      toast.error('Please sign in to add to wishlist');
+      navigate('/login');
+      return;
+    }
     try { await wishlistService.addToWishlist({ productId: product.productId }); toast.success('Added to wishlist!'); } catch(e) { toast.error(e?.response?.data?.message || 'Failed'); }
   };
 
   const handleBuyNow = async () => {
-    if (!isAuthenticated) { navigate('/login'); return; }
+    if (!isAuthenticated) {
+      toast.error('Please sign in to purchase');
+      navigate('/login');
+      return;
+    }
     await handleCart();
     navigate('/cart');
   };
 
   const handleReviewSubmit = async (e) => {
     e.preventDefault();
-    if (!isAuthenticated) { navigate('/login'); return; }
+    if (!isAuthenticated) {
+      toast.error('Please sign in to submit a review');
+      navigate('/login');
+      return;
+    }
     setSubmittingReview(true);
     try {
       await reviewService.addReview({ productId: product.productId, ...reviewForm });
