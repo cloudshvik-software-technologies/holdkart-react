@@ -129,27 +129,17 @@ function CampaignRow({ item, leaving, onLeave }) {
             ₹{effectivePrice.toLocaleString('en-IN')}
           </span>
           {discountPct > 0 && (
-            <>
-              <span style={{ fontSize: '0.82rem', color: '#9ca3af', textDecoration: 'line-through' }}>
-                ₹{retailPrice.toLocaleString('en-IN')}
-              </span>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#007600' }}>
-                {discountPct}% off (group)
-              </span>
-            </>
+            <span style={{ fontSize: '0.82rem', color: '#9ca3af', textDecoration: 'line-through' }}>
+              ₹{retailPrice.toLocaleString('en-IN')}
+            </span>
           )}
         </div>
 
-        {/* Best price pill */}
+        {/* Best price teaser */}
         {target > 0 && (
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            background: '#f0f4ff', border: '1px solid #c7d8f8',
-            borderRadius: 3, padding: '3px 9px', fontSize: '0.71rem',
-            color: '#1e3c72', marginBottom: 10,
-          }}>
-            🏆 Best price at {target} members:&nbsp;
-            <b style={{ color: '#007600' }}>₹{bestPrice.toLocaleString('en-IN')} ({maxDiscountPct}% off)</b>
+          <div style={{ fontSize: '0.71rem', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 5 }}>
+            <span style={{ fontWeight: 800, color: '#dc2626' }}>₹{bestPrice.toLocaleString('en-IN')}</span>
+            <span style={{ background: '#dc2626', color: '#fff', borderRadius: 3, padding: '1px 5px' }}>{maxDiscountPct}% off</span>
           </div>
         )}
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import ProductCard from '../components/ProductCard.jsx';
-import { productService, orderService, wishlistService, campaignService } from '../services/index.js';
+import { productService, wishlistService, campaignService } from '../services/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
 
 /* ─── BRAND LOGOS ───────────────────────────────────────────────── */
@@ -126,24 +126,24 @@ const DEAL_SECTIONS_STATIC = [
   },
 ];
 
-const statusColor = {
-  Pending: '#e47911', Confirmed: '#007185', Processing: '#c7511f',
-  Shipped: '#007600', Delivered: '#007600', Cancelled: '#c40000',
-};
-
 /* ─── COMPONENT ─────────────────────────────────────────────────── */
 export default function Home({ isGuest = false }) {
   const { customer } = useAuth();
   const navigate = useNavigate();
 
   const guardedNav = (path) => {
-    if (isGuest) { navigate('/login'); return; }
+    // Campaign detail pages handle their own auth check internally,
+    // so guests can navigate directly to view the deal.
+    if (isGuest && !path.startsWith('/campaigns/')) { navigate('/login'); return; }
     navigate(path);
   };
 
   const [featured, setFeatured]           = useState([]);
+  const [featuredPage, setFeaturedPage]   = useState(1);
+  const [featuredHasMore, setFeaturedHasMore] = useState(true);
+  const [featuredLoading, setFeaturedLoading] = useState(false);
+  const featuredSentinelRef = useRef(null);
   const [categories, setCategories]       = useState([]);
-  const [orders, setOrders]               = useState([]);
   const [campaigns, setCampaigns]         = useState([]);
   const [wishlistCount, setWishlistCount] = useState(0);
   const [loading, setLoading]             = useState(true);
@@ -158,22 +158,24 @@ export default function Home({ isGuest = false }) {
       try {
         if (isGuest) {
           const [f, camp] = await Promise.all([
-            productService.getFeatured().catch(() => []),
+            productService.getFeatured(1, 10).catch(() => []),
             campaignService.listCampaigns().catch(() => []),
           ]);
-          setFeatured(Array.isArray(f) ? f.slice(0, 12) : []);
+          const featArr = Array.isArray(f) ? f : [];
+          setFeatured(featArr);
+          setFeaturedHasMore(featArr.length === 10);
           setCampaigns(Array.isArray(camp) ? camp.slice(0, 4) : []);
         } else {
-          const [f, c, o, wl, camp] = await Promise.all([
-            productService.getFeatured().catch(() => []),
+          const [f, c, wl, camp] = await Promise.all([
+            productService.getFeatured(1, 10).catch(() => []),
             productService.getCategories().catch(() => []),
-            orderService.listOrders().catch(() => []),
             wishlistService.getWishlist().catch(() => []),
-            campaignService.listCampaigns().catch(() => []),
+            campaignService.getMyCampaigns().catch(() => []),
           ]);
-          setFeatured(Array.isArray(f) ? f.slice(0, 12) : []);
+          const featArr = Array.isArray(f) ? f : [];
+          setFeatured(featArr);
+          setFeaturedHasMore(featArr.length === 10);
           setCategories(Array.isArray(c) ? c : []);
-          setOrders(Array.isArray(o) ? o.slice(0, 4) : []);
           setWishlistCount(Array.isArray(wl) ? wl.length : 0);
           setCampaigns(Array.isArray(camp) ? camp.slice(0, 4) : []);
         }
@@ -205,7 +207,49 @@ export default function Home({ isGuest = false }) {
 
   const manualSlide = (i) => { clearInterval(timerRef.current); goSlide(i); };
   const pad = (n) => String(n).padStart(2, '0');
-  const totalSpent = orders.reduce((s, o) => s + (o.order_amount || 0), 0);
+
+  /* ── Load more featured products on scroll ──────────────────── */
+  // isFetching ref prevents concurrent fetches regardless of render cycles
+  const isFetchingRef = useRef(false);
+
+  const loadMoreFeatured = useCallback(async () => {
+    if (isFetchingRef.current || !featuredHasMore) return;
+    isFetchingRef.current = true;
+    setFeaturedLoading(true);
+    try {
+      const nextPage = featuredPage + 1;
+      const more = await productService.getFeatured(nextPage, 10).catch(() => []);
+      const arr = Array.isArray(more) ? more : [];
+      if (arr.length === 0) {
+        setFeaturedHasMore(false);
+      } else {
+        setFeatured(prev => [...prev, ...arr]);
+        setFeaturedPage(nextPage);
+        setFeaturedHasMore(arr.length === 10);
+      }
+    } finally {
+      setFeaturedLoading(false);
+      isFetchingRef.current = false;
+    }
+  }, [featuredHasMore, featuredPage]);
+
+  // Scroll-based trigger: fires whenever user scrolls within 400px of the sentinel
+  useEffect(() => {
+    const handleScroll = () => {
+      if (isFetchingRef.current) return;
+      const sentinel = featuredSentinelRef.current;
+      if (!sentinel) return;
+      const rect = sentinel.getBoundingClientRect();
+      if (rect.top <= window.innerHeight + 400) {
+        loadMoreFeatured();
+      }
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    // Also check immediately in case all products fit in the viewport
+    handleScroll();
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [loadMoreFeatured]);
+
 
   return (
     <div style={{ background: '#e3e6e6', minHeight: '100vh', fontFamily: "'Amazon Ember', 'Segoe UI', Arial, sans-serif" }}>
@@ -480,10 +524,8 @@ export default function Home({ isGuest = false }) {
           </div>
           <div style={{ flex: 1, display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 2, alignItems: 'center' }}>
             {!isGuest && [
-              { icon: '📦', label: 'My Orders', val: orders.length,                    link: '/orders',    c: '#007185' },
-              { icon: '💸', label: 'Spent',     val: '₹' + totalSpent.toLocaleString(), link: '/orders',    c: '#007600' },
-              { icon: '♡',  label: 'Wishlist',  val: wishlistCount,                     link: '/wishlist',  c: '#c7511f' },
-              { icon: '🎯', label: 'Deals',     val: campaigns.length,                  link: '/campaigns', c: '#c40000' },
+              { icon: '♡',  label: 'Wishlist',  val: wishlistCount,    link: '/wishlist',  c: '#c7511f' },
+              { icon: '🎯', label: 'Deals',     val: campaigns.length, link: '/campaigns', c: '#c40000' },
             ].map(s => (
               <div key={s.label} onClick={() => navigate(s.link)}
                 style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f7f7f7', border: '1px solid #ddd', borderRadius: 3, padding: '6px 14px', cursor: 'pointer', flexShrink: 0, transition: 'all 0.15s' }}
@@ -530,46 +572,97 @@ export default function Home({ isGuest = false }) {
           <div style={{ marginBottom: 12 }}>
             <div style={{ background: '#fff', borderRadius: 4, padding: '16px 16px 8px', border: '1px solid #ddd' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#0f1111' }}>🎯 Hold Deals — Group Buy & Save</h2>
+                <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#0f1111' }}>🎯 {isGuest ? 'Hold Deals — Group Buy & Save' : 'My Hold Deals'}</h2>
                 <button onClick={() => guardedNav('/campaigns')} className="hk-see-more" style={{ fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}>See all campaigns →</button>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 12 }}>
-                {campaigns.map((c) => {
-                  const pct = Math.min(100, Math.round((c.current_hold / c.target) * 100));
-                  const savings = Number(c.retail_price) - Number(c.hold_price);
-                  const savePct = Math.round((savings / Number(c.retail_price)) * 100);
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 12 }}>
+                {campaigns.filter(c => !c.campaignStatus || c.campaignStatus === 'ACTIVE').map((c) => {
+                  /* getMyCampaigns always returns campaign_id explicitly.
+                     listCampaigns returns c.id as the PK.
+                     Both cases: campaign_id is always the correct column. */
+                  // Strip any ":N" mysql2 duplicate-column suffix before parsing
+                  const rawCampaignId = String(c.campaign_id || c.id || '').split(':')[0];
+                  const campaignId    = rawCampaignId ? parseInt(rawCampaignId, 10) || null : null;
+                  const currentHold  = c.current_hold || 0;
+                  const target       = c.target || 0;
+                  const retailPrice  = Number(c.retail_price) || 0;
+                  const holdPrice    = Number(c.hold_price)   || 0;
+                  // currentHold = number of members joined = current live discount %
+                  // target = max members = max discount %
+                  const discountPct  = currentHold; // e.g. 2 joined → 2% off now
+                  const displayPrice = discountPct > 0
+                    ? Math.round(retailPrice * (1 - discountPct / 100))
+                    : retailPrice;
+                  const maxDiscountPct = target; // e.g. 10 target → 10% off at best
+                  const bestGroupPrice = target > 0
+                    ? Math.round(retailPrice * (1 - maxDiscountPct / 100))
+                    : holdPrice;
+                  const pct          = target > 0 ? Math.min(100, Math.round((currentHold / target) * 100)) : 0;
+                  const FALLBACK    = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'%3E%3Crect width='400' height='300' fill='%23f0f4f8'/%3E%3Crect x='140' y='90' width='120' height='90' rx='10' fill='%23d1d9e6'/%3E%3Ccircle cx='200' cy='115' r='18' fill='%23a0aec0'/%3E%3Cpath d='M155 175 Q200 130 245 175Z' fill='%23a0aec0'/%3E%3Ctext x='200' y='225' text-anchor='middle' font-family='sans-serif' font-size='14' fill='%2394a3b8'%3ENo Image%3C/text%3E%3C/svg%3E";
+                  const imgSrc      = c.image_url
+                    ? (c.image_url.startsWith('http') ? c.image_url : `/seller-uploads${c.image_url.startsWith('/') ? '' : '/'}${c.image_url}`)
+                    : FALLBACK;
+                  const detailPath  = campaignId ? `/campaigns/${campaignId}` : '/campaigns';
+
                   return (
-                    <div key={c.id} className="hk-camp-card" onClick={() => guardedNav('/campaigns')}>
-                      <div style={{ background: 'linear-gradient(135deg,#232f3e,#37475a)', padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <div>
-                          <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.65rem', fontWeight: 600, letterSpacing: 1, marginBottom: 4 }}>HOLD DEAL</div>
-                          <div style={{ color: '#fff', fontWeight: 700, fontSize: '0.9rem', lineHeight: 1.3, maxWidth: 160 }}>{c.product_name}</div>
-                        </div>
-                        <div style={{ background: '#febd69', color: '#111', borderRadius: 2, padding: '3px 8px', fontSize: '0.7rem', fontWeight: 800, flexShrink: 0 }}>{savePct}% OFF</div>
+                    <div
+                      key={campaignId ?? c.product_id}
+                      onClick={() => guardedNav(detailPath)}
+                      style={{
+                        background: '#fff', borderRadius: 8, border: '1px solid #e3e6e6',
+                        overflow: 'hidden', cursor: 'pointer', display: 'flex', flexDirection: 'column',
+                        position: 'relative', transition: 'box-shadow 0.2s, border-color 0.2s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.14)'; e.currentTarget.style.borderColor = '#c9cdd2'; }}
+                      onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#e3e6e6'; }}
+                    >
+                      {/* Wishlist heart top-right */}
+                      <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, width: 34, height: 34, borderRadius: '50%', background: 'rgba(255,255,255,0.9)', border: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', color: '#9ca3af', boxShadow: '0 1px 4px rgba(0,0,0,0.12)' }}>
+                        ♡
                       </div>
-                      <div style={{ padding: '12px 14px' }}>
-                        <div style={{ fontSize: '0.72rem', color: '#565959', marginBottom: 10 }}>by {c.sellerName}</div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 }}>
-                          <div>
-                            <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#B12704' }}>₹{Number(c.hold_price)?.toLocaleString()}</div>
-                            <div style={{ fontSize: '0.75rem', color: '#888', textDecoration: 'line-through' }}>₹{Number(c.retail_price)?.toLocaleString()}</div>
+                      {/* Product image */}
+                      <div style={{ background: '#f9fafb', overflow: 'hidden' }}>
+                        <img src={imgSrc} alt={c.product_name} onError={e => { e.target.src = FALLBACK; }}
+                          style={{ width: '100%', height: 160, objectFit: 'cover', display: 'block' }} />
+                      </div>
+                      {/* Card body */}
+                      <div style={{ padding: '8px 10px 10px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                        <p style={{ fontSize: '0.68rem', color: '#6b7280', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          {c.category || 'Hold Deal'}
+                        </p>
+                        <p style={{ fontWeight: 600, fontSize: '0.88rem', color: '#0f1111', marginBottom: 4, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', minHeight: '2.3em' }}>
+                          {c.product_name}
+                        </p>
+                        {/* Progress bar */}
+                        <div style={{ marginBottom: 5 }}>
+                          <div style={{ height: 4, background: '#e5e7eb', borderRadius: 99, overflow: 'hidden', marginBottom: 3 }}>
+                            <div style={{ height: '100%', width: `${pct}%`, borderRadius: 99, background: pct >= 100 ? '#16a34a' : '#2a5298', transition: 'width 0.4s ease' }} />
                           </div>
-                          <div style={{ textAlign: 'right', background: '#f0fff4', border: '1px solid #c6f6d5', borderRadius: 3, padding: '5px 10px' }}>
-                            <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#276749' }}>Save ₹{savings.toLocaleString()}</div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                            <span style={{ fontSize: '0.68rem', color: '#6b7280' }}>
+                              <span style={{ fontWeight: 700, color: '#1e3c72' }}>{currentHold}/{target}</span> joined
+                            </span>
+                            <span style={{ fontSize: '0.68rem', color: '#6b7280' }}>Group Deal</span>
+                          </div>
+                          <div style={{ fontSize: '0.68rem', marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+                            <span style={{ fontWeight: 800, color: '#dc2626' }}>₹{bestGroupPrice.toLocaleString('en-IN')}</span>
+                            <span style={{ background: '#dc2626', color: '#fff', borderRadius: 3, padding: '1px 4px' }}>{maxDiscountPct}% off</span>
                           </div>
                         </div>
-                        <div style={{ marginBottom: 10 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#565959', marginBottom: 4 }}>
-                            <span>{c.current_hold}/{c.target} joined</span>
-                            <span style={{ fontWeight: 700, color: pct >= 75 ? '#c40000' : '#007185' }}>{pct}% filled</span>
+                        {/* Price */}
+                        <div style={{ marginBottom: 8, marginTop: 'auto' }}>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                            <span style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0f1111' }}>₹{displayPrice.toLocaleString('en-IN')}</span>
+                            {discountPct > 0 && <span style={{ fontSize: '0.78rem', color: '#9ca3af', textDecoration: 'line-through' }}>₹{retailPrice.toLocaleString('en-IN')}</span>}
                           </div>
-                          <div style={{ background: '#e6e6e6', borderRadius: 99, height: 6, overflow: 'hidden' }}>
-                            <div style={{ height: '100%', width: pct + '%', background: pct >= 75 ? 'linear-gradient(90deg,#f0c14b,#c40000)' : 'linear-gradient(90deg,#007185,#00a8b4)', borderRadius: 99, transition: 'width 0.8s' }} />
-                          </div>
+                          <p style={{ fontSize: '0.65rem', color: '#6b7280', marginTop: 1 }}>Inclusive of all taxes</p>
                         </div>
-                        <button className="hk-cta hk-cta-blue" style={{ width: '100%', textAlign: 'center' }}
-                          onClick={e => { e.stopPropagation(); guardedNav('/campaigns'); }}>
-                          Join this Deal →
+                        {/* View Deal button */}
+                        <button
+                          onClick={e => { e.stopPropagation(); guardedNav(detailPath); }}
+                          style={{ width: '100%', padding: '7px 0', background: '#f0c14b', border: '1px solid #a88734', borderRadius: 4, fontWeight: 700, fontSize: '0.82rem', color: '#111', cursor: 'pointer' }}
+                        >
+                          View Deal
                         </button>
                       </div>
                     </div>
@@ -577,34 +670,6 @@ export default function Home({ isGuest = false }) {
                 })}
               </div>
             </div>
-          </div>
-        )}
-
-        {/* ── Recent Orders ── */}
-        {!isGuest && orders.length > 0 && (
-          <div style={{ background: '#fff', borderRadius: 4, border: '1px solid #ddd', marginBottom: 12, overflow: 'hidden' }}>
-            <div style={{ padding: '14px 18px', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontWeight: 800, fontSize: '1.02rem', color: '#0f1111' }}>Your Recent Orders</h2>
-              <Link to="/orders" className="hk-see-more">View order history →</Link>
-            </div>
-            {orders.map((order, i) => (
-              <div key={order.id} className="hk-ord-row"
-                onClick={() => navigate('/order/' + order.id)}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: i < orders.length - 1 ? '1px solid #f3f3f3' : 'none', background: '#fff' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <div style={{ width: 52, height: 52, background: '#f7f7f7', border: '1px solid #ddd', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', flexShrink: 0 }}>📦</div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f1111', marginBottom: 2 }}>{order.product_name}</div>
-                    <div style={{ fontSize: '0.72rem', color: '#565959' }}>Order #{order.order_number} · {new Date(order.created_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <span style={{ background: (statusColor[order.order_status] || '#999') + '18', color: statusColor[order.order_status] || '#555', border: `1px solid ${(statusColor[order.order_status] || '#ddd')}40`, borderRadius: 99, padding: '4px 12px', fontSize: '0.72rem', fontWeight: 700 }}>{order.order_status}</span>
-                  <span style={{ fontWeight: 800, fontSize: '1rem', color: '#B12704' }}>₹{order.order_amount?.toLocaleString()}</span>
-                  <span style={{ color: '#007185', fontSize: '0.8rem' }}>›</span>
-                </div>
-              </div>
-            ))}
           </div>
         )}
 
@@ -672,13 +737,25 @@ export default function Home({ isGuest = false }) {
               <p style={{ fontWeight: 600, color: '#444' }}>No featured products yet</p>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
-              {featured.map(p => (
-                <div key={p.productId} className="hk-prod-wrap">
-                  <ProductCard product={p} />
-                </div>
-              ))}
-            </div>
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
+                {featured.map(p => (
+                  <div key={p.productId} className="hk-prod-wrap">
+                    <ProductCard product={p} alreadyJoined={campaigns.some(c => Number(c.product_id) === Number(p.productId))} />
+                  </div>
+                ))}
+                {featuredLoading && [...Array(5)].map((_, i) => (
+                  <div key={`skel-${i}`} className="hk-skel" style={{ height: 280 }} />
+                ))}
+              </div>
+              {/* Sentinel — always mounted so the observer never needs to reconnect */}
+              <div ref={featuredSentinelRef} style={{ height: 1, marginTop: 8 }} />
+              {!featuredHasMore && featured.length > 10 && (
+                <p style={{ textAlign: 'center', fontSize: '0.78rem', color: '#888', marginTop: 12 }}>
+                  ✓ All products loaded
+                </p>
+              )}
+            </>
           )}
         </div>
 

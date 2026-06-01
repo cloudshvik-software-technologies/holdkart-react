@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import ProductCard from '../components/ProductCard.jsx';
-import { productService, cartService, wishlistService } from '../services/index.js';
+import { productService, cartService, wishlistService, campaignService } from '../services/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import toast from 'react-hot-toast';
 
@@ -85,12 +85,20 @@ function SidebarContent({ categories, filters, setFilters, minCustom, maxCustom,
           Category
         </div>
         {['', ...categories].map(c => (
-          <label key={c} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 4px', borderRadius: 6, cursor: 'pointer' }}
+          <label key={c} onClick={() => setFilters(f => ({ ...f, category: c }))} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 4px', borderRadius: 6, cursor: 'pointer' }}
             onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-            <input type="radio" name="hk-cat" checked={filters.category === c}
-              onChange={() => setFilters(f => ({ ...f, category: c }))}
-              style={{ accentColor: '#2a5298', width: 15, height: 15, cursor: 'pointer' }} />
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
+              border: filters.category === c ? '2px solid #2a5298' : '2px solid #9ca3af',
+              background: filters.category === c ? '#2a5298' : '#fff',
+              boxSizing: 'border-box', transition: 'all 0.15s',
+            }}>
+              {filters.category === c && (
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#fff', display: 'block' }} />
+              )}
+            </span>
             <span style={{ fontSize: '0.86rem', color: '#374151', fontWeight: filters.category === c ? 600 : 400 }}>
               {c === '' ? 'All Categories' : c}
             </span>
@@ -135,12 +143,20 @@ function SidebarContent({ categories, filters, setFilters, minCustom, maxCustom,
           Customer Rating
         </div>
         {['', ...STAR_OPTIONS.map(String)].map(n => (
-          <label key={n} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 4px', borderRadius: 6, cursor: 'pointer' }}
+          <label key={n} onClick={() => setFilters(f => ({ ...f, rating: n }))} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 4px', borderRadius: 6, cursor: 'pointer' }}
             onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-            <input type="radio" name="hk-rating" checked={filters.rating === n}
-              onChange={() => setFilters(f => ({ ...f, rating: n }))}
-              style={{ accentColor: '#2a5298', width: 15, height: 15, cursor: 'pointer' }} />
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
+              border: filters.rating === n ? '2px solid #2a5298' : '2px solid #9ca3af',
+              background: filters.rating === n ? '#2a5298' : '#fff',
+              boxSizing: 'border-box', transition: 'all 0.15s',
+            }}>
+              {filters.rating === n && (
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#fff', display: 'block' }} />
+              )}
+            </span>
             {n === '' ? (
               <span style={{ fontSize: '0.86rem', color: '#374151', fontWeight: filters.rating === '' ? 600 : 400 }}>All Ratings</span>
             ) : (
@@ -169,7 +185,7 @@ function SidebarContent({ categories, filters, setFilters, minCustom, maxCustom,
 }
 
 /* ── List-view product row (fully wired) ── */
-function ListProductCard({ product }) {
+function ListProductCard({ product, alreadyJoined = false }) {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
@@ -183,11 +199,18 @@ function ListProductCard({ product }) {
   };
 
   const [imgSrc, setImgSrc] = useState(() => resolveImg(product.imageUrl));
-  const discount = product.holdTarget > 0
-    ? Math.min(product.currentHold || 0, product.holdTarget)
+  const [joining, setJoining] = useState(false);
+  const [cartLoading, setCartLoading] = useState(false);
+  const [hasJoined, setHasJoined] = useState(alreadyJoined);
+  const [localHold, setLocalHold] = useState(product.currentHold || 0);
+
+  const hasGroupDeal = product.holdTarget > 0;
+  const safeHold = Math.min(localHold, product.holdTarget || 0);
+  const discount = hasGroupDeal
+    ? safeHold
     : (product.holdPrice && product.holdPrice !== product.retailPrice && product.retailPrice > 0
         ? Math.round((1 - product.holdPrice / product.retailPrice) * 100) : 0);
-  const listDisplayPrice = discount > 0 && product.holdTarget > 0
+  const listDisplayPrice = hasGroupDeal && discount > 0
     ? Math.round(product.retailPrice * (1 - discount / 100))
     : (product.holdPrice && product.holdPrice !== product.retailPrice ? product.holdPrice : product.retailPrice);
 
@@ -198,12 +221,55 @@ function ListProductCard({ product }) {
       navigate('/login');
       return;
     }
+    setCartLoading(true);
     try {
       await cartService.addToCart({ productId: product.productId, quantity: 1 });
       toast.success('Added to cart!');
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Failed to add to cart');
+    } finally { setCartLoading(false); }
+  };
+
+  /* shared: join or add more units to the campaign */
+  const _addToCampaign = async (isFirstJoin) => {
+    try {
+      await campaignService.startOrJoinCampaign({ productId: product.productId });
+    } catch (apiErr) {
+      if (!isFirstJoin) {
+        await cartService.addToCart({ productId: product.productId, quantity: 1 });
+      } else { throw apiErr; }
     }
+    const holdTarget = product.holdTarget;
+    const next = localHold + 1;
+    setLocalHold(next);
+    setHasJoined(true);
+    if (next >= holdTarget) {
+      cartService.addToCart({ productId: product.productId, quantity: 1 }).catch(() => {});
+      toast.success('🎉 Target reached! Product added to your cart.', { duration: 4000 });
+      setTimeout(() => navigate('/cart'), 2500);
+    } else if (isFirstJoin) {
+      toast.success('Joined the deal! It will move to your cart once the target is reached.');
+    } else {
+      toast.success('Added! Your count increased in this group deal.');
+    }
+  };
+
+  const handleJoin = async (e) => {
+    e.stopPropagation();
+    if (!isAuthenticated) { toast.error('Please sign in to join the group deal'); navigate('/login'); return; }
+    setJoining(true);
+    try { await _addToCampaign(true); }
+    catch (err) { toast.error(err?.response?.data?.message || 'Failed to join'); }
+    finally { setJoining(false); }
+  };
+
+  const handleAddProduct = async (e) => {
+    e.stopPropagation();
+    if (!isAuthenticated) { toast.error('Please sign in'); navigate('/login'); return; }
+    setCartLoading(true);
+    try { await _addToCampaign(false); }
+    catch (err) { toast.error(err?.response?.data?.message || 'Failed'); }
+    finally { setCartLoading(false); }
   };
 
   const handleWishlist = async (e) => {
@@ -231,11 +297,6 @@ function ListProductCard({ product }) {
       <div style={{ width: 160, minWidth: 160, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', padding: 0 }}>
         <img src={imgSrc} alt={product.name} onError={() => setImgSrc(FALLBACK)}
           style={{ width: '100%', height: 140, objectFit: 'cover' }} />
-        {discount > 0 && (
-          <div style={{ position: 'absolute', top: 8, left: 8, background: '#dc2626', color: '#fff', fontSize: '0.7rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4 }}>
-            -{discount}%
-          </div>
-        )}
       </div>
 
       {/* Details */}
@@ -263,10 +324,9 @@ function ListProductCard({ product }) {
         )}
 
         {/* Group Deal progress */}
-        {product.holdTarget > 0 && (() => {
-          const safeHold   = Math.min(product.currentHold || 0, product.holdTarget);
-          const discPct    = safeHold;
+        {hasGroupDeal && (() => {
           const progressPct = Math.round((safeHold / product.holdTarget) * 100);
+          const finalPrice  = Math.round(product.retailPrice * (1 - product.holdTarget / 100));
           return (
             <div style={{ marginTop: 6 }}>
               <div style={{ height: 4, background: '#e5e7eb', borderRadius: 99, overflow: 'hidden', marginBottom: 4 }}>
@@ -276,12 +336,14 @@ function ListProductCard({ product }) {
                   transition: 'width 0.4s ease',
                 }} />
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#6b7280' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#6b7280', marginBottom: 4 }}>
                 <span>{safeHold}/{product.holdTarget} joined</span>
-                {discPct > 0
-                  ? <span style={{ color: '#16a34a', fontWeight: 600 }}>{discPct}% off</span>
-                  : <span>Group Deal</span>
-                }
+                <span>Group Deal</span>
+              </div>
+              {/* Final price teaser */}
+              <div style={{ fontSize: '0.72rem', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 5 }}>
+                <span style={{ color: '#dc2626', fontWeight: 700 }}>₹{finalPrice.toLocaleString('en-IN')}</span>
+                <span style={{ background: '#dc2626', color: '#fff', borderRadius: 3, padding: '1px 4px', fontSize: '0.68rem' }}>{product.holdTarget}% off</span>
               </div>
             </div>
           );
@@ -292,19 +354,31 @@ function ListProductCard({ product }) {
             ₹{listDisplayPrice?.toLocaleString('en-IN')}
           </span>
           {discount > 0 && (
-            <>
-              <span style={{ fontSize: '0.88rem', color: '#9ca3af', textDecoration: 'line-through' }}>
-                ₹{product.retailPrice?.toLocaleString('en-IN')}
-              </span>
-              <span style={{ fontSize: '0.82rem', color: '#16a34a', fontWeight: 700 }}>{discount}% off</span>
-            </>
+            <span style={{ fontSize: '0.88rem', color: '#9ca3af', textDecoration: 'line-through' }}>
+              ₹{product.retailPrice?.toLocaleString('en-IN')}
+            </span>
           )}
         </div>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-          <button onClick={handleCart}
-            style={{ padding: '8px 20px', background: 'linear-gradient(135deg,#2a5298,#1e3c72)', color: '#fff', border: 'none', borderRadius: 6, fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            🛒 Add to Cart
+          {/* Join button — only for group deal products */}
+          {hasGroupDeal && (
+            hasJoined ? (
+              <button
+                disabled
+                style={{ padding: '8px 18px', background: '#d1fae5', border: '1px solid #6ee7b7', borderRadius: 6, fontWeight: 600, fontSize: '0.85rem', color: '#065f46', cursor: 'default', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                ✅ Joined
+              </button>
+            ) : (
+              <button onClick={handleJoin} disabled={joining}
+                style={{ padding: '8px 18px', background: joining ? '#e5e7eb' : '#f0c14b', border: '1px solid #a88734', borderRadius: 6, fontWeight: 600, fontSize: '0.85rem', color: joining ? '#9ca3af' : '#111', cursor: joining ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                {joining ? '…' : '🤝 Join'}
+              </button>
+            )
+          )}
+          <button onClick={handleCart} disabled={cartLoading}
+            style={{ padding: '8px 20px', background: cartLoading ? '#e5e7eb' : 'linear-gradient(135deg,#2a5298,#1e3c72)', color: cartLoading ? '#9ca3af' : '#fff', border: 'none', borderRadius: 6, fontWeight: 600, fontSize: '0.85rem', cursor: cartLoading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {cartLoading ? '…' : '+ Add to Cart'}
           </button>
           <button onClick={handleWishlist}
             style={{ padding: '8px 16px', background: '#fff', color: '#dc2626', border: '1.5px solid #fca5a5', borderRadius: 6, fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
@@ -333,6 +407,8 @@ export default function Products() {
   const [minCustom, setMinCustom]     = useState('');
   const [maxCustom, setMaxCustom]     = useState('');
 
+  const [joinedProductIds, setJoinedProductIds] = useState(new Set());
+
   const [filters, setFilters] = useState({
     search:   searchParams.get('search')   || '',
     category: searchParams.get('category') || '',
@@ -340,6 +416,33 @@ export default function Products() {
     maxPrice: '',
     rating:   '',
   });
+
+  // Fetch joined campaigns to show correct button state on cards
+  useEffect(() => {
+    campaignService.getMyCampaigns().then(mine => {
+      if (Array.isArray(mine)) {
+        setJoinedProductIds(new Set(mine.map(m => Number(m.product_id))));
+      }
+    }).catch(() => {});
+  }, []);
+
+  // Sync filters when URL searchParams change (e.g. search from Header)
+  useEffect(() => {
+    const search   = searchParams.get('search')   || '';
+    const category = searchParams.get('category') || '';
+    setFilters(f => ({ ...f, search, category }));
+  }, [searchParams]);
+
+  // Sync filters when URL searchParams change (e.g. search from Header)
+  useEffect(() => {
+    const search   = searchParams.get('search')   || '';
+    const category = searchParams.get('category') || '';
+    setFilters(f => ({
+      ...f,
+      search:   search,
+      category: category,
+    }));
+  }, [searchParams]);
 
   /* ── client-side sort helper ── */
   const sortProducts = useCallback((list, sortKey) => {
@@ -622,14 +725,14 @@ export default function Products() {
                   {products.map(p => (
                     <div key={p.productId} className="hk-product-item"
                       style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-                      <ProductCard product={p} />
+                      <ProductCard product={p} alreadyJoined={joinedProductIds.has(p.productId)} />
                     </div>
                   ))}
                 </div>
 
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {products.map(p => <ListProductCard key={p.productId} product={p} />)}
+                  {products.map(p => <ListProductCard key={p.productId} product={p} alreadyJoined={joinedProductIds.has(p.productId)} />)}
                 </div>
               )}
 

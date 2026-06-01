@@ -17,7 +17,7 @@ function resolveImgSrc(imageUrl) {
   return normalised;
 }
 
-export default function ProductCard({ product }) {
+export default function ProductCard({ product, alreadyJoined = false }) {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [imgSrc, setImgSrc]           = useState(() => resolveImgSrc(product.imageUrl));
@@ -25,7 +25,7 @@ export default function ProductCard({ product }) {
   const [joining, setJoining]          = useState(false);
   const [cartLoading, setCartLoading]  = useState(false);
   const [localHold, setLocalHold]      = useState(product.currentHold || 0);
-  const [hasJoined, setHasJoined]      = useState(false);
+  const [hasJoined, setHasJoined]      = useState(alreadyJoined);
 
   const handleCardClick = () => navigate(`/product/${product.productId}`);
 
@@ -59,19 +59,46 @@ export default function ProductCard({ product }) {
     }
   };
 
+  /* shared logic: join/add to campaign; if target met auto-add to cart */
+  const _addToCampaign = async (isFirstJoin) => {
+    try {
+      await campaignService.startOrJoinCampaign({ productId: product.productId });
+    } catch (apiErr) {
+      if (!isFirstJoin) {
+        await cartService.addToCart({ productId: product.productId, quantity: 1 });
+      } else { throw apiErr; }
+    }
+    const holdTarget = product.holdTarget;
+    const next = localHold + 1;
+    setLocalHold(next);
+    setHasJoined(true);
+    if (next >= holdTarget) {
+      cartService.addToCart({ productId: product.productId, quantity: 1 }).catch(() => {});
+      toast.success('🎉 Target reached! Product added to your cart.', { duration: 4000 });
+      setTimeout(() => navigate('/cart'), 2500);
+    } else if (isFirstJoin) {
+      toast.success('Joined the deal! It will move to your cart once the target is reached.');
+    } else {
+      toast.success('Added! Your count increased in this group deal.');
+    }
+  };
+
   const handleJoin = async (e) => {
     e.stopPropagation();
     if (!isAuthenticated) { toast.error('Please sign in to join the group deal'); navigate('/login'); return; }
     setJoining(true);
-    try {
-      await campaignService.startOrJoinCampaign({ productId: product.productId });
-      toast.success('Joined the group deal! 🎉');
-      /* Instantly update the card — no page reload needed */
-      setLocalHold(prev => Math.min(prev + 1, product.holdTarget || prev + 1));
-      setHasJoined(true);
-    } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed to join');
-    } finally { setJoining(false); }
+    try { await _addToCampaign(true); }
+    catch (err) { toast.error(err?.response?.data?.message || 'Failed to join'); }
+    finally { setJoining(false); }
+  };
+
+  const handleAddProduct = async (e) => {
+    e.stopPropagation();
+    if (!isAuthenticated) { toast.error('Please sign in'); navigate('/login'); return; }
+    setCartLoading(true);
+    try { await _addToCampaign(false); }
+    catch (err) { toast.error(err?.response?.data?.message || 'Failed'); }
+    finally { setCartLoading(false); }
   };
 
   /* ── pricing ── */
@@ -145,17 +172,6 @@ export default function ProductCard({ product }) {
           onError={() => setImgSrc(FALLBACK_IMG)}
           style={{ width: '100%', height: 160, objectFit: 'cover', display: 'block', padding: 0 }}
         />
-        {/* Discount badge on image */}
-        {discountPct > 0 && (
-          <div style={{
-            position: 'absolute', top: 10, left: 10,
-            background: '#e31c1c', color: '#fff',
-            fontSize: '0.72rem', fontWeight: 700,
-            padding: '3px 7px', borderRadius: 3,
-          }}>
-            {discountPct}% off
-          </div>
-        )}
       </div>
 
       {/* ── Card body ── */}
@@ -203,34 +219,21 @@ export default function ProductCard({ product }) {
               }} />
             </div>
 
-            {/* Joined count + current discount */}
+            {/* Joined count */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
               <span style={{ fontSize: '0.68rem', color: '#6b7280' }}>
                 <span style={{ fontWeight: 700, color: '#1e3c72' }}>{safeHold}/{product.holdTarget}</span> joined
               </span>
-              {discountPct > 0
-                ? <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#16a34a' }}>{discountPct}% off now</span>
-                : <span style={{ fontSize: '0.68rem', color: '#6b7280' }}>Group Deal</span>
-              }
+              <span style={{ fontSize: '0.68rem', color: '#6b7280' }}>Group Deal</span>
             </div>
 
-            {/* Best possible price callout */}
-            <div style={{
-              background: '#f0f4ff',
-              border: '1px solid #c7d8f8',
-              borderRadius: 4,
-              padding: '3px 8px',
-              fontSize: '0.68rem',
-              color: '#1e3c72',
-              marginBottom: 4,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}>
-              <span>🏆 Best price on hold</span>
-              <span style={{ fontWeight: 800, color: '#007600', marginLeft: 4, flexShrink: 0 }}>
-                ₹{bestGroupPrice.toLocaleString('en-IN')} ({maxDiscountPct}% off)
-              </span>
+            {/* Final-price teaser */}
+            <div style={{ fontSize: '0.68rem', marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 5 }}>
+              <span style={{ color: '#0f1111', fontWeight: 700, fontSize: '0.67rem' }}>Best price on hold</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ color: '#dc2626', fontWeight: 800 }}>₹{bestGroupPrice.toLocaleString('en-IN')}</span>
+                <span style={{ background: '#dc2626', color: '#fff', borderRadius: 3, padding: '1px 4px' }}>{maxDiscountPct}% off</span>
+              </div>
             </div>
           </div>
         )}
@@ -251,46 +254,69 @@ export default function ProductCard({ product }) {
         </div>
 
         {/* ── Action buttons ── */}
-        <div style={{ display: 'flex', gap: 6 }}>
-          {/* Cart button */}
-          <button
-            onClick={handleCart}
-            disabled={cartLoading}
-            style={{
-              flex: 1,
-              padding: '6px 0',
-              background: cartLoading ? '#e5e7eb' : '#f0c14b',
-              border: '1px solid #a88734',
-              borderRadius: 4,
-              fontWeight: 700,
-              fontSize: '0.8rem',
-              color: '#111',
-              cursor: cartLoading ? 'not-allowed' : 'pointer',
-              transition: 'background 0.15s',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 4,
-            }}
-          >
-            🛒 {cartLoading ? '…' : 'Cart'}
-          </button>
-
-          {/* Join / Group deal button */}
-          {hasGroupDeal ? (
+        {hasGroupDeal ? (
+          /* Group deal: separate Join and Cart buttons */
+          <div style={{ display: 'flex', gap: 6 }}>
+            {/* Join button */}
+            {hasJoined ? (
+              <button
+                disabled
+                style={{
+                  flex: 1,
+                  padding: '6px 0',
+                  background: '#d1fae5',
+                  border: '1px solid #6ee7b7',
+                  borderRadius: 4,
+                  fontWeight: 700,
+                  fontSize: '0.78rem',
+                  color: '#065f46',
+                  cursor: 'default',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 4,
+                }}
+              >
+                ✅ Joined
+              </button>
+            ) : (
+              <button
+                onClick={handleJoin}
+                disabled={joining}
+                style={{
+                  flex: 1,
+                  padding: '6px 0',
+                  background: joining ? '#e5e7eb' : '#f0c14b',
+                  border: '1px solid #a88734',
+                  borderRadius: 4,
+                  fontWeight: 700,
+                  fontSize: '0.78rem',
+                  color: joining ? '#9ca3af' : '#111',
+                  cursor: joining ? 'not-allowed' : 'pointer',
+                  transition: 'background 0.15s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 4,
+                }}
+              >
+                {joining ? '…' : '🤝 Join'}
+              </button>
+            )}
+            {/* Add to Cart button — adds at full price */}
             <button
-              onClick={handleJoin}
-              disabled={joining}
+              onClick={handleCart}
+              disabled={cartLoading}
               style={{
                 flex: 1,
                 padding: '6px 0',
-                background: joining ? '#e5e7eb' : 'linear-gradient(135deg, #2a5298, #1e3c72)',
+                background: cartLoading ? '#e5e7eb' : 'linear-gradient(135deg, #2a5298, #1e3c72)',
                 border: 'none',
                 borderRadius: 4,
                 fontWeight: 700,
-                fontSize: '0.8rem',
-                color: joining ? '#9ca3af' : '#fff',
-                cursor: joining ? 'not-allowed' : 'pointer',
+                fontSize: '0.78rem',
+                color: cartLoading ? '#9ca3af' : '#fff',
+                cursor: cartLoading ? 'not-allowed' : 'pointer',
                 transition: 'opacity 0.15s',
                 display: 'flex',
                 alignItems: 'center',
@@ -298,10 +324,30 @@ export default function ProductCard({ product }) {
                 gap: 4,
               }}
             >
-              {joining ? '…' : 'Join'}
+              {cartLoading ? '…' : '+ Add to Cart'}
             </button>
-          ) : (
-            /* No group deal — show a "Buy" shortcut */
+          </div>
+        ) : (
+          /* No group deal — Cart + Buy Now */
+          <div style={{ display: 'flex', gap: 6, width: '100%' }}>
+            <button
+              onClick={handleCart}
+              disabled={cartLoading}
+              style={{
+                flex: 1,
+                padding: '6px 0',
+                background: cartLoading ? '#e5e7eb' : '#f0c14b',
+                border: '1px solid #a88734',
+                borderRadius: 4,
+                fontWeight: 700,
+                fontSize: '0.8rem',
+                color: '#111',
+                cursor: cartLoading ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+              }}
+            >
+              🛒 {cartLoading ? '…' : 'Cart'}
+            </button>
             <button
               onClick={(e) => { e.stopPropagation(); navigate(`/product/${product.productId}`); }}
               style={{
@@ -318,8 +364,8 @@ export default function ProductCard({ product }) {
             >
               Buy Now
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

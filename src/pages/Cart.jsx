@@ -153,7 +153,7 @@ export default function Cart() {
                         {/* Group deal tag */}
                         {item.hasGroupDeal && item.discountPct > 0 && (
                           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#eef2ff', border: '1px solid #bfcfec', borderRadius: 4, padding: '3px 10px', fontSize: '0.75rem', fontWeight: 600, color: '#1e3c72', marginBottom: 10 }}>
-                            🤝 Group Deal applied — {item.discountPct}% off
+                             Group Deal applied 🎉
                           </div>
                         )}
 

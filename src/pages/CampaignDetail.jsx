@@ -8,7 +8,7 @@ const FALLBACK_IMG =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='400' viewBox='0 0 600 400'%3E%3Crect width='600' height='400' fill='%23eef2ff'/%3E%3Crect x='220' y='110' width='160' height='130' rx='14' fill='%23c7d2fe'/%3E%3Ccircle cx='300' cy='148' r='26' fill='%236366f1'/%3E%3Ctext x='300' y='315' text-anchor='middle' font-family='sans-serif' font-size='18' fill='%236366f1'%3ENo Image%3C/text%3E%3C/svg%3E";
 
 function resolveImg(url) {
-  if (!url) return FALLBACK_IMG;
+  if (!url || url.startsWith('data:')) return FALLBACK_IMG;
   if (url.startsWith('http')) return url;
   const n = url.startsWith('/uploads')
     ? url.replace('/uploads', '/seller-uploads')
@@ -80,7 +80,9 @@ function ProgressRing({ pct }) {
 }
 
 export default function CampaignDetail() {
-  const { id } = useParams();
+  const { id: rawId } = useParams();
+  // Strip any ':N' mysql2 duplicate-column suffix that may appear in the URL
+  const id = parseInt(String(rawId || '').split(':')[0], 10);
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
@@ -92,24 +94,29 @@ export default function CampaignDetail() {
 
   const countdown = useCountdown(campaign?.end_time);
 
-  const load = useCallback(async () => {
-    try {
-      const data = await campaignService.getCampaignById(id);
-      setCampaign(data);
-      if (isAuthenticated) {
-        const mine = await campaignService.getMyCampaigns();
-        const ids  = new Set((Array.isArray(mine) ? mine : []).map(m => String(m.campaign_id)));
-        setJoined(ids.has(String(id)));
-      }
-    } catch {
-      toast.error('Campaign not found');
-      navigate('/campaigns');
-    } finally {
-      setLoading(false);
-    }
-  }, [id, isAuthenticated, navigate]);
+  // Fetch campaign data — split into two independent effects so that
+  // auth state resolving doesn't re-fetch (and double-toast) the campaign.
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    setLoading(true);
+    campaignService.getCampaignById(id)
+      .then(data => { if (!cancelled) setCampaign(data); })
+      .catch(() => { if (!cancelled) { toast.error('Campaign not found'); navigate('/campaigns'); } })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [id, navigate]);
 
-  useEffect(() => { load(); }, [load]);
+  // Separately check join status only when auth is confirmed
+  useEffect(() => {
+    if (!isAuthenticated || !id) return;
+    campaignService.getMyCampaigns()
+      .then(mine => {
+        const ids = new Set((Array.isArray(mine) ? mine : []).map(m => String(m.campaign_id)));
+        setJoined(ids.has(String(id)));
+      })
+      .catch(() => {});
+  }, [id, isAuthenticated]);
 
   const handleJoin = async () => {
     if (!isAuthenticated) { navigate('/login'); return; }

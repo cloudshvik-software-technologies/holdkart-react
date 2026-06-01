@@ -485,14 +485,15 @@ const S = {
 /* ─────────────────────────────────────────────────────────
    GROUP BUY SECTION
 ─────────────────────────────────────────────────────────── */
-function GroupBuySection({ product, onJoin, onLeave, joinLoading, hasJoined }) {
-  const { holdTarget, currentHold = 0, retailPrice } = product;
+function GroupBuySection({ product, localHold, onJoin, onLeave, onAddProduct, joinLoading, hasJoined }) {
+  const { holdTarget, retailPrice } = product;
   if (!holdTarget || holdTarget <= 0) return null;
 
-  const safeHold      = Math.min(currentHold, holdTarget);
-  const discountPct   = safeHold;
-  const discountedPrice = Math.round(retailPrice * (1 - discountPct / 100));
-  const pct           = Math.round((safeHold / holdTarget) * 100);
+  const safeHold        = Math.min(localHold, holdTarget);
+  const discountedPrice = Math.round(retailPrice * (1 - safeHold / 100));
+  const finalPrice      = Math.round(retailPrice * (1 - holdTarget / 100));
+  const pct             = Math.round((safeHold / holdTarget) * 100);
+  const remaining       = holdTarget - safeHold;
 
   return (
     <div style={S.groupDealBox}>
@@ -507,18 +508,18 @@ function GroupBuySection({ product, onJoin, onLeave, joinLoading, hasJoined }) {
         <div style={S.progressFill(pct)} />
       </div>
 
+      {/* Final price teaser */}
+      <div style={{ fontSize: '0.8rem', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+        <span style={{ fontWeight: 800, color: '#dc2626' }}>₹{finalPrice.toLocaleString('en-IN')}</span>
+        <span style={{ background: '#dc2626', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: '0.75rem' }}>{holdTarget}% off</span>
+      </div>
+
       <div style={S.groupPriceRow}>
         <span style={S.groupDealPrice}>
           ₹{discountedPrice.toLocaleString('en-IN')}
         </span>
-        {discountPct > 0 && (
-          <>
-            <span style={S.groupDealOriginal}>₹{retailPrice.toLocaleString('en-IN')}</span>
-            <span style={S.groupDealSavings}>{discountPct}% off</span>
-          </>
-        )}
-        {discountPct === 0 && (
-          <span style={S.groupDealHint}>Be first — every member adds 1% off</span>
+        {safeHold > 0 && (
+          <span style={S.groupDealOriginal}>₹{retailPrice.toLocaleString('en-IN')}</span>
         )}
       </div>
 
@@ -527,9 +528,15 @@ function GroupBuySection({ product, onJoin, onLeave, joinLoading, hasJoined }) {
           {joinLoading ? 'Joining…' : 'Join Group Deal'}
         </button>
       ) : (
-        <div style={S.joinedBox}>
-          <div style={S.joinedTag}>✓ Joined — buying at {discountPct}% off</div>
-          <button onClick={onLeave} disabled={joinLoading} style={S.leaveBtn}>Leave</button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={S.joinedBox}>
+            <div style={S.joinedTag}>✓ Joined</div>
+            <button onClick={onLeave} disabled={joinLoading} style={S.leaveBtn}>Leave</button>
+          </div>
+          <button onClick={onAddProduct} disabled={joinLoading}
+            style={{ ...S.joinBtn(joinLoading), background: joinLoading ? '#e5e7eb' : 'linear-gradient(135deg,#2a5298,#1e3c72)', color: joinLoading ? '#9ca3af' : '#fff' }}>
+            {joinLoading ? '…' : '+ Add Product (add more count)'}
+          </button>
         </div>
       )}
     </div>
@@ -556,6 +563,7 @@ export default function ProductDetail() {
   const [activeCampaign, setActiveCampaign] = useState(null);
   const [hasJoined, setHasJoined]           = useState(false);
   const [joinLoading, setJoinLoading]       = useState(false);
+  const [localHold, setLocalHold]           = useState(0);
 
   const loadProduct = async () => {
     const [p, r] = await Promise.all([
@@ -563,6 +571,7 @@ export default function ProductDetail() {
       reviewService.getProductReviews(id),
     ]);
     setProduct(p);
+    setLocalHold(p.currentHold || 0);
     setMainImg(p.images?.[0] || '');
     setReviews(Array.isArray(r) ? r : []);
     return p;
@@ -588,6 +597,7 @@ export default function ProductDetail() {
     }
   };
 
+  // Load product data on id change
   useEffect(() => {
     (async () => {
       try {
@@ -597,6 +607,19 @@ export default function ProductDetail() {
       finally { setLoading(false); }
     })();
   }, [id]);
+
+  // Re-check join status once auth resolves (isAuthenticated may be false on first render)
+  useEffect(() => {
+    if (!isAuthenticated || !product) return;
+    campaignService.getMyCampaigns().then(mine => {
+      if (Array.isArray(mine)) {
+        const joined = mine.some(
+          m => Number(m.product_id) === Number(product.productId) && m.campaignStatus === 'ACTIVE'
+        );
+        setHasJoined(joined);
+      }
+    }).catch(() => {});
+  }, [isAuthenticated, product?.productId]);
 
   const handleCart = async () => {
     if (!isAuthenticated) { toast.error('Please sign in to add items to cart'); navigate('/login'); return; }
@@ -616,18 +639,52 @@ export default function ProductDetail() {
     navigate('/cart');
   };
 
+  /* shared: join or add another unit to the campaign */
+  const _addToCampaign = async (isFirstJoin) => {
+    /* For "Add Product" (non-first join), the backend may reject duplicate joins.
+       We try startOrJoinCampaign first; if it fails, we fall back to cartService so
+       the product still reaches the user's cart. Either way we update local count. */
+    try {
+      await campaignService.startOrJoinCampaign({ productId: product.productId });
+    } catch (apiErr) {
+      if (!isFirstJoin) {
+        /* backend rejected re-join — add to cart directly as fallback */
+        await cartService.addToCart({ productId: product.productId, quantity: 1 });
+      } else {
+        throw apiErr;
+      }
+    }
+    const holdTarget = product.holdTarget;
+    const next = localHold + 1;
+    setLocalHold(next);
+    setHasJoined(true);
+    if (next >= holdTarget) {
+      cartService.addToCart({ productId: product.productId, quantity: 1 }).catch(() => {});
+      toast.success('🎉 Target reached! Product added to your cart.', { duration: 4000 });
+      setTimeout(() => navigate('/cart'), 2500);
+    } else if (isFirstJoin) {
+      toast.success('Joined the deal! It will move to your cart once the target is reached.');
+    } else {
+      toast.success('Added! Your count increased in this group deal.');
+    }
+    const p = await productService.getProduct(id);
+    setProduct(p);
+    await loadCampaignStatus(p);
+  };
+
   const handleJoin = async () => {
     if (!isAuthenticated) { toast.error('Please sign in to join'); navigate('/login'); return; }
     setJoinLoading(true);
-    try {
-      /* Use start-or-join so it works even if no campaign has been created yet */
-      await campaignService.startOrJoinCampaign({ productId: product.productId });
-      toast.success('Joined group deal!');
-      setHasJoined(true);
-      const p = await productService.getProduct(id);
-      setProduct(p);
-      await loadCampaignStatus(p);
-    } catch(e) { toast.error(e?.response?.data?.message || 'Failed to join'); }
+    try { await _addToCampaign(true); }
+    catch(e) { toast.error(e?.response?.data?.message || 'Failed to join'); }
+    finally { setJoinLoading(false); }
+  };
+
+  const handleAddProduct = async () => {
+    if (!isAuthenticated) { toast.error('Please sign in'); navigate('/login'); return; }
+    setJoinLoading(true);
+    try { await _addToCampaign(false); }
+    catch(e) { toast.error(e?.response?.data?.message || 'Failed'); }
     finally { setJoinLoading(false); }
   };
 
@@ -640,6 +697,7 @@ export default function ProductDetail() {
       setHasJoined(false);
       const p = await productService.getProduct(id);
       setProduct(p);
+      setLocalHold(p.currentHold || 0);
       await loadCampaignStatus(p);
     } catch(e) { toast.error(e?.response?.data?.message || 'Failed to leave'); }
     finally { setJoinLoading(false); }
@@ -672,7 +730,7 @@ export default function ProductDetail() {
 
   const avgRating    = reviews.length ? (reviews.reduce((a, r) => a + r.rating, 0) / reviews.length) : 0;
   const hasGroupBuy  = product.holdTarget > 0;
-  const safeHold     = Math.min(product.currentHold || 0, product.holdTarget || 0);
+  const safeHold     = Math.min(localHold, product.holdTarget || 0);
   const discountPct  = safeHold;
   const displayPrice = hasGroupBuy && discountPct > 0
     ? Math.round(product.retailPrice * (1 - discountPct / 100))
@@ -761,20 +819,14 @@ export default function ProductDetail() {
 
             {/* Price */}
             <div style={S.priceSection}>
-              {discountPct > 0 && (
-                <p style={S.listPrice}>
-                  M.R.P.: <span style={S.listPriceCross}>₹{product.retailPrice.toLocaleString('en-IN')}</span>
-                </p>
-              )}
               <div style={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
                 <span style={S.mainPrice}>
                   <span style={S.priceSymbol}>₹</span>
                   {displayPrice.toLocaleString('en-IN')}
                 </span>
                 {discountPct > 0 && (
-                  <span style={{ fontSize: '0.82rem', color: '#007600', fontWeight: 600 }}>
-                    Save {discountPct}% with group deal
-                    <span style={S.savingsBadge}>{discountPct}% off</span>
+                  <span style={{ fontSize: '0.88rem', color: '#9ca3af', textDecoration: 'line-through' }}>
+                    ₹{product.retailPrice.toLocaleString('en-IN')}
                   </span>
                 )}
               </div>
@@ -785,8 +837,10 @@ export default function ProductDetail() {
             {hasGroupBuy && (
               <GroupBuySection
                 product={product}
+                localHold={localHold}
                 onJoin={handleJoin}
                 onLeave={handleLeave}
+                onAddProduct={handleAddProduct}
                 joinLoading={joinLoading}
                 hasJoined={hasJoined}
               />
@@ -861,7 +915,10 @@ export default function ProductDetail() {
                   </span>
                 </div>
 
-                <button style={S.addToCartBtn} onClick={handleCart}>Add to Cart</button>
+                <button style={S.addToCartBtn}
+                  onClick={hasGroupBuy ? handleAddProduct : handleCart}>
+                  {hasGroupBuy ? '+ Add Product' : 'Add to Cart'}
+                </button>
                 <button style={S.buyNowBtn} onClick={handleBuyNow}>Buy Now</button>
               </>
             )}

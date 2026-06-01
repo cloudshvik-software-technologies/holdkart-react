@@ -65,6 +65,7 @@ function AppRoutes() {
           <Route path="/products"    element={<Products />} />
           <Route path="/product/:id" element={<ProductDetail />} />
           <Route path="/cart"        element={<Cart />} />
+          <Route path="/campaigns/:id"  element={<CampaignDetail />} />
         </Route>
 
         <Route element={<AppLayout />}>
