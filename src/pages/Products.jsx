@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import ProductCard from '../components/ProductCard.jsx';
+import JoinDealModal from '../components/JoinDealModal.jsx';
 import { productService, cartService, wishlistService, campaignService } from '../services/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import toast from 'react-hot-toast';
@@ -184,7 +185,7 @@ function SidebarContent({ categories, filters, setFilters, minCustom, maxCustom,
   );
 }
 
-/* ── List-view product row (fully wired) ── */
+/* ── List-view product row — uses shared JoinDealModal ── */
 function ListProductCard({ product, alreadyJoined = false }) {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
@@ -198,11 +199,11 @@ function ListProductCard({ product, alreadyJoined = false }) {
     return norm;
   };
 
-  const [imgSrc, setImgSrc] = useState(() => resolveImg(product.imageUrl));
-  const [joining, setJoining] = useState(false);
+  const [imgSrc, setImgSrc]           = useState(() => resolveImg(product.imageUrl));
   const [cartLoading, setCartLoading] = useState(false);
-  const [hasJoined, setHasJoined] = useState(alreadyJoined);
-  const [localHold, setLocalHold] = useState(product.currentHold || 0);
+  const [hasJoined, setHasJoined]     = useState(alreadyJoined);
+  const [localHold, setLocalHold]     = useState(product.currentHold || 0);
+  const [showJoinModal, setShowJoinModal] = useState(false);
 
   const hasGroupDeal = product.holdTarget > 0;
   const safeHold = Math.min(localHold, product.holdTarget || 0);
@@ -213,6 +214,11 @@ function ListProductCard({ product, alreadyJoined = false }) {
   const listDisplayPrice = hasGroupDeal && discount > 0
     ? Math.round(product.retailPrice * (1 - discount / 100))
     : (product.holdPrice && product.holdPrice !== product.retailPrice ? product.holdPrice : product.retailPrice);
+
+  const maxDiscountPct = hasGroupDeal ? product.holdTarget : 0;
+  const bestGroupPrice = hasGroupDeal
+    ? Math.round(product.retailPrice * (1 - maxDiscountPct / 100))
+    : product.retailPrice;
 
   const handleCart = async (e) => {
     e.stopPropagation();
@@ -230,46 +236,27 @@ function ListProductCard({ product, alreadyJoined = false }) {
     } finally { setCartLoading(false); }
   };
 
-  /* shared: join or add more units to the campaign */
-  const _addToCampaign = async (isFirstJoin) => {
-    try {
-      await campaignService.startOrJoinCampaign({ productId: product.productId });
-    } catch (apiErr) {
-      if (!isFirstJoin) {
-        await cartService.addToCart({ productId: product.productId, quantity: 1 });
-      } else { throw apiErr; }
-    }
-    const holdTarget = product.holdTarget;
-    const next = localHold + 1;
-    setLocalHold(next);
-    setHasJoined(true);
-    if (next >= holdTarget) {
-      cartService.addToCart({ productId: product.productId, quantity: 1 }).catch(() => {});
-      toast.success('🎉 Target reached! Product added to your cart.', { duration: 4000 });
-      setTimeout(() => navigate('/cart'), 2500);
-    } else if (isFirstJoin) {
-      toast.success('Joined the deal! It will move to your cart once the target is reached.');
-    } else {
-      toast.success('Added! Your count increased in this group deal.');
-    }
-  };
-
-  const handleJoin = async (e) => {
+  /* Opens the join modal */
+  const handleJoin = (e) => {
     e.stopPropagation();
     if (!isAuthenticated) { toast.error('Please sign in to join the group deal'); navigate('/login'); return; }
-    setJoining(true);
-    try { await _addToCampaign(true); }
-    catch (err) { toast.error(err?.response?.data?.message || 'Failed to join'); }
-    finally { setJoining(false); }
+    setShowJoinModal(true);
   };
 
-  const handleAddProduct = async (e) => {
-    e.stopPropagation();
-    if (!isAuthenticated) { toast.error('Please sign in'); navigate('/login'); return; }
-    setCartLoading(true);
-    try { await _addToCampaign(false); }
-    catch (err) { toast.error(err?.response?.data?.message || 'Failed'); }
-    finally { setCartLoading(false); }
+  /* Called by JoinDealModal after successful join/payment */
+  const handleJoinSuccess = (qty) => {
+    setShowJoinModal(false);
+    const next = localHold + qty;
+    setLocalHold(Math.min(next, product.holdTarget));
+    setHasJoined(true);
+    window.dispatchEvent(new CustomEvent('campaignJoined', { detail: { productId: product.productId } }));
+    if (next >= product.holdTarget) {
+      cartService.addToCart({ productId: product.productId, quantity: qty }).catch(() => {});
+      toast.success('🎉 Target reached! Product added to your cart.', { duration: 4000 });
+      setTimeout(() => navigate('/cart'), 2500);
+    } else {
+      toast.success('Joined the deal! It will move to your cart once the target is reached.');
+    }
   };
 
   const handleWishlist = async (e) => {
@@ -288,105 +275,116 @@ function ListProductCard({ product, alreadyJoined = false }) {
   };
 
   return (
-    <div onClick={() => navigate(`/product/${product.productId}`)}
-      style={{ display: 'flex', background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden', cursor: 'pointer', transition: 'box-shadow 0.2s' }}
-      onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.1)'}
-      onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}>
+    <>
+      {showJoinModal && hasGroupDeal && (
+        <JoinDealModal
+          product={product}
+          bestGroupPrice={bestGroupPrice}
+          maxDiscountPct={maxDiscountPct}
+          remainingSlots={Math.max(0, product.holdTarget - localHold)}
+          onClose={() => setShowJoinModal(false)}
+          onJoinSuccess={handleJoinSuccess}
+        />
+      )}
 
-      {/* Image */}
-      <div style={{ width: 160, minWidth: 160, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', padding: 0 }}>
-        <img src={imgSrc} alt={product.name} onError={() => setImgSrc(FALLBACK)}
-          style={{ width: '100%', height: 140, objectFit: 'cover' }} />
-      </div>
+      <div onClick={() => navigate(`/product/${product.productId}`)}
+        style={{ display: 'flex', background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden', cursor: 'pointer', transition: 'box-shadow 0.2s' }}
+        onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.1)'}
+        onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}>
 
-      {/* Details */}
-      <div style={{ flex: 1, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div style={{ fontSize: '0.72rem', color: '#2a5298', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          {product.category}
+        {/* Image */}
+        <div style={{ width: 160, minWidth: 160, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', padding: 0 }}>
+          <img src={imgSrc} alt={product.name} onError={() => setImgSrc(FALLBACK)}
+            style={{ width: '100%', height: 140, objectFit: 'cover' }} />
         </div>
-        <div style={{ fontWeight: 600, fontSize: '1rem', color: '#111', lineHeight: 1.4 }}>{product.name}</div>
 
-        {product.avgRating > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={{ background: '#16a34a', color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: '0.75rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-              {product.avgRating.toFixed(1)} ★
+        {/* Details */}
+        <div style={{ flex: 1, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ fontSize: '0.72rem', color: '#2a5298', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            {product.category}
+          </div>
+          <div style={{ fontWeight: 600, fontSize: '1rem', color: '#111', lineHeight: 1.4 }}>{product.name}</div>
+
+          {product.avgRating > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ background: '#16a34a', color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: '0.75rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                {product.avgRating.toFixed(1)} ★
+              </div>
+              {product.reviewCount > 0 && (
+                <span style={{ fontSize: '0.78rem', color: '#6b7280' }}>({product.reviewCount} reviews)</span>
+              )}
             </div>
-            {product.reviewCount > 0 && (
-              <span style={{ fontSize: '0.78rem', color: '#6b7280' }}>({product.reviewCount} reviews)</span>
+          )}
+
+          {product.description && (
+            <p style={{ fontSize: '0.83rem', color: '#6b7280', lineHeight: 1.6, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+              {product.description}
+            </p>
+          )}
+
+          {/* Group Deal progress — updated after joining */}
+          {hasGroupDeal && (() => {
+            const progressPct = Math.round((safeHold / product.holdTarget) * 100);
+            const finalPrice  = Math.round(product.retailPrice * (1 - product.holdTarget / 100));
+            return (
+              <div style={{ marginTop: 6 }}>
+                <div style={{ height: 4, background: '#e5e7eb', borderRadius: 99, overflow: 'hidden', marginBottom: 4 }}>
+                  <div style={{
+                    height: '100%', width: `${progressPct}%`, borderRadius: 99,
+                    background: progressPct >= 100 ? '#16a34a' : '#2a5298',
+                    transition: 'width 0.4s ease',
+                  }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#6b7280', marginBottom: 4 }}>
+                  <span>{safeHold}/{product.holdTarget} joined</span>
+                  <span>Group Deal</span>
+                </div>
+                <div style={{ fontSize: '0.72rem', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 5 }}>
+                  <span style={{ color: '#dc2626', fontWeight: 700 }}>₹{finalPrice.toLocaleString('en-IN')}</span>
+                  <span style={{ background: '#dc2626', color: '#fff', borderRadius: 3, padding: '1px 4px', fontSize: '0.68rem' }}>{product.holdTarget}% off</span>
+                </div>
+              </div>
+            );
+          })()}
+
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 4 }}>
+            <span style={{ fontSize: '1.3rem', fontWeight: 800, color: '#111' }}>
+              ₹{listDisplayPrice?.toLocaleString('en-IN')}
+            </span>
+            {discount > 0 && (
+              <span style={{ fontSize: '0.88rem', color: '#9ca3af', textDecoration: 'line-through' }}>
+                ₹{product.retailPrice?.toLocaleString('en-IN')}
+              </span>
             )}
           </div>
-        )}
 
-        {product.description && (
-          <p style={{ fontSize: '0.83rem', color: '#6b7280', lineHeight: 1.6, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-            {product.description}
-          </p>
-        )}
-
-        {/* Group Deal progress */}
-        {hasGroupDeal && (() => {
-          const progressPct = Math.round((safeHold / product.holdTarget) * 100);
-          const finalPrice  = Math.round(product.retailPrice * (1 - product.holdTarget / 100));
-          return (
-            <div style={{ marginTop: 6 }}>
-              <div style={{ height: 4, background: '#e5e7eb', borderRadius: 99, overflow: 'hidden', marginBottom: 4 }}>
-                <div style={{
-                  height: '100%', width: `${progressPct}%`, borderRadius: 99,
-                  background: progressPct >= 100 ? '#16a34a' : '#2a5298',
-                  transition: 'width 0.4s ease',
-                }} />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#6b7280', marginBottom: 4 }}>
-                <span>{safeHold}/{product.holdTarget} joined</span>
-                <span>Group Deal</span>
-              </div>
-              {/* Final price teaser */}
-              <div style={{ fontSize: '0.72rem', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 5 }}>
-                <span style={{ color: '#dc2626', fontWeight: 700 }}>₹{finalPrice.toLocaleString('en-IN')}</span>
-                <span style={{ background: '#dc2626', color: '#fff', borderRadius: 3, padding: '1px 4px', fontSize: '0.68rem' }}>{product.holdTarget}% off</span>
-              </div>
-            </div>
-          );
-        })()}
-
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 4 }}>
-          <span style={{ fontSize: '1.3rem', fontWeight: 800, color: '#111' }}>
-            ₹{listDisplayPrice?.toLocaleString('en-IN')}
-          </span>
-          {discount > 0 && (
-            <span style={{ fontSize: '0.88rem', color: '#9ca3af', textDecoration: 'line-through' }}>
-              ₹{product.retailPrice?.toLocaleString('en-IN')}
-            </span>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-          {/* Join button — only for group deal products */}
-          {hasGroupDeal && (
-            hasJoined ? (
-              <button
-                disabled
-                style={{ padding: '8px 18px', background: '#d1fae5', border: '1px solid #6ee7b7', borderRadius: 6, fontWeight: 600, fontSize: '0.85rem', color: '#065f46', cursor: 'default', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                ✅ Joined
-              </button>
-            ) : (
-              <button onClick={handleJoin} disabled={joining}
-                style={{ padding: '8px 18px', background: joining ? '#e5e7eb' : '#f0c14b', border: '1px solid #a88734', borderRadius: 6, fontWeight: 600, fontSize: '0.85rem', color: joining ? '#9ca3af' : '#111', cursor: joining ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                {joining ? '…' : '🤝 Join'}
-              </button>
-            )
-          )}
-          <button onClick={handleCart} disabled={cartLoading}
-            style={{ padding: '8px 20px', background: cartLoading ? '#e5e7eb' : 'linear-gradient(135deg,#2a5298,#1e3c72)', color: cartLoading ? '#9ca3af' : '#fff', border: 'none', borderRadius: 6, fontWeight: 600, fontSize: '0.85rem', cursor: cartLoading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {cartLoading ? '…' : '+ Add to Cart'}
-          </button>
-          <button onClick={handleWishlist}
-            style={{ padding: '8px 16px', background: '#fff', color: '#dc2626', border: '1.5px solid #fca5a5', borderRadius: 6, fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            ♡ Wishlist
-          </button>
+          <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+            {hasGroupDeal && (
+              hasJoined ? (
+                <button
+                  disabled
+                  style={{ padding: '8px 18px', background: '#d1fae5', border: '1px solid #6ee7b7', borderRadius: 6, fontWeight: 600, fontSize: '0.85rem', color: '#065f46', cursor: 'default', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  ✅ Joined
+                </button>
+              ) : (
+                <button onClick={handleJoin}
+                  style={{ padding: '8px 18px', background: '#f0c14b', border: '1px solid #a88734', borderRadius: 6, fontWeight: 600, fontSize: '0.85rem', color: '#111', cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  🤝 Join
+                </button>
+              )
+            )}
+            <button onClick={handleCart} disabled={cartLoading}
+              style={{ padding: '8px 20px', background: cartLoading ? '#e5e7eb' : 'linear-gradient(135deg,#2a5298,#1e3c72)', color: cartLoading ? '#9ca3af' : '#fff', border: 'none', borderRadius: 6, fontWeight: 600, fontSize: '0.85rem', cursor: cartLoading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {cartLoading ? '…' : '+ Add to Cart'}
+            </button>
+            <button onClick={handleWishlist}
+              style={{ padding: '8px 16px', background: '#fff', color: '#dc2626', border: '1.5px solid #fca5a5', borderRadius: 6, fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              ♡ Wishlist
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -431,17 +429,6 @@ export default function Products() {
     const search   = searchParams.get('search')   || '';
     const category = searchParams.get('category') || '';
     setFilters(f => ({ ...f, search, category }));
-  }, [searchParams]);
-
-  // Sync filters when URL searchParams change (e.g. search from Header)
-  useEffect(() => {
-    const search   = searchParams.get('search')   || '';
-    const category = searchParams.get('category') || '';
-    setFilters(f => ({
-      ...f,
-      search:   search,
-      category: category,
-    }));
   }, [searchParams]);
 
   /* ── client-side sort helper ── */

@@ -80,22 +80,30 @@ function CampaignRow({ item, leaving, onLeave }) {
     ? new Date(item.joined_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
     : '';
 
+  // Resolve campaign ID robustly — strip any mysql2 duplicate-column ":N" suffix
+  const rawCampaignId = String(item.campaign_id || item.campaignRowId || item.id || '').split(':')[0];
+  const campaignId = rawCampaignId ? parseInt(rawCampaignId, 10) || null : null;
+
   return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: '88px 1fr',
-      gap: 16,
-      padding: '20px',
-      borderBottom: '1px solid #e5e7eb',
-      background: '#fff',
-      transition: 'background 0.15s',
-    }}
+    <div
+      onClick={() => navigate(`/campaigns/${campaignId}`)}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '88px 1fr',
+        gap: 16,
+        padding: '20px',
+        borderBottom: '1px solid #e5e7eb',
+        background: '#fff',
+        cursor: 'pointer',
+        transition: 'background 0.15s',
+      }}
       onMouseEnter={e => e.currentTarget.style.background = '#fafafa'}
       onMouseLeave={e => e.currentTarget.style.background = '#fff'}
     >
-      {/* Image */}
+      {/* Image — clicks go to product detail, not campaign detail */}
       <div
-        onClick={() => navigate(`/product/${item.product_id}`)}
+        onClick={e => { e.stopPropagation(); navigate(`/product/${item.product_id}`); }}
+        title="View product"
         style={{ cursor: 'pointer', border: '1px solid #e5e7eb', borderRadius: 4, overflow: 'hidden', background: '#f9fafb', height: 88, flexShrink: 0 }}
       >
         <img
@@ -110,7 +118,8 @@ function CampaignRow({ item, leaving, onLeave }) {
         {/* Top row: name + status */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 6 }}>
           <p
-            onClick={() => navigate(`/product/${item.product_id}`)}
+            onClick={e => { e.stopPropagation(); navigate(`/product/${item.product_id}`); }}
+            title="View product"
             style={{
               fontWeight: 400, fontSize: '0.97rem', color: '#007185',
               cursor: 'pointer', margin: 0, lineHeight: 1.35,
@@ -155,8 +164,8 @@ function CampaignRow({ item, leaving, onLeave }) {
           )}
           {status === 'ACTIVE' && (
             <button
-              onClick={() => onLeave(item.campaign_id)}
-              disabled={leaving === item.campaign_id}
+              onClick={e => { e.stopPropagation(); onLeave(campaignId); }}
+              disabled={leaving === campaignId}
               style={{
                 padding: '5px 14px',
                 background: 'none',
@@ -164,15 +173,15 @@ function CampaignRow({ item, leaving, onLeave }) {
                 borderRadius: 4,
                 fontSize: '0.78rem',
                 fontWeight: 600,
-                color: leaving === item.campaign_id ? '#9ca3af' : '#dc2626',
-                cursor: leaving === item.campaign_id ? 'not-allowed' : 'pointer',
+                color: leaving === campaignId ? '#9ca3af' : '#dc2626',
+                cursor: leaving === campaignId ? 'not-allowed' : 'pointer',
                 fontFamily: 'inherit',
                 transition: 'border-color 0.15s',
               }}
-              onMouseEnter={e => { if (leaving !== item.campaign_id) e.currentTarget.style.borderColor = '#dc2626'; }}
+              onMouseEnter={e => { if (leaving !== campaignId) e.currentTarget.style.borderColor = '#dc2626'; }}
               onMouseLeave={e => e.currentTarget.style.borderColor = '#d1d5db'}
             >
-              {leaving === item.campaign_id ? 'Leaving…' : 'Leave Deal'}
+              {leaving === campaignId ? 'Leaving…' : 'Leave Deal'}
             </button>
           )}
         </div>
@@ -362,7 +371,7 @@ export default function Campaigns() {
 
             {filtered.map((item, idx) => (
               <CampaignRow
-                key={item.campaign_id || idx}
+                key={String(item.campaign_id || item.campaignRowId || item.id || idx).split(':')[0]}
                 item={item}
                 leaving={leaving}
                 onLeave={handleLeave}

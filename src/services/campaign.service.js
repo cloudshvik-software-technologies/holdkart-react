@@ -6,4 +6,5 @@ export const leaveCampaign    = (data) => api.post('/api/customer/campaign/leave
 export const getMyCampaigns   = ()     => api.get('/api/customer/campaign/mine');
 export const getCampaignById  = (id)   => api.get(`/api/customer/campaign/${id}`);
 export const startOrJoinCampaign = (data) => api.post('/api/customer/campaign/start-or-join', data);
+export const addToDeal           = (data) => api.post('/api/customer/campaign/add-to-deal', data);
 export const searchProducts   = (q)    => api.get('/api/customer/products', { params: { search: q, limit: 20 } });

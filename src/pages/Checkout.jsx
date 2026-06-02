@@ -170,8 +170,13 @@ export default function Checkout() {
   const subtotalMRP = cart.reduce((s, i) => s + i.retailPrice  * i.quantity, 0);
   const subtotalEff = cart.reduce((s, i) => s + itemPrice(i)   * i.quantity, 0);
   const totalSavings = subtotalMRP - subtotalEff;
+
+  /* For DEAL items: use the actual deposit stored on the cart row (set at join-time).
+     Never derive from current cart quantity — that may differ from slots joined.      */
+  const totalPrepaid = cart.reduce((s, i) => s + (i.depositPaid || 0), 0);
+
   const shipping     = subtotalEff > 499 ? 0 : 49;
-  const total        = subtotalEff + shipping;
+  const total        = Math.max(0, subtotalEff - totalPrepaid + shipping);
   const itemCount    = cart.reduce((s, i) => s + i.quantity, 0);
 
   /* ── COD ── */
@@ -570,6 +575,13 @@ export default function Checkout() {
                     </div>
                   )}
 
+                  {totalPrepaid > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#7c3aed', fontWeight: 600, marginBottom: 8 }}>
+                      <span>Deposit Pre-paid</span>
+                      <span>−₹{totalPrepaid.toLocaleString('en-IN')}</span>
+                    </div>
+                  )}
+
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#374151', marginBottom: 12 }}>
                     <span>Delivery</span>
                     <span style={{ color: shipping === 0 ? '#007600' : '#374151', fontWeight: shipping === 0 ? 600 : 400 }}>
@@ -584,10 +596,15 @@ export default function Checkout() {
                   )}
 
                   <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1.05rem', color: '#0f1111' }}>
-                    <span>Order Total</span>
-                    <span>₹{total.toLocaleString('en-IN')}</span>
+                    <span>{totalPrepaid > 0 ? 'Amount Due at Checkout' : 'Order Total'}</span>
+                    <span style={{ color: totalPrepaid > 0 ? '#2a5298' : '#0f1111' }}>₹{total.toLocaleString('en-IN')}</span>
                   </div>
                   <p style={{ fontSize: '0.68rem', color: '#6b7280', marginTop: 4 }}>Inclusive of all taxes</p>
+                  {totalPrepaid > 0 && (
+                    <p style={{ fontSize: '0.68rem', color: '#7c3aed', marginTop: 2, fontWeight: 600 }}>
+                      ₹{totalPrepaid.toLocaleString('en-IN')} group deal deposit already paid — deducted above
+                    </p>
+                  )}
 
                   {/* Payment info */}
                   <div style={{ marginTop: 14, background: '#f4f6fa', borderRadius: 4, padding: '10px 12px', fontSize: '0.78rem', color: '#374151', display: 'flex', alignItems: 'center', gap: 8 }}>

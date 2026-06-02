@@ -64,8 +64,6 @@ function AppRoutes() {
           <Route path="/" element={<Home isGuest />} />
           <Route path="/products"    element={<Products />} />
           <Route path="/product/:id" element={<ProductDetail />} />
-          <Route path="/cart"        element={<Cart />} />
-          <Route path="/campaigns/:id"  element={<CampaignDetail />} />
         </Route>
 
         <Route element={<AppLayout />}>
@@ -82,6 +80,7 @@ function AppRoutes() {
             <Route path="/home"           element={<Home />} />
             <Route path="/campaigns"      element={<Campaigns />} />
             <Route path="/campaigns/:id"  element={<CampaignDetail />} />
+            <Route path="/cart"           element={<Cart />} />
             <Route path="/checkout"       element={<Checkout />} />
             <Route path="/orders"         element={<Orders />} />
             <Route path="/order/:id"      element={<OrderDetail />} />

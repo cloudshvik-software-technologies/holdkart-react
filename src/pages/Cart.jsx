@@ -22,7 +22,9 @@ export default function Cart() {
   const fetchCart = async () => {
     try {
       const data = await cartService.getCart();
-      setCart(Array.isArray(data) ? data : []);
+      // Filter out any items without a name — these are deleted products whose
+      // cart rows still exist but the product JOIN returned nothing
+      setCart(Array.isArray(data) ? data.filter(i => i.name) : []);
     } catch {}
     finally { setLoading(false); }
   };
@@ -32,13 +34,13 @@ export default function Cart() {
     else { setLoading(false); }
   }, [isAuthenticated]);
 
-  const updateQty = async (productId, qty) => {
-    try { await cartService.updateCartItem({ productId, quantity: qty }); fetchCart(); }
+  const updateQty = async (cartId, qty) => {
+    try { await cartService.updateCartItem({ cartId, quantity: qty }); fetchCart(); }
     catch(e) { toast.error(e?.response?.data?.message || 'Failed to update'); }
   };
 
-  const remove = async (productId) => {
-    try { await cartService.removeFromCart({ productId }); fetchCart(); toast.success('Item removed'); }
+  const remove = async (cartId) => {
+    try { await cartService.removeFromCart({ cartId }); fetchCart(); toast.success('Item removed'); }
     catch { toast.error('Failed to remove'); }
   };
 
@@ -47,6 +49,13 @@ export default function Cart() {
   const subtotalEff  = cart.reduce((s, i) => s + i.effectivePrice * i.quantity, 0);
   const totalSavings = subtotalMRP - subtotalEff;
   const itemCount    = cart.reduce((s, i) => s + i.quantity, 0);
+
+  /* ── prepaid deposit deduction ──
+     depositPaid is the actual amount the customer paid upfront when joining the deal.
+     It is stored on the cart row at join-time — NOT derived from current cart quantity,
+     because the cart quantity may be larger if the deal completed multiple times.       */
+  const totalPrepaid = cart.reduce((s, i) => s + (i.depositPaid || 0), 0);
+  const amountDue = Math.max(0, subtotalEff - totalPrepaid);
 
   /* ── styles ── */
   const page = {
@@ -150,40 +159,47 @@ export default function Cart() {
                           <p style={{ fontSize: '0.78rem', color: '#6b7280', marginBottom: 8 }}>{item.category}</p>
                         )}
 
-                        {/* Group deal tag */}
-                        {item.hasGroupDeal && item.discountPct > 0 && (
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#eef2ff', border: '1px solid #bfcfec', borderRadius: 4, padding: '3px 10px', fontSize: '0.75rem', fontWeight: 600, color: '#1e3c72', marginBottom: 10 }}>
-                             Group Deal applied 🎉
+                        {/* Group deal tag — only shown when item was added via a completed group deal */}
+                        {item.hasGroupDeal ? (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 4, padding: '3px 10px', fontSize: '0.75rem', fontWeight: 600, color: '#15803d', marginBottom: 10 }}>
+                            🎉 Group Deal Price — ₹{item.effectivePrice.toLocaleString('en-IN')} each
+                          </div>
+                        ) : (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 4, padding: '3px 10px', fontSize: '0.75rem', color: '#6b7280', marginBottom: 10 }}>
+                            Regular Price
                           </div>
                         )}
 
                         {/* Qty controls + Remove */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                          {/* Qty stepper */}
-                          <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden' }}>
-                            <button
-                              onClick={() => updateQty(item.productId, item.quantity - 1)}
-                              disabled={item.quantity <= 1}
-                              style={{ width: 32, height: 32, background: '#f9fafb', border: 'none', fontSize: '1rem', fontWeight: 700, color: item.quantity <= 1 ? '#d1d5db' : '#374151', cursor: item.quantity <= 1 ? 'default' : 'pointer' }}
-                            >
-                              −
-                            </button>
-                            <span style={{ width: 36, textAlign: 'center', fontWeight: 600, fontSize: '0.9rem', lineHeight: '32px', borderLeft: '1px solid #e5e7eb', borderRight: '1px solid #e5e7eb' }}>
-                              {item.quantity}
-                            </span>
-                            <button
-                              onClick={() => updateQty(item.productId, item.quantity + 1)}
-                              disabled={item.quantity >= item.stock}
-                              style={{ width: 32, height: 32, background: '#f9fafb', border: 'none', fontSize: '1rem', fontWeight: 700, color: item.quantity >= item.stock ? '#d1d5db' : '#374151', cursor: item.quantity >= item.stock ? 'default' : 'pointer' }}
-                            >
-                              +
-                            </button>
-                          </div>
-
-                          <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>|</span>
+                          {/* Qty stepper — hidden for group deal items */}
+                          {!item.hasGroupDeal && (
+                            <>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden' }}>
+                                <button
+                                  onClick={() => updateQty(item.cartId, item.quantity - 1)}
+                                  disabled={item.quantity <= 1}
+                                  style={{ width: 32, height: 32, background: '#f9fafb', border: 'none', fontSize: '1rem', fontWeight: 700, color: item.quantity <= 1 ? '#d1d5db' : '#374151', cursor: item.quantity <= 1 ? 'default' : 'pointer' }}
+                                >
+                                  −
+                                </button>
+                                <span style={{ width: 36, textAlign: 'center', fontWeight: 600, fontSize: '0.9rem', lineHeight: '32px', borderLeft: '1px solid #e5e7eb', borderRight: '1px solid #e5e7eb' }}>
+                                  {item.quantity}
+                                </span>
+                                <button
+                                  onClick={() => updateQty(item.cartId, item.quantity + 1)}
+                                  disabled={item.quantity >= item.stock}
+                                  style={{ width: 32, height: 32, background: '#f9fafb', border: 'none', fontSize: '1rem', fontWeight: 700, color: item.quantity >= item.stock ? '#d1d5db' : '#374151', cursor: item.quantity >= item.stock ? 'default' : 'pointer' }}
+                                >
+                                  +
+                                </button>
+                              </div>
+                              <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>|</span>
+                            </>
+                          )}
 
                           <button
-                            onClick={() => remove(item.productId)}
+                            onClick={() => remove(item.cartId)}
                             style={{ background: 'none', border: 'none', color: '#2a5298', fontSize: '0.82rem', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
                           >
                             Delete
@@ -192,7 +208,7 @@ export default function Cart() {
                           <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>|</span>
 
                           <button
-                            onClick={() => navigate(`/products/${item.productId}`)}
+                            onClick={() => navigate(`/product/${item.productId}`)}
                             style={{ background: 'none', border: 'none', color: '#2a5298', fontSize: '0.82rem', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
                           >
                             View item
@@ -248,7 +264,7 @@ export default function Cart() {
                     🎉 Group deal savings applied!
                   </p>
                   <p style={{ fontSize: '0.78rem', color: '#166534' }}>
-                    You're saving <strong>₹{totalSavings.toLocaleString('en-IN')}</strong> on this order.
+                    You're saving <strong>₹{totalSavings.toLocaleString('en-IN')}</strong> from completed group deals.
                   </p>
                 </div>
               )}
@@ -278,19 +294,38 @@ export default function Cart() {
                     <span>M.R.P. Total</span>
                     <span style={{ textDecoration: 'line-through' }}>₹{subtotalMRP.toLocaleString('en-IN')}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#007600', fontWeight: 600 }}>
-                    <span>Group Deal Discount</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#007600', fontWeight: 600, marginBottom: 4 }}>
+                    <span>Group Deal Savings</span>
                     <span>−₹{totalSavings.toLocaleString('en-IN')}</span>
                   </div>
+                  {totalPrepaid > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#7c3aed', fontWeight: 600 }}>
+                      <span>Deposit Already Paid</span>
+                      <span>−₹{totalPrepaid.toLocaleString('en-IN')}</span>
+                    </div>
+                  )}
                 </div>
               )}
 
               <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, marginBottom: 16 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1rem', color: '#0f1111' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1rem', color: '#0f1111', marginBottom: totalPrepaid > 0 ? 6 : 0 }}>
                   <span>Order Total</span>
-                  <span>₹{subtotalEff.toLocaleString('en-IN')}</span>
+                  <span style={{ textDecoration: totalPrepaid > 0 ? 'line-through' : 'none', color: totalPrepaid > 0 ? '#9ca3af' : '#0f1111', fontWeight: totalPrepaid > 0 ? 400 : 700, fontSize: totalPrepaid > 0 ? '0.9rem' : '1rem' }}>
+                    ₹{subtotalEff.toLocaleString('en-IN')}
+                  </span>
                 </div>
+                {totalPrepaid > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1.05rem', color: '#0f1111' }}>
+                    <span>Amount Due</span>
+                    <span style={{ color: '#2a5298' }}>₹{amountDue.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
                 <p style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: 4 }}>Inclusive of all taxes</p>
+                {totalPrepaid > 0 && (
+                  <p style={{ fontSize: '0.72rem', color: '#7c3aed', marginTop: 2 }}>
+                    ₹{totalPrepaid.toLocaleString('en-IN')} was pre-paid as group deal deposit
+                  </p>
+                )}
               </div>
 
               <button

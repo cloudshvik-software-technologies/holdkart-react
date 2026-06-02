@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { productService, cartService, wishlistService, reviewService, campaignService } from '../services/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import StarRating from '../components/StarRating.jsx';
+import JoinDealModal from '../components/JoinDealModal.jsx';
 import toast from 'react-hot-toast';
 
 const FALLBACK_IMG =
@@ -43,7 +44,6 @@ const S = {
     cursor: 'pointer',
     textDecoration: 'none',
   },
-  /* Main product area */
   productGrid: {
     display: 'grid',
     gridTemplateColumns: '340px 1fr 280px',
@@ -51,12 +51,11 @@ const S = {
     alignItems: 'flex-start',
     marginBottom: 24,
   },
-  /* Image column */
   imageCol: {
     background: '#fff',
     border: '1px solid #e5e7eb',
     borderRadius: 4,
-    padding: 16,
+    padding: '10px 12px',
     position: 'sticky',
     top: 100,
   },
@@ -87,7 +86,6 @@ const S = {
   thumbActive: {
     borderColor: '#2a5298',
   },
-  /* Center info column */
   infoCol: {
     background: '#fff',
     border: '1px solid #e5e7eb',
@@ -166,19 +164,18 @@ const S = {
     color: '#6b7280',
     marginTop: 4,
   },
-  /* Group deal */
   groupDealBox: {
     background: '#f0f4ff',
     border: '1px solid #bfcfec',
     borderRadius: 6,
-    padding: 16,
+    padding: '10px 12px',
     marginBottom: 14,
   },
   groupDealHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 6,
   },
   groupDealLabel: {
     fontSize: '0.78rem',
@@ -200,7 +197,7 @@ const S = {
     background: '#dbeafe',
     borderRadius: 99,
     overflow: 'hidden',
-    marginBottom: 12,
+    marginBottom: 6,
   },
   progressFill: (pct) => ({
     height: '100%',
@@ -213,7 +210,7 @@ const S = {
     display: 'flex',
     alignItems: 'baseline',
     gap: 10,
-    marginBottom: 12,
+    marginBottom: 6,
   },
   groupDealPrice: {
     fontSize: '1.35rem',
@@ -275,7 +272,6 @@ const S = {
     cursor: 'pointer',
     fontWeight: 500,
   },
-  /* About / features */
   featuresList: {
     listStyle: 'none',
     padding: 0,
@@ -295,7 +291,6 @@ const S = {
     flexShrink: 0,
     marginTop: 1,
   },
-  /* Buy box */
   buyBox: {
     background: '#fff',
     border: '1px solid #e5e7eb',
@@ -426,7 +421,6 @@ const S = {
   },
   soldByLabel: { color: '#6b7280' },
   soldByVal: { color: '#2a5298', fontWeight: 600 },
-  /* Trust badges */
   badgeGrid: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
@@ -443,7 +437,6 @@ const S = {
     color: '#374151',
     fontWeight: 500,
   },
-  /* Tabs */
   tabNav: {
     display: 'flex',
     borderBottom: '2px solid #e5e7eb',
@@ -460,7 +453,6 @@ const S = {
     marginBottom: -2,
     background: 'none',
     border: 'none',
-    borderBottom: active ? '2px solid #2a5298' : '2px solid transparent',
     cursor: 'pointer',
     transition: 'color 0.15s',
   }),
@@ -508,10 +500,12 @@ function GroupBuySection({ product, localHold, onJoin, onLeave, onAddProduct, jo
         <div style={S.progressFill(pct)} />
       </div>
 
-      {/* Final price teaser */}
-      <div style={{ fontSize: '0.8rem', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-        <span style={{ fontWeight: 800, color: '#dc2626' }}>₹{finalPrice.toLocaleString('en-IN')}</span>
-        <span style={{ background: '#dc2626', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: '0.75rem' }}>{holdTarget}% off</span>
+      <div style={{ fontSize: '0.8rem', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+        <span style={{ fontWeight: 700, color: '#0f1111' }}>Best price on hold</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontWeight: 800, color: '#dc2626' }}>₹{finalPrice.toLocaleString('en-IN')}</span>
+          <span style={{ background: '#dc2626', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: '0.75rem' }}>{holdTarget}% off</span>
+        </div>
       </div>
 
       <div style={S.groupPriceRow}>
@@ -525,18 +519,21 @@ function GroupBuySection({ product, localHold, onJoin, onLeave, onAddProduct, jo
 
       {!hasJoined ? (
         <button onClick={onJoin} disabled={joinLoading} style={S.joinBtn(joinLoading)}>
-          {joinLoading ? 'Joining…' : 'Join Group Deal'}
+          {joinLoading ? 'Joining\u2026' : 'Join Group Deal'}
         </button>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={S.joinedBox}>
-            <div style={S.joinedTag}>✓ Joined</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <p style={{ fontSize: '0.78rem', color: '#0f1111', margin: 0 }}>
+            {remaining > 0
+              ? `${remaining} more member${remaining !== 1 ? 's' : ''} needed to unlock the price`
+              : '\uD83C\uDF89 Target reached \u2014 deal unlocked!'}
+          </p>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ flex: 1, padding: '7px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, fontSize: '0.82rem', fontWeight: 700, color: '#15803d' }}>
+               Joined this deal
+            </div>
             <button onClick={onLeave} disabled={joinLoading} style={S.leaveBtn}>Leave</button>
           </div>
-          <button onClick={onAddProduct} disabled={joinLoading}
-            style={{ ...S.joinBtn(joinLoading), background: joinLoading ? '#e5e7eb' : 'linear-gradient(135deg,#2a5298,#1e3c72)', color: joinLoading ? '#9ca3af' : '#fff' }}>
-            {joinLoading ? '…' : '+ Add Product (add more count)'}
-          </button>
         </div>
       )}
     </div>
@@ -564,12 +561,58 @@ export default function ProductDetail() {
   const [hasJoined, setHasJoined]           = useState(false);
   const [joinLoading, setJoinLoading]       = useState(false);
   const [localHold, setLocalHold]           = useState(0);
+  const [showJoinModal, setShowJoinModal]   = useState(false);
+  const [isAddMore, setIsAddMore]           = useState(false);
+  const pollRef                             = useRef(null);
+
+  // Poll campaign status every 4s while user has joined — redirect all participants when deal completes
+  const startPolling = useCallback((productId, holdTarget) => {
+    if (pollRef.current) return; // already polling
+    pollRef.current = setInterval(async () => {
+      try {
+        const campaigns = await campaignService.listCampaigns();
+        const active = Array.isArray(campaigns)
+          ? campaigns.find(c => Number(c.product_id) === Number(productId))
+          : null;
+        if (!active) {
+          // Campaign no longer active — deal completed or cancelled
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+          // Check if product is in cart at DEAL price (means deal completed)
+          const mine = await campaignService.getMyCampaigns();
+          const stillJoined = Array.isArray(mine)
+            ? mine.some(m => Number(m.product_id) === Number(productId) && m.campaignStatus === 'ACTIVE')
+            : false;
+          if (!stillJoined) {
+            toast.success('🎉 Group deal completed! Redirecting to your cart…', { duration: 3000 });
+            setTimeout(() => navigate('/cart'), 2000);
+          }
+        } else {
+          setLocalHold(Number(active.current_hold));
+          if (Number(active.current_hold) >= holdTarget) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+            toast.success('🎉 Group deal completed! Redirecting to your cart…', { duration: 3000 });
+            setTimeout(() => navigate('/cart'), 2000);
+          }
+        }
+      } catch { /* ignore poll errors */ }
+    }, 4000);
+  }, [navigate]);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  }, []);
+
+  // Stop polling when component unmounts
+  useEffect(() => () => stopPolling(), [stopPolling]);
 
   const loadProduct = async () => {
     const [p, r] = await Promise.all([
       productService.getProduct(id),
       reviewService.getProductReviews(id),
     ]);
+    if (!p) throw new Error('Product not found');
     setProduct(p);
     setLocalHold(p.currentHold || 0);
     setMainImg(p.images?.[0] || '');
@@ -585,19 +628,21 @@ export default function ProductDetail() {
         ? campaigns.find(c => Number(c.product_id) === Number(p.productId))
         : null;
       setActiveCampaign(campaign || null);
+      if (campaign) setLocalHold(campaign.current_hold);
       if (isAuthenticated) {
         const mine   = await campaignService.getMyCampaigns();
         const joined = Array.isArray(mine)
           ? mine.some(m => Number(m.product_id) === Number(p.productId) && m.campaignStatus === 'ACTIVE')
           : false;
         setHasJoined(joined);
+        // Start polling for all users who are already in the deal
+        if (joined && campaign) startPolling(p.productId, p.holdTarget);
       }
     } catch {
       /* no active campaign — fine */
     }
   };
 
-  // Load product data on id change
   useEffect(() => {
     (async () => {
       try {
@@ -608,7 +653,6 @@ export default function ProductDetail() {
     })();
   }, [id]);
 
-  // Re-check join status once auth resolves (isAuthenticated may be false on first render)
   useEffect(() => {
     if (!isAuthenticated || !product) return;
     campaignService.getMyCampaigns().then(mine => {
@@ -639,58 +683,87 @@ export default function ProductDetail() {
     navigate('/cart');
   };
 
-  /* shared: join or add another unit to the campaign */
-  const _addToCampaign = async (isFirstJoin) => {
-    /* For "Add Product" (non-first join), the backend may reject duplicate joins.
-       We try startOrJoinCampaign first; if it fails, we fall back to cartService so
-       the product still reaches the user's cart. Either way we update local count. */
+  /* Opens the join modal for first-time join */
+  const openJoinModal = () => {
+    if (!isAuthenticated) { toast.error('Please sign in to join'); navigate('/login'); return; }
+    setIsAddMore(false);
+    setShowJoinModal(true);
+  };
+
+  /* Opens the join modal for adding more units when already joined */
+  const openAddMoreModal = () => {
+    if (!isAuthenticated) { toast.error('Please sign in'); navigate('/login'); return; }
+    setIsAddMore(true);
+    setShowJoinModal(true);
+  };
+
+  /* Called by JoinDealModal after a successful join/payment */
+  const handleJoinSuccess = async (qty) => {
+    setShowJoinModal(false);
+    setHasJoined(true);
+    // Optimistically update the count immediately so UI feels responsive
+    const optimisticHold = Math.min(localHold + qty, product.holdTarget);
+    setLocalHold(optimisticHold);
+    window.dispatchEvent(new CustomEvent('campaignJoined', { detail: { productId: product.productId } }));
+
     try {
-      await campaignService.startOrJoinCampaign({ productId: product.productId });
-    } catch (apiErr) {
-      if (!isFirstJoin) {
-        /* backend rejected re-join — add to cart directly as fallback */
-        await cartService.addToCart({ productId: product.productId, quantity: 1 });
+      // Sync with real server data
+      const p = await productService.getProduct(id);
+      setProduct(p);
+      const realHold = p.currentHold || optimisticHold;
+      setLocalHold(realHold);
+
+      if (realHold >= product.holdTarget) {
+        // This user's join completed the deal — redirect immediately
+        stopPolling();
+        toast.success('🎉 Target reached! Redirecting to your cart…', { duration: 3000 });
+        setTimeout(() => navigate('/cart'), 2000);
       } else {
-        throw apiErr;
+        // Deal not yet complete — start polling so this user gets redirected when others fill remaining slots
+        toast.success(`Joined with ${qty} unit${qty > 1 ? 's' : ''}! You'll be redirected to cart once the target is reached.`);
+        startPolling(product.productId, product.holdTarget);
+        await loadCampaignStatus(p);
+      }
+    } catch {
+      if (optimisticHold >= product.holdTarget) {
+        stopPolling();
+        toast.success('🎉 Target reached! Redirecting to your cart…', { duration: 3000 });
+        setTimeout(() => navigate('/cart'), 2000);
+      } else {
+        toast.success(`Joined with ${qty} unit${qty > 1 ? 's' : ''}! You'll be redirected to cart once the target is reached.`);
+        startPolling(product.productId, product.holdTarget);
       }
     }
-    const holdTarget = product.holdTarget;
-    const next = localHold + 1;
-    setLocalHold(next);
-    setHasJoined(true);
-    if (next >= holdTarget) {
-      cartService.addToCart({ productId: product.productId, quantity: 1 }).catch(() => {});
-      toast.success('🎉 Target reached! Product added to your cart.', { duration: 4000 });
-      setTimeout(() => navigate('/cart'), 2500);
-    } else if (isFirstJoin) {
-      toast.success('Joined the deal! It will move to your cart once the target is reached.');
-    } else {
-      toast.success('Added! Your count increased in this group deal.');
-    }
-    const p = await productService.getProduct(id);
-    setProduct(p);
-    await loadCampaignStatus(p);
   };
 
-  const handleJoin = async () => {
-    if (!isAuthenticated) { toast.error('Please sign in to join'); navigate('/login'); return; }
-    setJoinLoading(true);
-    try { await _addToCampaign(true); }
-    catch(e) { toast.error(e?.response?.data?.message || 'Failed to join'); }
-    finally { setJoinLoading(false); }
-  };
-
+  /* Add more units when already joined */
   const handleAddProduct = async () => {
     if (!isAuthenticated) { toast.error('Please sign in'); navigate('/login'); return; }
     setJoinLoading(true);
-    try { await _addToCampaign(false); }
-    catch(e) { toast.error(e?.response?.data?.message || 'Failed'); }
-    finally { setJoinLoading(false); }
+    try {
+      await campaignService.addToDeal({ productId: product.productId });
+      const p = await productService.getProduct(id);
+      setProduct(p);
+      const realHold = p.currentHold || 0;
+      setLocalHold(realHold);
+      window.dispatchEvent(new CustomEvent('campaignJoined', { detail: { productId: product.productId } }));
+      if (realHold >= product.holdTarget) {
+        stopPolling();
+        toast.success('🎉 Target reached! Redirecting to your cart…', { duration: 3000 });
+        setTimeout(() => navigate('/cart'), 2000);
+      } else {
+        toast.success('Added to deal! You\'ll be redirected to cart once the target is reached.');
+        await loadCampaignStatus(p);
+      }
+    } catch(e) {
+      toast.error(e?.response?.data?.message || 'Failed to add to deal');
+    } finally { setJoinLoading(false); }
   };
 
   const handleLeave = async () => {
     if (!activeCampaign) return;
     setJoinLoading(true);
+    stopPolling(); // Stop polling — user no longer in deal
     try {
       await campaignService.leaveCampaign({ campaignId: activeCampaign.id });
       toast.success('Left group deal');
@@ -736,6 +809,10 @@ export default function ProductDetail() {
     ? Math.round(product.retailPrice * (1 - discountPct / 100))
     : product.retailPrice;
   const inStock      = product.stock > 0;
+  const maxDiscountPct = hasGroupBuy ? product.holdTarget : 0;
+  const bestGroupPrice = hasGroupBuy
+    ? Math.round(product.retailPrice * (1 - maxDiscountPct / 100))
+    : product.retailPrice;
 
   const features = [
     product.category && `Category: ${product.category}`,
@@ -745,11 +822,25 @@ export default function ProductDetail() {
     '7-Day Returns',
   ].filter(Boolean);
 
-  /* responsive: collapse to 2-col on narrow */
   const isNarrow = typeof window !== 'undefined' && window.innerWidth < 900;
 
   return (
     <div style={S.page}>
+      {/* Join modal — shared with Home/Products page cards */}
+      {showJoinModal && hasGroupBuy && (
+        <JoinDealModal
+          product={product}
+          bestGroupPrice={bestGroupPrice}
+          maxDiscountPct={maxDiscountPct}
+          remainingSlots={Math.max(0, product.holdTarget - localHold)}
+          onClose={() => setShowJoinModal(false)}
+          onJoinSuccess={handleJoinSuccess}
+          campaignAction={isAddMore ? async (qty) => {
+            await campaignService.addToDeal({ productId: product.productId, quantity: qty });
+          } : undefined}
+        />
+      )}
+
       <div style={S.inner}>
 
         {/* Breadcrumb */}
@@ -833,12 +924,12 @@ export default function ProductDetail() {
               <p style={S.taxNote}>Inclusive of all taxes</p>
             </div>
 
-            {/* Group Deal */}
+            {/* Group Deal — center column box; Join button opens the shared modal */}
             {hasGroupBuy && (
               <GroupBuySection
                 product={product}
                 localHold={localHold}
-                onJoin={handleJoin}
+                onJoin={openJoinModal}
                 onLeave={handleLeave}
                 onAddProduct={handleAddProduct}
                 joinLoading={joinLoading}
@@ -915,11 +1006,54 @@ export default function ProductDetail() {
                   </span>
                 </div>
 
-                <button style={S.addToCartBtn}
-                  onClick={hasGroupBuy ? handleAddProduct : handleCart}>
-                  {hasGroupBuy ? '+ Add Product' : 'Add to Cart'}
-                </button>
-                <button style={S.buyNowBtn} onClick={handleBuyNow}>Buy Now</button>
+                {/* Buy box buttons */}
+                {hasGroupBuy && hasJoined ? (
+                  <>
+                    <button style={S.addToCartBtn} onClick={handleCart}>
+                      Add to Cart
+                    </button>
+                    <p style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 4, marginBottom: 10, textAlign: 'center' }}>
+                      Buys at regular price with no discount
+                    </p>
+                    <button
+                      onClick={openAddMoreModal}
+                      style={{ ...S.buyNowBtn, cursor: 'pointer' }}
+                    >
+                      Add to Deal
+                    </button>
+                    <p style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 4, textAlign: 'center' }}>
+                      Added to cart at deal price once target is reached
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    {hasGroupBuy ? (
+                      <>
+                        <button style={S.addToCartBtn} onClick={handleCart}>
+                          Add to Cart
+                        </button>
+                        <p style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 4, marginBottom: 10, textAlign: 'center' }}>
+                          Buys at regular price with no discount
+                        </p>
+                        {/* Buy box Join Group Deal — opens the same popup modal */}
+                        <button
+                          onClick={openJoinModal}
+                          style={{ ...S.buyNowBtn, cursor: 'pointer' }}
+                        >
+                          Join Group Deal
+                        </button>
+                        <p style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 4, textAlign: 'center' }}>
+                          Added to cart at deal price once target is reached
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <button style={S.addToCartBtn} onClick={handleCart}>Add to Cart</button>
+                        <button style={S.buyNowBtn} onClick={handleBuyNow}>Buy Now</button>
+                      </>
+                    )}
+                  </>
+                )}
               </>
             )}
 
@@ -929,7 +1063,7 @@ export default function ProductDetail() {
 
             {/* Trust badges */}
             <div style={S.badgeGrid}>
-              {[['📦', 'Quality Certified'], ['🔄', '7-Day Returns'], ['🛡️', 'Warranty', ], ['🚚', 'Fast Delivery']].map(([icon, label]) => (
+              {[['📦', 'Quality Certified'], ['🔄', '7-Day Returns'], ['🛡️', 'Warranty'], ['🚚', 'Fast Delivery']].map(([icon, label]) => (
                 <div key={label} style={S.badgeItem}>
                   <span>{icon}</span>
                   <span>{label}</span>

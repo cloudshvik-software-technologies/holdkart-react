@@ -124,6 +124,7 @@ export default function CampaignDetail() {
     try {
       await campaignService.joinCampaign({ campaignId: Number(id) });
       toast.success('You joined the group deal!');
+      window.dispatchEvent(new CustomEvent('campaignJoined', { detail: { campaignId: Number(id), campaign } }));
       load();
     } catch (e) {
       toast.error(e?.response?.data?.message || 'Failed to join');

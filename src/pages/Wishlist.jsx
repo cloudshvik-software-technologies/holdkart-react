@@ -242,7 +242,9 @@ export default function Wishlist() {
   const fetchWishlist = async () => {
     try {
       const data = await wishlistService.getWishlist();
-      setWishlist(Array.isArray(data) ? data : []);
+      // Filter out deleted products (active=false or missing name) — backend
+      // already excludes them via JOIN, this is a safety net
+      setWishlist(Array.isArray(data) ? data.filter(i => i.name && i.active !== false) : []);
     } catch {
       setWishlist([]);
     } finally {

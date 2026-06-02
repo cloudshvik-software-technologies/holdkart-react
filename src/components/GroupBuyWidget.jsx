@@ -49,6 +49,7 @@ export default function GroupBuyWidget({ productId }) {
     try {
       await campaignService.joinCampaign({ campaignId });
       toast.success('Joined the group deal!');
+      window.dispatchEvent(new CustomEvent('campaignJoined', { detail: { campaignId, productId } }));
       load();
     } catch (e) {
       toast.error(e?.response?.data?.message || 'Failed to join');
@@ -61,6 +62,7 @@ export default function GroupBuyWidget({ productId }) {
     try {
       await campaignService.startCampaign({ productId });
       toast.success('Group deal started! Others can now join.');
+      window.dispatchEvent(new CustomEvent('campaignJoined', { detail: { productId } }));
       load();
       setShowStart(false);
     } catch (e) {
@@ -101,7 +103,7 @@ export default function GroupBuyWidget({ productId }) {
                 No active group deals yet
               </div>
               <div style={{ color: '#9ca3af', fontSize: '0.78rem', marginBottom: 14 }}>
-                Be the first to start one and invite others!
+                Be the first to start one! Once the target is reached, it's added to everyone's cart at the deal price.
               </div>
               {!showStart ? (
                 <button
@@ -205,7 +207,7 @@ export default function GroupBuyWidget({ productId }) {
                       }} />
                     </div>
                     <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: 4 }}>
-                      {Math.max(0, c.target - c.current_hold)} more needed to unlock the deal
+                      {Math.max(0, c.target - c.current_hold)} more needed — item added to cart only when target is reached
                     </div>
                   </div>
 

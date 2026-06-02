@@ -145,6 +145,7 @@ export default function Home({ isGuest = false }) {
   const featuredSentinelRef = useRef(null);
   const [categories, setCategories]       = useState([]);
   const [campaigns, setCampaigns]         = useState([]);
+  const [joinedProductIds, setJoinedProductIds] = useState(new Set());
   const [wishlistCount, setWishlistCount] = useState(0);
   const [loading, setLoading]             = useState(true);
   const [slideIdx, setSlideIdx]           = useState(0);
@@ -157,14 +158,11 @@ export default function Home({ isGuest = false }) {
     (async () => {
       try {
         if (isGuest) {
-          const [f, camp] = await Promise.all([
-            productService.getFeatured(1, 10).catch(() => []),
-            campaignService.listCampaigns().catch(() => []),
-          ]);
+          const f = await productService.getFeatured(1, 10).catch(() => []);
           const featArr = Array.isArray(f) ? f : [];
           setFeatured(featArr);
           setFeaturedHasMore(featArr.length === 10);
-          setCampaigns(Array.isArray(camp) ? camp.slice(0, 4) : []);
+          // Hold Deals section is hidden for guests — do not fetch campaigns
         } else {
           const [f, c, wl, camp] = await Promise.all([
             productService.getFeatured(1, 10).catch(() => []),
@@ -177,7 +175,9 @@ export default function Home({ isGuest = false }) {
           setFeaturedHasMore(featArr.length === 10);
           setCategories(Array.isArray(c) ? c : []);
           setWishlistCount(Array.isArray(wl) ? wl.length : 0);
-          setCampaigns(Array.isArray(camp) ? camp.slice(0, 4) : []);
+          const campArr = Array.isArray(camp) ? camp : [];
+          setCampaigns(campArr.slice(0, 6));
+          setJoinedProductIds(new Set(campArr.map(c => Number(c.product_id))));
         }
       } catch {} finally { setLoading(false); }
     })();
@@ -193,6 +193,22 @@ export default function Home({ isGuest = false }) {
     }, 1000);
     return () => clearInterval(t);
   }, []);
+
+  // Listen for any join/start event fired from ProductDetail, CampaignDetail, or GroupBuyWidget
+  // and instantly refresh the My Hold Deals section without a full page reload.
+  useEffect(() => {
+    if (isGuest) return;
+    const handleCampaignJoined = async () => {
+      try {
+        const camp = await campaignService.getMyCampaigns();
+        const campArr = Array.isArray(camp) ? camp : [];
+        setCampaigns(campArr.slice(0, 6));
+        setJoinedProductIds(new Set(campArr.map(c => Number(c.product_id))));
+      } catch {}
+    };
+    window.addEventListener('campaignJoined', handleCampaignJoined);
+    return () => window.removeEventListener('campaignJoined', handleCampaignJoined);
+  }, [isGuest]);
 
   const goSlide = useCallback((to) => {
     if (transitioning) return;
@@ -372,25 +388,25 @@ export default function Home({ isGuest = false }) {
               top: 0,
               width: '28%',
               height: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'flex-end',
-              paddingRight: 8,
+              overflow: 'hidden',
               zIndex: 2,
               pointerEvents: 'none',
+              maskImage: 'linear-gradient(to right, transparent 0%, black 18%, black 72%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)',
+              WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 18%, black 72%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)',
+              maskComposite: 'intersect',
+              WebkitMaskComposite: 'destination-in',
             }}
           >
             <img
               src={slide.leftImg.src}
               alt={slide.leftImg.alt}
               style={{
-                maxHeight: '340px',
-                maxWidth: '100%',
-                width: 'auto',
-                objectFit: 'contain',
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                objectPosition: 'center',
                 display: 'block',
-                /* No card, no border, no background — image floats on banner */
-                filter: 'drop-shadow(0 16px 48px rgba(0,0,0,0.6))',
+                mixBlendMode: 'screen',
               }}
             />
           </div>
@@ -406,24 +422,25 @@ export default function Home({ isGuest = false }) {
               top: 0,
               width: '28%',
               height: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'flex-start',
-              paddingLeft: 8,
+              overflow: 'hidden',
               zIndex: 2,
               pointerEvents: 'none',
+              maskImage: 'linear-gradient(to left, transparent 0%, black 18%, black 72%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)',
+              WebkitMaskImage: 'linear-gradient(to left, transparent 0%, black 18%, black 72%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)',
+              maskComposite: 'intersect',
+              WebkitMaskComposite: 'destination-in',
             }}
           >
             <img
               src={slide.rightImg.src}
               alt={slide.rightImg.alt}
               style={{
-                maxHeight: '340px',
-                maxWidth: '100%',
-                width: 'auto',
-                objectFit: 'contain',
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                objectPosition: 'center',
                 display: 'block',
-                filter: 'drop-shadow(0 16px 48px rgba(0,0,0,0.6))',
+                mixBlendMode: 'screen',
               }}
             />
           </div>
@@ -575,7 +592,7 @@ export default function Home({ isGuest = false }) {
                 <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#0f1111' }}>🎯 {isGuest ? 'Hold Deals — Group Buy & Save' : 'My Hold Deals'}</h2>
                 <button onClick={() => guardedNav('/campaigns')} className="hk-see-more" style={{ fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}>See all campaigns →</button>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 12 }}>
                 {campaigns.filter(c => !c.campaignStatus || c.campaignStatus === 'ACTIVE').map((c) => {
                   /* getMyCampaigns always returns campaign_id explicitly.
                      listCampaigns returns c.id as the PK.
@@ -741,7 +758,7 @@ export default function Home({ isGuest = false }) {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
                 {featured.map(p => (
                   <div key={p.productId} className="hk-prod-wrap">
-                    <ProductCard product={p} alreadyJoined={campaigns.some(c => Number(c.product_id) === Number(p.productId))} />
+                    <ProductCard product={p} alreadyJoined={joinedProductIds.has(Number(p.productId))} />
                   </div>
                 ))}
                 {featuredLoading && [...Array(5)].map((_, i) => (
