@@ -7,11 +7,10 @@ import { useEffect } from 'react';
     const navigate = useNavigate();
 
     useEffect(() => {
-      const handler = () => { logout(); navigate('/login', { replace: true }); };
+      const handler = () => { logout(); navigate('/', { replace: true }); };
       window.addEventListener('auth:session-expired', handler);
       return () => window.removeEventListener('auth:session-expired', handler);
     }, [logout, navigate]);
 
     return null;
   }
-  

@@ -4,124 +4,185 @@ import { campaignService } from '../services/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import toast from 'react-hot-toast';
 
-// Same logic as ProductCard — relative path so Vite proxy handles it
-function resolveImg(raw) {
-  if (!raw) return null;
-  let url = raw;
-  // Unwrap JSON array: '["\/uploads\/products\/x.jpg"]'
-  if (String(raw).trimStart().startsWith('[')) {
-    try { const arr = JSON.parse(raw); url = arr[0] || null; } catch {}
-  }
-  if (!url) return null;
+const FALLBACK_IMG =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'%3E%3Crect width='200' height='200' fill='%23f0f4f8'/%3E%3Crect x='60' y='55' width='80' height='70' rx='8' fill='%23d1d9e6'/%3E%3Ccircle cx='100' cy='80' r='16' fill='%23a0aec0'/%3E%3Cpath d='M68 122 Q100 95 132 122Z' fill='%23a0aec0'/%3E%3C/svg%3E";
+
+function resolveImg(url) {
+  if (!url) return FALLBACK_IMG;
   if (url.startsWith('http')) return url;
   return url.startsWith('/uploads')
     ? url.replace('/uploads', '/seller-uploads')
-    : `/seller-uploads/${url.replace(/^\//, '')}`;
+    : `/seller-uploads${url.startsWith('/') ? '' : '/'}${url}`;
 }
 
-const NoImage = () => (
-  <div style={{
-    width: '100%', height: '100%',
-    background: 'linear-gradient(145deg,#f0f2f5,#e8eaed)',
-    display: 'flex', flexDirection: 'column',
-    alignItems: 'center', justifyContent: 'center', gap: 5,
-  }}>
-    <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-      <rect x="3" y="3" width="18" height="18" rx="3" fill="#d1d5db"/>
-      <circle cx="8.5" cy="8.5" r="1.5" fill="#9ca3af"/>
-      <path d="M3 16l5-5 4 4 3-3 6 6" stroke="#9ca3af" strokeWidth="1.5"
-        strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-    </svg>
-    <span style={{ fontSize: '0.65rem', color: '#9ca3af', fontWeight: 500 }}>No Image</span>
-  </div>
-);
+const STATUS_META = {
+  ACTIVE:    { label: 'Active',    bg: '#dcfce7', color: '#15803d', dot: '#16a34a' },
+  COMPLETED: { label: 'Completed', bg: '#dbeafe', color: '#1e40af', dot: '#3b82f6' },
+  CANCELLED: { label: 'Cancelled', bg: '#fee2e2', color: '#991b1b', dot: '#dc2626' },
+};
 
-function CampaignCard({ c, joined, joining, leaving, onJoin, onLeave }) {
-  const [imgFailed, setImgFailed] = useState(false);
-  const imgSrc = resolveImg(c.image_url);
-  const pct    = Math.min(100, Math.round((c.current_hold / c.target) * 100));
-  const saved  = Number(c.retail_price) - Number(c.hold_price);
-  const barColor = pct >= 75 ? '#16a34a' : '#2a5298';
+function StatusBadge({ status }) {
+  const m = STATUS_META[status] || { label: status, bg: '#f3f4f6', color: '#6b7280', dot: '#9ca3af' };
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      background: m.bg, color: m.color,
+      fontSize: '0.72rem', fontWeight: 700,
+      padding: '3px 9px', borderRadius: 3,
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: m.dot, flexShrink: 0 }} />
+      {m.label}
+    </span>
+  );
+}
+
+function ProgressBar({ current, target }) {
+  const pct = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
+  const color = pct >= 100 ? '#16a34a' : pct >= 60 ? '#2a5298' : '#f59e0b';
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: 4 }}>
+        <span style={{ color: '#6b7280' }}>
+          <b style={{ color: '#0f1111', fontWeight: 700 }}>{current}</b> / {target} members joined
+        </span>
+        <span style={{ fontWeight: 700, color }}>{pct}%</span>
+      </div>
+      <div style={{ height: 6, background: '#e5e7eb', borderRadius: 99, overflow: 'hidden' }}>
+        <div style={{
+          width: `${pct}%`, height: '100%', borderRadius: 99,
+          background: color, transition: 'width 0.4s',
+        }} />
+      </div>
+    </div>
+  );
+}
+
+function CampaignRow({ item, leaving, onLeave }) {
+  const navigate = useNavigate();
+  const [imgErr, setImgErr] = useState(false);
+  const src = imgErr ? FALLBACK_IMG : resolveImg(item.image_url);
+
+  const retailPrice  = Number(item.retail_price  || 0);
+  const holdPrice    = Number(item.hold_price     || 0);
+  const currentHold  = Number(item.current_hold   || 0);
+  const target       = Number(item.target         || 0);
+  const status       = item.campaignStatus || 'ACTIVE';
+
+  /* discount = currentHold % off (N joined = N% off) */
+  const safeHold     = Math.min(currentHold, target);
+  const discountPct  = safeHold;
+  const effectivePrice = discountPct > 0
+    ? Math.round(retailPrice * (1 - discountPct / 100))
+    : retailPrice;
+  const maxDiscountPct  = target;
+  const bestPrice       = Math.round(retailPrice * (1 - maxDiscountPct / 100));
+  const joined_date     = item.joined_date
+    ? new Date(item.joined_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+    : '';
+
+  // Resolve campaign ID robustly — strip any mysql2 duplicate-column ":N" suffix
+  const rawCampaignId = String(item.campaign_id || item.campaignRowId || item.id || '').split(':')[0];
+  const campaignId = rawCampaignId ? parseInt(rawCampaignId, 10) || null : null;
 
   return (
-    <div style={{
-      background: '#fff', borderRadius: 12, overflow: 'hidden',
-      boxShadow: '0 2px 10px rgba(0,0,0,0.07)',
-      border: joined ? '1.5px solid #2a5298' : '1.5px solid #e5e7eb',
-      display: 'flex', transition: 'box-shadow 0.18s, transform 0.18s',
-    }}
-      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,0.11)'; }}
-      onMouseLeave={e =>  { e.currentTarget.style.transform = 'translateY(0)';   e.currentTarget.style.boxShadow = '0 2px 10px rgba(0,0,0,0.07)'; }}
+    <div
+      onClick={() => navigate(`/campaigns/${campaignId}`)}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '88px 1fr',
+        gap: 16,
+        padding: '20px',
+        borderBottom: '1px solid #e5e7eb',
+        background: '#fff',
+        cursor: 'pointer',
+        transition: 'background 0.15s',
+      }}
+      onMouseEnter={e => e.currentTarget.style.background = '#fafafa'}
+      onMouseLeave={e => e.currentTarget.style.background = '#fff'}
     >
-      {/* Image — 120×120 square */}
-      <div style={{ width: 120, minHeight: 120, flexShrink: 0, background: '#f7f8fa', position: 'relative' }}>
-        {!imgFailed && imgSrc
-          ? <img src={imgSrc} alt={c.product_name}
-              onError={() => setImgFailed(true)}
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', minHeight: 120 }} />
-          : <NoImage />
-        }
-        {joined && (
-          <div style={{
-            position: 'absolute', top: 6, left: 6,
-            background: '#16a34a', color: '#fff',
-            fontSize: '0.6rem', fontWeight: 700, padding: '2px 6px', borderRadius: 4,
-          }}>✓ JOINED</div>
-        )}
+      {/* Image — clicks go to product detail, not campaign detail */}
+      <div
+        onClick={e => { e.stopPropagation(); navigate(`/product/${item.product_id}`); }}
+        title="View product"
+        style={{ cursor: 'pointer', border: '1px solid #e5e7eb', borderRadius: 4, overflow: 'hidden', background: '#f9fafb', height: 88, flexShrink: 0 }}
+      >
+        <img
+          src={src} alt={item.product_name}
+          onError={() => setImgErr(true)}
+          style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', padding: 4 }}
+        />
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, padding: '11px 14px', display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>
+      <div style={{ minWidth: 0 }}>
+        {/* Top row: name + status */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 6 }}>
+          <p
+            onClick={e => { e.stopPropagation(); navigate(`/product/${item.product_id}`); }}
+            title="View product"
+            style={{
+              fontWeight: 400, fontSize: '0.97rem', color: '#007185',
+              cursor: 'pointer', margin: 0, lineHeight: 1.35,
+              display: '-webkit-box', WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical', overflow: 'hidden',
+            }}
+          >
+            {item.product_name}
+          </p>
+          <StatusBadge status={status} />
+        </div>
 
-        {/* Name + Save badge */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1f2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {c.product_name}
-            </div>
-            <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 1 }}>{c.sellerName}</div>
-          </div>
-          {saved > 0 && (
-            <div style={{ flexShrink: 0, background: '#fef9c3', color: '#92400e', fontSize: '0.65rem', fontWeight: 700, padding: '2px 7px', borderRadius: 5, whiteSpace: 'nowrap' }}>
-              Save ₹{saved.toLocaleString()}
-            </div>
+        {/* Price row */}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '1.1rem', fontWeight: 700, color: '#b12704' }}>
+            ₹{effectivePrice.toLocaleString('en-IN')}
+          </span>
+          {discountPct > 0 && (
+            <span style={{ fontSize: '0.82rem', color: '#9ca3af', textDecoration: 'line-through' }}>
+              ₹{retailPrice.toLocaleString('en-IN')}
+            </span>
           )}
         </div>
 
-        {/* Prices */}
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-          <span style={{ fontWeight: 800, fontSize: '1rem', color: '#1e3c72' }}>₹{Number(c.hold_price).toLocaleString()}</span>
-          <span style={{ fontSize: '0.78rem', color: '#9ca3af', textDecoration: 'line-through' }}>₹{Number(c.retail_price).toLocaleString()}</span>
+        {/* Best price teaser */}
+        {target > 0 && (
+          <div style={{ fontSize: '0.71rem', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 5 }}>
+            <span style={{ fontWeight: 800, color: '#dc2626' }}>₹{bestPrice.toLocaleString('en-IN')}</span>
+            <span style={{ background: '#dc2626', color: '#fff', borderRadius: 3, padding: '1px 5px' }}>{maxDiscountPct}% off</span>
+          </div>
+        )}
+
+        {/* Progress bar */}
+        <div style={{ marginBottom: 10 }}>
+          <ProgressBar current={currentHold} target={target} />
         </div>
 
-        {/* Progress */}
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#6b7280', marginBottom: 3 }}>
-            <span><b style={{ color: '#1f2937' }}>{c.current_hold}</b> / {c.target} joined</span>
-            <span style={{ fontWeight: 600, color: barColor }}>{pct}%</span>
-          </div>
-          <div style={{ background: '#e5e7eb', borderRadius: 99, height: 5, overflow: 'hidden' }}>
-            <div style={{ width: pct + '%', height: '100%', borderRadius: 99, background: `linear-gradient(90deg,${barColor},${barColor}cc)`, transition: 'width 0.4s' }} />
-          </div>
-        </div>
-
-        {/* Footer: end date + action button */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>
-            {c.end_time ? `Ends ${new Date(c.end_time).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
-          </span>
-          {joined ? (
-            <button onClick={() => onLeave(c.id)} disabled={leaving === c.id}
-              style={{ background: 'transparent', color: '#dc2626', border: '1.5px solid #fca5a5', borderRadius: 7, padding: '5px 13px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
-              onMouseEnter={e => e.currentTarget.style.background = '#fee2e2'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-            >{leaving === c.id ? 'Leaving…' : '✕ Leave'}</button>
-          ) : (
-            <button onClick={() => onJoin(c.id)} disabled={joining === c.id}
-              style={{ background: 'linear-gradient(135deg,#2a5298,#1e3c72)', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 16px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
-              onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
-              onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-            >{joining === c.id ? 'Joining…' : '🎯 Join'}</button>
+        {/* Bottom row: joined date + leave button */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          {joined_date && (
+            <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Joined on {joined_date}</span>
+          )}
+          {status === 'ACTIVE' && (
+            <button
+              onClick={e => { e.stopPropagation(); onLeave(campaignId); }}
+              disabled={leaving === campaignId}
+              style={{
+                padding: '5px 14px',
+                background: 'none',
+                border: '1px solid #d1d5db',
+                borderRadius: 4,
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                color: leaving === campaignId ? '#9ca3af' : '#dc2626',
+                cursor: leaving === campaignId ? 'not-allowed' : 'pointer',
+                fontFamily: 'inherit',
+                transition: 'border-color 0.15s',
+              }}
+              onMouseEnter={e => { if (leaving !== campaignId) e.currentTarget.style.borderColor = '#dc2626'; }}
+              onMouseLeave={e => e.currentTarget.style.borderColor = '#d1d5db'}
+            >
+              {leaving === campaignId ? 'Leaving…' : 'Leave Deal'}
+            </button>
           )}
         </div>
       </div>
@@ -129,127 +190,207 @@ function CampaignCard({ c, joined, joining, leaving, onJoin, onLeave }) {
   );
 }
 
+/* ══════════════════════════════
+   MAIN PAGE
+══════════════════════════════ */
 export default function Campaigns() {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const [campaigns, setCampaigns] = useState([]);
-  const [mine, setMine]           = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [tab, setTab]             = useState('active');
-  const [joining, setJoining]     = useState(null);
-  const [leaving, setLeaving]     = useState(null);
+  const [mine, setMine]       = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [leaving, setLeaving] = useState(null);
+  const [filter, setFilter]   = useState('ALL');
 
-  const fetchAll = async () => {
+  const fetchMine = async () => {
     try {
-      const c = await campaignService.listCampaigns();
-      setCampaigns(Array.isArray(c) ? c : []);
-      if (isAuthenticated) {
-        const m = await campaignService.getMyCampaigns();
-        setMine(Array.isArray(m) ? m : []);
-      }
+      const m = await campaignService.getMyCampaigns();
+      setMine(Array.isArray(m) ? m : []);
     } catch {} finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchAll(); }, [isAuthenticated]);
+  useEffect(() => {
+    if (isAuthenticated) { fetchMine(); }
+    else { setLoading(false); }
+  }, [isAuthenticated]);
 
-  const handleJoin = async (id) => {
-    if (!isAuthenticated) { navigate('/login'); return; }
-    setJoining(id);
-    try { await campaignService.joinCampaign({ campaignId: id }); toast.success('Joined!'); fetchAll(); }
-    catch(e) { toast.error(e?.response?.data?.message || 'Failed to join'); } finally { setJoining(null); }
+  const handleLeave = async (campaignId) => {
+    if (!window.confirm('Leave this group deal? Your spot will be released.')) return;
+    setLeaving(campaignId);
+    try {
+      await campaignService.leaveCampaign({ campaignId });
+      toast.success('Left the group deal');
+      fetchMine();
+    } catch (e) {
+      toast.error(e?.response?.data?.message || 'Failed to leave');
+    } finally { setLeaving(null); }
   };
 
-  const handleLeave = async (id) => {
-    if (!confirm('Leave this campaign? Your spot will be released.')) return;
-    setLeaving(id);
-    try { await campaignService.leaveCampaign({ campaignId: id }); toast.success('Left campaign'); fetchAll(); }
-    catch(e) { toast.error(e?.response?.data?.message || 'Failed to leave'); } finally { setLeaving(null); }
-  };
+  const filters = [
+    { key: 'ALL',       label: 'All' },
+    { key: 'ACTIVE',    label: 'Active' },
+    { key: 'COMPLETED', label: 'Completed' },
+    { key: 'CANCELLED', label: 'Cancelled' },
+  ];
 
-  const joinedIds = new Set(mine.map(m => m.campaign_id));
+  const filtered = filter === 'ALL' ? mine : mine.filter(m => m.campaignStatus === filter);
+  const activeCount    = mine.filter(m => m.campaignStatus === 'ACTIVE').length;
+  const completedCount = mine.filter(m => m.campaignStatus === 'COMPLETED').length;
+
+  /* ── Not signed in ── */
+  if (!isAuthenticated) return (
+    <div style={{ background: '#f4f6fa', minHeight: '100vh', paddingTop: 100, paddingBottom: 60 }}>
+      <div style={{ maxWidth: 480, margin: '60px auto', textAlign: 'center', padding: '0 16px' }}>
+        <div style={{ fontSize: '3.5rem', marginBottom: 16 }}>🔒</div>
+        <h2 style={{ fontWeight: 700, color: '#0f1111', marginBottom: 8 }}>Sign in to view your deals</h2>
+        <p style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: 24 }}>
+          Your joined group deals will appear here.
+        </p>
+        <button
+          onClick={() => navigate('/login')}
+          style={{ padding: '10px 32px', background: '#f0c14b', border: '1px solid #a88734', borderRadius: 4, fontWeight: 700, color: '#111', fontSize: '0.9rem', cursor: 'pointer' }}
+        >
+          Sign In
+        </button>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="page-wrap">
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontWeight: 800, fontSize: '1.35rem', color: '#1f2937', marginBottom: 4 }}>🎯 Hold Deals</h1>
-        <p style={{ color: '#6b7280', fontSize: '0.85rem' }}>Join group buy campaigns — when the target fills, everyone gets the deal price.</p>
-      </div>
+    <div style={{ background: '#f4f6fa', minHeight: '100vh', paddingTop: 100, paddingBottom: 60 }}>
+      <div style={{ maxWidth: 1000, margin: '0 auto', padding: '0 16px' }}>
 
-      {isAuthenticated && (
-        <div style={{ display: 'flex', borderBottom: '2px solid #e5e7eb', marginBottom: 20 }}>
-          {[['active', 'Active Campaigns'], ['mine', `My Campaigns${mine.length ? ` (${mine.length})` : ''}`]].map(([key, label]) => (
-            <button key={key} onClick={() => setTab(key)} style={{
-              padding: '8px 18px', fontWeight: 600, fontSize: '0.85rem',
-              background: 'none', border: 'none', cursor: 'pointer',
-              color: tab === key ? '#2a5298' : '#6b7280',
-              borderBottom: tab === key ? '2px solid #2a5298' : '2px solid transparent',
-              marginBottom: -2, transition: 'color 0.15s',
-            }}>{label}</button>
-          ))}
+        {/* ── Page header ── */}
+        <div style={{ marginBottom: 20 }}>
+          <h1 style={{ fontSize: '1.6rem', fontWeight: 400, color: '#0f1111', marginBottom: 4 }}>
+            My Group Deals
+          </h1>
+          <p style={{ fontSize: '0.82rem', color: '#6b7280' }}>
+            Campaigns you've joined — track progress and pricing in real time.
+          </p>
         </div>
-      )}
 
-      {loading ? <p style={{ color: '#6b7280' }}>Loading…</p>
-      : tab === 'active' ? (
-        campaigns.length === 0
-          ? <div className="empty-state"><div className="icon">🎯</div><h3>No active campaigns</h3><p>Check back soon!</p></div>
-          : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(400px,1fr))', gap: 12 }}>
-              {campaigns.map(c => (
-                <CampaignCard key={c.id} c={c} joined={joinedIds.has(c.id)}
-                  joining={joining} leaving={leaving} onJoin={handleJoin} onLeave={handleLeave} />
-              ))}
+        {/* ── Summary cards ── */}
+        {!loading && mine.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+            {[
+              { label: 'Total Joined', value: mine.length, icon: '🤝', color: '#2a5298' },
+              { label: 'Active Deals', value: activeCount, icon: '⚡', color: '#007600' },
+              { label: 'Completed',    value: completedCount, icon: '✅', color: '#1e40af' },
+            ].map(s => (
+              <div key={s.label} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
+                <span style={{ fontSize: '1.6rem' }}>{s.icon}</span>
+                <div>
+                  <p style={{ fontSize: '1.4rem', fontWeight: 700, color: s.color, lineHeight: 1 }}>{s.value}</p>
+                  <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: 2 }}>{s.label}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Filter tabs ── */}
+        {!loading && mine.length > 0 && (
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '4px 4px 0 0', borderBottom: 'none', display: 'flex', padding: '0 20px', gap: 0 }}>
+            {filters.map(f => {
+              const count = f.key === 'ALL' ? mine.length : mine.filter(m => m.campaignStatus === f.key).length;
+              const active = filter === f.key;
+              return (
+                <button
+                  key={f.key}
+                  onClick={() => setFilter(f.key)}
+                  style={{
+                    padding: '13px 18px',
+                    background: 'none',
+                    border: 'none',
+                    borderBottom: active ? '2px solid #2a5298' : '2px solid transparent',
+                    fontWeight: active ? 700 : 400,
+                    fontSize: '0.85rem',
+                    color: active ? '#0f1111' : '#6b7280',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    whiteSpace: 'nowrap',
+                    transition: 'color 0.15s',
+                    marginBottom: -1,
+                  }}
+                >
+                  {f.label} {count > 0 && <span style={{ color: active ? '#2a5298' : '#9ca3af', fontSize: '0.78rem' }}>({count})</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── Content ── */}
+        {loading ? (
+          /* Skeleton */
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4 }}>
+            {[1, 2, 3].map(i => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '88px 1fr', gap: 16, padding: 20, borderBottom: i < 3 ? '1px solid #e5e7eb' : 'none' }}>
+                <div style={{ height: 88, background: '#f0f0f0', borderRadius: 4, animation: 'hk-skel 1.4s ease-in-out infinite' }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ height: 16, width: '60%', background: '#f0f0f0', borderRadius: 4, animation: 'hk-skel 1.4s ease-in-out infinite' }} />
+                  <div style={{ height: 12, width: '40%', background: '#f0f0f0', borderRadius: 4, animation: 'hk-skel 1.4s ease-in-out infinite' }} />
+                  <div style={{ height: 6, width: '100%', background: '#f0f0f0', borderRadius: 99, animation: 'hk-skel 1.4s ease-in-out infinite' }} />
+                </div>
+              </div>
+            ))}
+            <style>{`@keyframes hk-skel{0%,100%{opacity:1}50%{opacity:0.45}}`}</style>
+          </div>
+        ) : mine.length === 0 ? (
+          /* Empty */
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '60px 40px', textAlign: 'center' }}>
+            <div style={{ fontSize: '3.5rem', marginBottom: 16 }}>🤝</div>
+            <h2 style={{ fontWeight: 700, color: '#0f1111', marginBottom: 8, fontSize: '1.1rem' }}>No group deals yet</h2>
+            <p style={{ color: '#6b7280', fontSize: '0.88rem', marginBottom: 24, maxWidth: 340, margin: '0 auto 24px' }}>
+              Join a group deal on any product page and track your savings progress right here.
+            </p>
+            <button
+              onClick={() => navigate('/products')}
+              style={{ padding: '10px 28px', background: '#f0c14b', border: '1px solid #a88734', borderRadius: 4, fontWeight: 700, color: '#111', fontSize: '0.9rem', cursor: 'pointer' }}
+            >
+              Browse Products
+            </button>
+          </div>
+        ) : filtered.length === 0 ? (
+          /* Empty filtered */
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '0 0 4px 4px', padding: '40px', textAlign: 'center' }}>
+            <p style={{ color: '#6b7280', fontSize: '0.9rem' }}>No {filter.toLowerCase()} deals found.</p>
+          </div>
+        ) : (
+          /* Campaign list */
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: mine.length > 0 ? '0 0 4px 4px' : 4, overflow: 'hidden' }}>
+            {/* List header */}
+            <div style={{ padding: '10px 20px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.78rem', color: '#6b7280', fontWeight: 500 }}>
+                {filtered.length} deal{filtered.length !== 1 ? 's' : ''}
+              </span>
+              <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                More members joined = lower price for you
+              </span>
             </div>
-      ) : (
-        mine.length === 0
-          ? <div className="empty-state"><div className="icon">🎯</div><h3>No campaigns joined yet</h3><p>Join a campaign for group buy discounts!</p></div>
-          : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(400px,1fr))', gap: 12 }}>
-              {mine.map(m => {
-                const [imgFailed, setImgFailed] = [false, () => {}]; // static fallback for my-campaigns
-                const imgSrc = resolveImg(m.image_url);
-                const pct    = Math.min(100, Math.round((m.current_hold / m.target) * 100));
-                const isActive = m.campaignStatus === 'ACTIVE';
-                return (
-                  <div key={m.id} style={{
-                    background: '#fff', borderRadius: 12, overflow: 'hidden',
-                    boxShadow: '0 2px 10px rgba(0,0,0,0.07)', border: '1.5px solid #e5e7eb', display: 'flex',
-                  }}>
-                    <div style={{ width: 100, minHeight: 100, flexShrink: 0, background: '#f7f8fa' }}>
-                      {imgSrc
-                        ? <img src={imgSrc} alt={m.product_name}
-                            onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', minHeight: 100 }} />
-                        : null}
-                      <NoImage />
-                    </div>
-                    <div style={{ flex: 1, padding: '11px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1f2937' }}>{m.product_name}</span>
-                        <span className={`badge badge-${m.campaignStatus === 'COMPLETED' ? 'green' : 'blue'}`} style={{ fontSize: '0.65rem' }}>{m.campaignStatus}</span>
-                      </div>
-                      <span style={{ fontWeight: 800, color: '#1e3c72', fontSize: '0.92rem' }}>₹{Number(m.hold_price).toLocaleString()}</span>
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: '#6b7280', marginBottom: 3 }}>
-                          <span>{m.current_hold} / {m.target} joined</span><span style={{ fontWeight: 600 }}>{pct}%</span>
-                        </div>
-                        <div style={{ background: '#e5e7eb', borderRadius: 99, height: 4 }}>
-                          <div style={{ width: pct + '%', height: '100%', background: pct >= 100 ? '#16a34a' : '#2a5298', borderRadius: 99 }} />
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.68rem', color: '#9ca3af' }}>Joined {new Date(m.joined_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
-                        {isActive && (
-                          <button onClick={() => handleLeave(m.campaign_id)} disabled={leaving === m.campaign_id}
-                            style={{ background: 'transparent', color: '#dc2626', border: '1.5px solid #fca5a5', borderRadius: 6, padding: '3px 10px', fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer' }}>
-                            {leaving === m.campaign_id ? 'Leaving…' : '✕ Leave'}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+
+            {filtered.map((item, idx) => (
+              <CampaignRow
+                key={String(item.campaign_id || item.campaignRowId || item.id || idx).split(':')[0]}
+                item={item}
+                leaving={leaving}
+                onLeave={handleLeave}
+              />
+            ))}
+
+            {/* Footer CTA */}
+            <div style={{ padding: '16px 20px', background: '#f9fafb', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.78rem', color: '#6b7280' }}>Want more savings?</span>
+              <button
+                onClick={() => navigate('/products')}
+                style={{ padding: '7px 18px', background: '#2a5298', border: 'none', borderRadius: 4, color: '#fff', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                Join More Deals →
+              </button>
             </div>
-      )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
