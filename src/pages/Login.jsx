@@ -22,7 +22,7 @@ export default function Login() {
       const data = await authService.login(form);
       loginCustomer(data);
       toast.success('Welcome back, ' + data.customer.name + '!');
-      navigate('/dashboard');
+      navigate('/home');
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Login failed. Check your credentials.');
     } finally {
