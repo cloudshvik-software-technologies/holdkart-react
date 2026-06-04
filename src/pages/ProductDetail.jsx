@@ -556,6 +556,10 @@ export default function ProductDetail() {
   const [tab, setTab]           = useState('desc');
   const [reviewForm, setReviewForm]         = useState({ rating: 5, comment: '' });
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [canWriteReview, setCanWriteReview]     = useState(false);   // true only if customer has purchased this product
+  const [reviewImages, setReviewImages]         = useState([]);      // File objects chosen by user
+  const [reviewImagePreviews, setReviewImagePreviews] = useState([]); // data-URL previews
+  const fileInputRef = useRef(null);
 
   const [activeCampaign, setActiveCampaign] = useState(null);
   const [hasJoined, setHasJoined]           = useState(false);
@@ -648,10 +652,17 @@ export default function ProductDetail() {
       try {
         const p = await loadProduct();
         await loadCampaignStatus(p);
+        // Check if the current customer has purchased this product (for review eligibility)
+        if (isAuthenticated) {
+          try {
+            const { data } = await reviewService.canReview(p.productId);
+            setCanWriteReview(data?.canReview === true);
+          } catch { setCanWriteReview(false); }
+        }
       } catch { toast.error('Product not found'); navigate('/products'); }
       finally { setLoading(false); }
     })();
-  }, [id]);
+  }, [id, isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated || !product) return;
@@ -776,16 +787,40 @@ export default function ProductDetail() {
     finally { setJoinLoading(false); }
   };
 
+  const handleReviewImageChange = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    const combined = [...reviewImages, ...files].slice(0, 5); // max 5
+    setReviewImages(combined);
+    const previews = combined.map(f => URL.createObjectURL(f));
+    setReviewImagePreviews(previews);
+  };
+
+  const removeReviewImage = (index) => {
+    const newFiles = reviewImages.filter((_, i) => i !== index);
+    const newPreviews = reviewImagePreviews.filter((_, i) => i !== index);
+    setReviewImages(newFiles);
+    setReviewImagePreviews(newPreviews);
+  };
+
   const handleReviewSubmit = async (e) => {
     e.preventDefault();
     if (!isAuthenticated) { toast.error('Please sign in to submit a review'); navigate('/login'); return; }
+    if (!canWriteReview) { toast.error('Only customers who have purchased this product can write a review.'); return; }
     setSubmittingReview(true);
     try {
-      await reviewService.addReview({ productId: product.productId, ...reviewForm });
+      const formData = new FormData();
+      formData.append('productId', product.productId);
+      formData.append('rating', reviewForm.rating);
+      formData.append('comment', reviewForm.comment);
+      reviewImages.forEach(img => formData.append('reviewImages', img));
+      await reviewService.addReview(formData);
       toast.success('Review submitted!');
       const r = await reviewService.getProductReviews(id);
       setReviews(Array.isArray(r) ? r : []);
       setReviewForm({ rating: 5, comment: '' });
+      setReviewImages([]);
+      setReviewImagePreviews([]);
     } catch(e) { toast.error(e?.response?.data?.message || 'Failed'); }
     finally { setSubmittingReview(false); }
   };
@@ -1119,38 +1154,91 @@ export default function ProductDetail() {
                 </div>
               )}
 
-              {isAuthenticated && (
-                <div style={{ ...S.reviewCard, marginBottom: 24, background: '#fafbfc' }}>
-                  <h3 style={{ fontWeight: 700, marginBottom: 14, fontSize: '0.95rem' }}>Write a Customer Review</h3>
+              {/* Review form — only for customers who purchased this product */}
+              {isAuthenticated && canWriteReview && (
+                <div style={{ ...S.reviewCard, marginBottom: 24, background: '#fafbfc', border: '1px solid #e0e7ff' }}>
+                  <h3 style={{ fontWeight: 700, marginBottom: 4, fontSize: '0.95rem', color: '#0f1111' }}>Write a Review</h3>
+                  <p style={{ fontSize: '0.78rem', color: '#6b7280', marginBottom: 14 }}>
+                    ✅ Verified Purchase — you can review this product
+                  </p>
                   <form onSubmit={handleReviewSubmit}>
-                    <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
-                      {[1,2,3,4,5].map(s => (
-                        <button type="button" key={s} onClick={() => setReviewForm(p => ({ ...p, rating: s }))}
-                          style={{ fontSize: '1.6rem', background: 'none', border: 'none', cursor: 'pointer',
-                            color: s <= reviewForm.rating ? '#f0a500' : '#d1d5db', transition: 'color 0.1s' }}>
-                          ★
-                        </button>
-                      ))}
-                    </div>
+                    {/* Star rating */}
                     <div style={{ marginBottom: 12 }}>
+                      <p style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Your Rating</p>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {[1,2,3,4,5].map(s => (
+                          <button type="button" key={s} onClick={() => setReviewForm(p => ({ ...p, rating: s }))}
+                            style={{ fontSize: '1.8rem', background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px',
+                              color: s <= reviewForm.rating ? '#f0a500' : '#d1d5db', transition: 'color 0.1s' }}>
+                            ★
+                          </button>
+                        ))}
+                        <span style={{ marginLeft: 8, fontSize: '0.82rem', color: '#6b7280', alignSelf: 'center' }}>
+                          {['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'][reviewForm.rating]}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Comment */}
+                    <div style={{ marginBottom: 12 }}>
+                      <p style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Your Review</p>
                       <textarea
                         rows={3}
-                        placeholder="Share your experience with this product…"
+                        placeholder="Share your experience with this product — what did you like or dislike?"
                         value={reviewForm.comment}
                         onChange={e => setReviewForm(p => ({ ...p, comment: e.target.value }))}
                         style={{ width: '100%', padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: 6,
-                          fontSize: '0.9rem', resize: 'vertical', outline: 'none', fontFamily: 'inherit' }}
+                          fontSize: '0.9rem', resize: 'vertical', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
                       />
                     </div>
+
+                    {/* Image upload — Flipkart-style */}
+                    <div style={{ marginBottom: 16 }}>
+                      <p style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                        Add Photos <span style={{ fontWeight: 400, color: '#9ca3af' }}>(up to 5)</span>
+                      </p>
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                        {reviewImagePreviews.map((src, idx) => (
+                          <div key={idx} style={{ position: 'relative', width: 72, height: 72, borderRadius: 6, overflow: 'hidden', border: '1px solid #e5e7eb' }}>
+                            <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <button type="button" onClick={() => removeReviewImage(idx)}
+                              style={{ position: 'absolute', top: 2, right: 2, width: 18, height: 18,
+                                background: 'rgba(0,0,0,0.55)', color: '#fff', border: 'none', borderRadius: '50%',
+                                fontSize: '0.65rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                        {reviewImages.length < 5 && (
+                          <button type="button" onClick={() => fileInputRef.current?.click()}
+                            style={{ width: 72, height: 72, border: '1.5px dashed #a0aec0', borderRadius: 6, background: '#f9fafb',
+                              cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: '#6b7280' }}>
+                            <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>📷</span>
+                            <span style={{ fontSize: '0.65rem' }}>Add Photo</span>
+                          </button>
+                        )}
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          style={{ display: 'none' }}
+                          onChange={handleReviewImageChange}
+                        />
+                      </div>
+                    </div>
+
                     <button type="submit"
-                      style={{ padding: '8px 20px', background: '#f0c14b', border: '1px solid #a88734',
-                        borderRadius: 20, fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
+                      style={{ padding: '9px 24px', background: '#f0c14b', border: '1px solid #a88734',
+                        borderRadius: 20, fontWeight: 700, fontSize: '0.88rem', cursor: submittingReview ? 'not-allowed' : 'pointer',
+                        opacity: submittingReview ? 0.7 : 1 }}
                       disabled={submittingReview}>
                       {submittingReview ? 'Submitting…' : 'Submit Review'}
                     </button>
                   </form>
                 </div>
               )}
+
 
               {reviews.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '40px 20px', color: '#6b7280' }}>
@@ -1172,6 +1260,19 @@ export default function ProductDetail() {
                     </span>
                   </div>
                   <p style={{ color: '#374151', fontSize: '0.88rem', lineHeight: 1.7, marginTop: 8 }}>{r.comment}</p>
+                  {/* Review images */}
+                  {r.images && r.images.length > 0 && (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+                      {r.images.map((imgPath, imgIdx) => (
+                        <a key={imgIdx} href={imgPath} target="_blank" rel="noreferrer"
+                          style={{ display: 'block', width: 72, height: 72, borderRadius: 6, overflow: 'hidden', border: '1px solid #e5e7eb', flexShrink: 0 }}>
+                          <img src={imgPath} alt={`Review photo ${imgIdx + 1}`}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            onError={e => { e.target.style.display = 'none'; }} />
+                        </a>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
