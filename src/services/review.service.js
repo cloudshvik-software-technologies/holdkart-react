@@ -11,3 +11,5 @@ export const addReview         = (data)       => {
   return api.post('/api/customer/review/add', data);
 };
 export const getProductReviews = (id)         => api.get(`/api/customer/review/list/${id}`);
+export const getMyReview       = (orderId)    => api.get(`/api/customer/review/my-review/${orderId}`);
+export const deleteReview      = (reviewId)   => api.delete(`/api/customer/review/${reviewId}`);

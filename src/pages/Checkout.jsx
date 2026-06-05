@@ -131,6 +131,7 @@ export default function Checkout() {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
+  const [showFeeTooltip, setShowFeeTooltip] = useState(false);
   const [address, setAddress] = useState({
     address: '', city: '', state: '', pincode: '', paymentMethod: 'COD',
   });
@@ -180,14 +181,18 @@ export default function Checkout() {
      Never derive from current cart quantity — that may differ from slots joined.      */
   const totalPrepaid = cart.reduce((s, i) => s + (i.depositPaid || 0), 0);
 
-  const shipping     = subtotalEff > 499 ? 0 : 49;
-  const total        = Math.max(0, subtotalEff - totalPrepaid + shipping);
+  const deliveryCharge    = 0;   // free delivery
+  const paymentHandlingFee = 9;   // Payment Handling Fee
+  const protectPromiseFee  = 0;   // Protect Promise Fee
+  const platformFee        = 7;   // Platform fee
+  const totalFees          = paymentHandlingFee + platformFee + protectPromiseFee;
+  const total = Math.max(0, subtotalEff - totalPrepaid + deliveryCharge + totalFees);
   const itemCount    = cart.reduce((s, i) => s + i.quantity, 0);
 
   /* ── COD ── */
   const placeCOD = async () => {
     const items = cart.map(i => ({ productId: i.productId, quantity: i.quantity }));
-    await orderService.placeOrder({ items, ...address });
+    await orderService.placeOrder({ items, ...address, deliveryCharge, platformFee, paymentHandlingFee, protectPromiseFee });
     toast.success('Order placed successfully!');
     navigate('/orders');
   };
@@ -232,7 +237,7 @@ export default function Checkout() {
         try {
           await paymentService.verifyPayment({ orderId: cfOrder.orderId });
           const items = cart.map(i => ({ productId: i.productId, quantity: i.quantity }));
-          await orderService.placeOrder({ items, ...address, paymentId: cfOrder.orderId });
+          await orderService.placeOrder({ items, ...address, paymentId: cfOrder.orderId, deliveryCharge, platformFee, paymentHandlingFee, protectPromiseFee });
           toast.success('Payment successful! Order placed.');
           navigate('/orders');
           resolve();
@@ -599,18 +604,30 @@ export default function Checkout() {
                     </div>
                   )}
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#374151', marginBottom: 12 }}>
-                    <span>Delivery</span>
-                    <span style={{ color: shipping === 0 ? '#007600' : '#374151', fontWeight: shipping === 0 ? 600 : 400 }}>
-                      {shipping === 0 ? 'FREE' : `₹${shipping}`}
-                    </span>
-                  </div>
-
-                  {shipping === 0 && (
-                    <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 4, padding: '6px 10px', fontSize: '0.72rem', color: '#15803d', fontWeight: 600, marginBottom: 12 }}>
-                      ✓ Free delivery on orders above ₹499
+                  {/* Total Fees — expandable */}
+                  <div style={{ marginBottom: 6 }}>
+                    <div
+                      style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#374151', cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => setShowFeeTooltip(v => !v)}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        Total fees <span style={{ fontSize: '0.75rem' }}>{showFeeTooltip ? '∧' : '∨'}</span>
+                      </span>
+                      <span style={{ fontWeight: 600 }}>₹{totalFees}</span>
                     </div>
-                  )}
+                    {showFeeTooltip && (
+                      <div style={{ paddingLeft: 12, marginTop: 4 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#6b7280', marginBottom: 3 }}>
+                          <span style={{ borderBottom: '1px dotted #9ca3af' }}>Payment Handling Fee</span>
+                          <span>₹{paymentHandlingFee}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#6b7280' }}>
+                          <span style={{ borderBottom: '1px dotted #9ca3af' }}>Platform fee</span>
+                          <span>₹{platformFee}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1.05rem', color: '#0f1111' }}>
                     <span>{totalPrepaid > 0 ? 'Amount Due at Checkout' : 'Order Total'}</span>

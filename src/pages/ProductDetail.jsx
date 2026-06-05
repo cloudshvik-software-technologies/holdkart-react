@@ -9,6 +9,15 @@ import toast from 'react-hot-toast';
 const FALLBACK_IMG =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='400' viewBox='0 0 600 400'%3E%3Crect width='600' height='400' fill='%23f0f4f8'/%3E%3Crect x='220' y='110' width='160' height='130' rx='14' fill='%23d1d9e6'/%3E%3Ccircle cx='300' cy='148' r='26' fill='%23a0aec0'/%3E%3Cpath d='M230 235 Q300 165 370 235Z' fill='%23a0aec0'/%3E%3Ctext x='300' y='315' text-anchor='middle' font-family='sans-serif' font-size='18' fill='%2394a3b8'%3ENo Image%3C/text%3E%3C/svg%3E";
 
+const CUSTOMER_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081';
+
+// Review images are served by the customer backend under /uploads/reviews/
+function resolveReviewImg(path) {
+  if (!path) return '';
+  if (path.startsWith('http')) return path;
+  return CUSTOMER_URL + (path.startsWith('/') ? path : '/' + path);
+}
+
 function resolveSellerImg(url) {
   if (!url) return FALLBACK_IMG;
   if (url.startsWith('http')) return url;
@@ -549,8 +558,9 @@ export default function ProductDetail() {
   const { isAuthenticated } = useAuth();
 
   const [product, setProduct]   = useState(null);
-  const [reviews, setReviews]   = useState([]);
-  const [mainImg, setMainImg]   = useState('');
+  const [reviews, setReviews]         = useState([]);
+  const [showAllReviews, setShowAllReviews] = useState(false);
+  const [mainImg, setMainImg]         = useState('');
   const [qty, setQty]           = useState(1);
   const [loading, setLoading]   = useState(true);
   const [tab, setTab]           = useState('desc');
@@ -567,6 +577,7 @@ export default function ProductDetail() {
   const [localHold, setLocalHold]           = useState(0);
   const [showJoinModal, setShowJoinModal]   = useState(false);
   const [isAddMore, setIsAddMore]           = useState(false);
+  const [campaignPaused, setCampaignPaused] = useState(false); // true when seller has paused the campaign
   const pollRef                             = useRef(null);
 
   // Poll campaign status every 4s while user has joined — redirect all participants when deal completes
@@ -633,13 +644,21 @@ export default function ProductDetail() {
         : null;
       setActiveCampaign(campaign || null);
       if (campaign) setLocalHold(campaign.current_hold);
+
+      // Check if this product's campaign is paused
+      try {
+        const statusRes = await campaignService.getProductCampaignStatus(p.productId);
+        const status = statusRes?.status || statusRes?.data?.status || null;
+        setCampaignPaused(status === 'PAUSED');
+      } catch { setCampaignPaused(false); }
+
       if (isAuthenticated) {
         const mine   = await campaignService.getMyCampaigns();
         const joined = Array.isArray(mine)
-          ? mine.some(m => Number(m.product_id) === Number(p.productId) && m.campaignStatus === 'ACTIVE')
+          ? mine.some(m => Number(m.product_id) === Number(p.productId) && (m.campaignStatus === 'ACTIVE' || m.campaignStatus === 'PAUSED'))
           : false;
         setHasJoined(joined);
-        // Start polling for all users who are already in the deal
+        // Start polling for all users who are already in the deal (only when ACTIVE)
         if (joined && campaign) startPolling(p.productId, p.holdTarget);
       }
     } catch {
@@ -669,7 +688,7 @@ export default function ProductDetail() {
     campaignService.getMyCampaigns().then(mine => {
       if (Array.isArray(mine)) {
         const joined = mine.some(
-          m => Number(m.product_id) === Number(product.productId) && m.campaignStatus === 'ACTIVE'
+          m => Number(m.product_id) === Number(product.productId) && (m.campaignStatus === 'ACTIVE' || m.campaignStatus === 'PAUSED')
         );
         setHasJoined(joined);
       }
@@ -843,7 +862,9 @@ export default function ProductDetail() {
   const displayPrice = hasGroupBuy && discountPct > 0
     ? Math.round(product.retailPrice * (1 - discountPct / 100))
     : product.retailPrice;
-  const inStock      = product.stock > 0;
+  // If the campaign is PAUSED, treat product as out of stock for all customers.
+  // (Existing holders can view the page but cannot buy.)
+  const inStock      = product.stock > 0 && !campaignPaused;
   const maxDiscountPct = hasGroupBuy ? product.holdTarget : 0;
   const bestGroupPrice = hasGroupBuy
     ? Math.round(product.retailPrice * (1 - maxDiscountPct / 100))
@@ -1023,8 +1044,13 @@ export default function ProductDetail() {
             <div style={S.divider} />
 
             <p style={S.stockStatus(inStock)}>
-              {inStock ? 'In Stock' : 'Currently Unavailable'}
+              {inStock ? 'In Stock' : campaignPaused ? 'Out of Stock' : 'Currently Unavailable'}
             </p>
+            {campaignPaused && (
+              <p style={{ fontSize: '0.78rem', color: '#b45309', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 4, padding: '8px 12px', marginBottom: 10 }}>
+                This campaign is temporarily paused. New purchases are unavailable right now.
+              </p>
+            )}
 
             {inStock && (
               <>
@@ -1246,35 +1272,53 @@ export default function ProductDetail() {
                   <h3 style={{ fontWeight: 700, marginBottom: 4 }}>No reviews yet</h3>
                   <p style={{ fontSize: '0.88rem' }}>Be the first to review this product</p>
                 </div>
-              ) : reviews.map(r => (
-                <div key={r.id} style={S.reviewCard}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f1111', marginBottom: 4 }}>
-                        {r.customerName || 'Customer'}
+              ) : (
+                <>
+                  {(showAllReviews ? reviews : reviews.slice(0, 2)).map(r => (
+                    <div key={r.id} style={S.reviewCard}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f1111', marginBottom: 4 }}>
+                            {r.customerName || 'Customer'}
+                          </div>
+                          <StarRating rating={r.rating} size="0.85rem" />
+                        </div>
+                        <span style={{ color: '#6b7280', fontSize: '0.78rem' }}>
+                          {new Date(r.created_date).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}
+                        </span>
                       </div>
-                      <StarRating rating={r.rating} size="0.85rem" />
+                      <p style={{ color: '#374151', fontSize: '0.88rem', lineHeight: 1.7, marginTop: 8 }}>{r.comment}</p>
+                      {/* Review images */}
+                      {r.images && r.images.length > 0 && (
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+                          {r.images.map((imgPath, imgIdx) => (
+                            <a key={imgIdx} href={resolveReviewImg(imgPath)} target="_blank" rel="noreferrer"
+                              style={{ display: 'block', width: 72, height: 72, borderRadius: 6, overflow: 'hidden', border: '1px solid #e5e7eb', flexShrink: 0 }}>
+                              <img src={resolveReviewImg(imgPath)} alt={`Review photo ${imgIdx + 1}`}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                onError={e => { e.target.style.display = 'none'; }} />
+                            </a>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <span style={{ color: '#6b7280', fontSize: '0.78rem' }}>
-                      {new Date(r.created_date).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}
-                    </span>
-                  </div>
-                  <p style={{ color: '#374151', fontSize: '0.88rem', lineHeight: 1.7, marginTop: 8 }}>{r.comment}</p>
-                  {/* Review images */}
-                  {r.images && r.images.length > 0 && (
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-                      {r.images.map((imgPath, imgIdx) => (
-                        <a key={imgIdx} href={imgPath} target="_blank" rel="noreferrer"
-                          style={{ display: 'block', width: 72, height: 72, borderRadius: 6, overflow: 'hidden', border: '1px solid #e5e7eb', flexShrink: 0 }}>
-                          <img src={imgPath} alt={`Review photo ${imgIdx + 1}`}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                            onError={e => { e.target.style.display = 'none'; }} />
-                        </a>
-                      ))}
+                  ))}
+                  {reviews.length > 2 && (
+                    <div style={{ textAlign: 'center', marginTop: 8, paddingTop: 16, borderTop: '1px solid #f0f0f0' }}>
+                      <button
+                        onClick={() => setShowAllReviews(p => !p)}
+                        style={{
+                          background: 'none', border: '1.5px solid #e47911', borderRadius: 20,
+                          color: '#e47911', fontWeight: 700, fontSize: '0.88rem',
+                          padding: '8px 28px', cursor: 'pointer', fontFamily: 'inherit',
+                        }}
+                      >
+                        {showAllReviews ? 'Show less' : `See all ${reviews.length} reviews`}
+                      </button>
                     </div>
                   )}
-                </div>
-              ))}
+                </>
+              )}
             </div>
           )}
         </div>
