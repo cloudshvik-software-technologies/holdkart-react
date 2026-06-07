@@ -53,18 +53,23 @@ const CITIES_BY_STATE = {
   'Puducherry': ['Puducherry','Karaikal','Mahe','Yanam'],
 };
 
-const RAZORPAY_KEY = import.meta.env.VITE_RAZORPAY_KEY_ID || '';
-
-function loadRazorpayScript() {
-  return new Promise((resolve) => {
-    if (window.Razorpay) { resolve(true); return; }
+// Preload Cashfree SDK immediately when this module is imported —
+// by the time the user fills out the form and clicks Pay, it will already be ready.
+let cashfreeScriptPromise = null;
+function loadCashfreeScript() {
+  if (window.Cashfree) return Promise.resolve(true);
+  if (cashfreeScriptPromise) return cashfreeScriptPromise;
+  cashfreeScriptPromise = new Promise((resolve) => {
     const s = document.createElement('script');
-    s.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    s.onload = () => resolve(true);
+    s.src = 'https://sdk.cashfree.com/js/v3/cashfree.js';
+    s.onload  = () => resolve(true);
     s.onerror = () => resolve(false);
     document.body.appendChild(s);
   });
+  return cashfreeScriptPromise;
 }
+// Kick off the load right away (fire-and-forget)
+loadCashfreeScript();
 
 const FALLBACK_IMG =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Crect width='80' height='80' fill='%23f0f4f8'/%3E%3Ccircle cx='40' cy='30' r='12' fill='%23d1d9e6'/%3E%3Cpath d='M18 65 Q40 45 62 65Z' fill='%23d1d9e6'/%3E%3C/svg%3E";
@@ -126,6 +131,7 @@ export default function Checkout() {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
+  const [showFeeTooltip, setShowFeeTooltip] = useState(false);
   const [address, setAddress] = useState({
     address: '', city: '', state: '', pincode: '', paymentMethod: 'COD',
   });
@@ -175,54 +181,70 @@ export default function Checkout() {
      Never derive from current cart quantity — that may differ from slots joined.      */
   const totalPrepaid = cart.reduce((s, i) => s + (i.depositPaid || 0), 0);
 
-  const shipping     = subtotalEff > 499 ? 0 : 49;
-  const total        = Math.max(0, subtotalEff - totalPrepaid + shipping);
+  const deliveryCharge    = 0;   // free delivery
+  const paymentHandlingFee = 9;   // Payment Handling Fee
+  const protectPromiseFee  = 0;   // Protect Promise Fee
+  const platformFee        = 7;   // Platform fee
+  const totalFees          = paymentHandlingFee + platformFee + protectPromiseFee;
+  const total = Math.max(0, subtotalEff - totalPrepaid + deliveryCharge + totalFees);
   const itemCount    = cart.reduce((s, i) => s + i.quantity, 0);
 
   /* ── COD ── */
   const placeCOD = async () => {
     const items = cart.map(i => ({ productId: i.productId, quantity: i.quantity }));
-    await orderService.placeOrder({ items, ...address });
+    await orderService.placeOrder({ items, ...address, deliveryCharge, platformFee, paymentHandlingFee, protectPromiseFee });
     toast.success('Order placed successfully!');
     navigate('/orders');
   };
 
-  /* ── Razorpay ── */
+  /* ── Cashfree ── */
   const placeOnline = async () => {
-    const loaded = await loadRazorpayScript();
-    if (!loaded) { toast.error('Razorpay failed to load. Try COD.'); return; }
-    const rzOrder = await paymentService.createRazorpayOrder({ amount: total });
+    // SDK was preloaded at page mount; this resolves instantly in the normal case
+    const loaded = await loadCashfreeScript();
+    if (!loaded) { toast.error('Payment SDK failed to load. Please try COD.'); return; }
+
+    // Create order on server — returns orderId + paymentSessionId
+    const cfOrder = await paymentService.createCashfreeOrder({
+      amount: total,
+      currency: 'INR',
+      customerInfo: {
+        customerId: customer?.id   ? String(customer.id) : 'cust_' + Date.now(),
+        name:       customer?.name  || 'HoldKart Customer',
+        email:      customer?.email || 'customer@holdkart.com',
+        phone:      profile?.mobile || '9999999999',
+      },
+    });
+
+    // Initialise Cashfree JS SDK (sandbox mode)
+    const cashfree = window.Cashfree({ mode: 'sandbox' });
+
     await new Promise((resolve, reject) => {
-      const options = {
-        key:         rzOrder.keyId || RAZORPAY_KEY,
-        amount:      rzOrder.amount,
-        currency:    rzOrder.currency || 'INR',
-        name:        'HoldKart',
-        description: 'Order Payment',
-        order_id:    rzOrder.orderId,
-        prefill: {
-          name:    customer?.name  || '',
-          email:   customer?.email || '',
-          contact: profile?.mobile || '',
-        },
-        theme: { color: '#2a5298' },
-        handler: async (response) => {
-          try {
-            await paymentService.verifyPayment({
-              razorpay_order_id:   response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature:  response.razorpay_signature,
-            });
-            const items = cart.map(i => ({ productId: i.productId, quantity: i.quantity }));
-            await orderService.placeOrder({ items, ...address, paymentId: response.razorpay_payment_id });
-            toast.success('Payment successful! Order placed.');
-            navigate('/orders');
-            resolve();
-          } catch (err) { reject(err); }
-        },
-        modal: { ondismiss: () => reject(new Error('Payment cancelled')) },
-      };
-      new window.Razorpay(options).open();
+      cashfree.checkout({
+        paymentSessionId: cfOrder.paymentSessionId,
+        redirectTarget:   '_modal',   // opens a modal inside the page
+      }).then(async (result) => {
+        if (result.error) {
+          // User closed or there was a payment error
+          if (result.error.message === 'User closed the checkout') {
+            reject(new Error('Payment cancelled'));
+          } else {
+            reject(new Error(result.error.message || 'Payment failed'));
+          }
+          return;
+        }
+
+        // Payment attempted — verify with server
+        try {
+          await paymentService.verifyPayment({ orderId: cfOrder.orderId });
+          const items = cart.map(i => ({ productId: i.productId, quantity: i.quantity }));
+          await orderService.placeOrder({ items, ...address, paymentId: cfOrder.orderId, deliveryCharge, platformFee, paymentHandlingFee, protectPromiseFee });
+          toast.success('Payment successful! Order placed.');
+          navigate('/orders');
+          resolve();
+        } catch (err) { reject(err); }
+      }).catch((err) => {
+        reject(new Error(err?.message || 'Payment failed'));
+      });
     });
   };
 
@@ -399,7 +421,7 @@ export default function Checkout() {
                     {
                       val: 'Online', icon: '💳',
                       label: 'Pay Online',
-                      sub: 'UPI · Credit/Debit Card · Net Banking · Wallets',
+                      sub: 'UPI · Credit/Debit Card · Net Banking · Wallets via Cashfree',
                       badge: 'Instant confirmation',
                     },
                   ].map(({ val, icon, label, sub, badge }) => {
@@ -514,9 +536,9 @@ export default function Checkout() {
                 }}
               >
                 {placing
-                  ? (address.paymentMethod === 'Online' ? 'Opening Razorpay…' : 'Placing Order…')
+                  ? (address.paymentMethod === 'Online' ? 'Opening Cashfree…' : 'Placing Order…')
                   : address.paymentMethod === 'Online'
-                    ? `💳 Pay ₹${total.toLocaleString('en-IN')} via Razorpay`
+                    ? `💳 Pay ₹${total.toLocaleString('en-IN')} via Cashfree`
                     : `📦 Place Order — ₹${total.toLocaleString('en-IN')} (Pay on Delivery)`
                 }
               </button>
@@ -582,18 +604,30 @@ export default function Checkout() {
                     </div>
                   )}
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#374151', marginBottom: 12 }}>
-                    <span>Delivery</span>
-                    <span style={{ color: shipping === 0 ? '#007600' : '#374151', fontWeight: shipping === 0 ? 600 : 400 }}>
-                      {shipping === 0 ? 'FREE' : `₹${shipping}`}
-                    </span>
-                  </div>
-
-                  {shipping === 0 && (
-                    <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 4, padding: '6px 10px', fontSize: '0.72rem', color: '#15803d', fontWeight: 600, marginBottom: 12 }}>
-                      ✓ Free delivery on orders above ₹499
+                  {/* Total Fees — expandable */}
+                  <div style={{ marginBottom: 6 }}>
+                    <div
+                      style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#374151', cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => setShowFeeTooltip(v => !v)}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        Total fees <span style={{ fontSize: '0.75rem' }}>{showFeeTooltip ? '∧' : '∨'}</span>
+                      </span>
+                      <span style={{ fontWeight: 600 }}>₹{totalFees}</span>
                     </div>
-                  )}
+                    {showFeeTooltip && (
+                      <div style={{ paddingLeft: 12, marginTop: 4 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#6b7280', marginBottom: 3 }}>
+                          <span style={{ borderBottom: '1px dotted #9ca3af' }}>Payment Handling Fee</span>
+                          <span>₹{paymentHandlingFee}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#6b7280' }}>
+                          <span style={{ borderBottom: '1px dotted #9ca3af' }}>Platform fee</span>
+                          <span>₹{platformFee}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1.05rem', color: '#0f1111' }}>
                     <span>{totalPrepaid > 0 ? 'Amount Due at Checkout' : 'Order Total'}</span>
@@ -610,7 +644,7 @@ export default function Checkout() {
                   <div style={{ marginTop: 14, background: '#f4f6fa', borderRadius: 4, padding: '10px 12px', fontSize: '0.78rem', color: '#374151', display: 'flex', alignItems: 'center', gap: 8 }}>
                     {address.paymentMethod === 'COD'
                       ? <><span>💵</span><span>You pay <strong>₹{total.toLocaleString('en-IN')}</strong> on delivery</span></>
-                      : <><span>🔒</span><span>Secure payment via <strong>Razorpay</strong></span></>
+                      : <><span>🔒</span><span>Secure payment via <strong>Cashfree</strong></span></>
                     }
                   </div>
                 </div>

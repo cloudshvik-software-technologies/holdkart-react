@@ -616,8 +616,20 @@ export default function Home({ isGuest = false }) {
                     : holdPrice;
                   const pct          = target > 0 ? Math.min(100, Math.round((currentHold / target) * 100)) : 0;
                   const FALLBACK    = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'%3E%3Crect width='400' height='300' fill='%23f0f4f8'/%3E%3Crect x='140' y='90' width='120' height='90' rx='10' fill='%23d1d9e6'/%3E%3Ccircle cx='200' cy='115' r='18' fill='%23a0aec0'/%3E%3Cpath d='M155 175 Q200 130 245 175Z' fill='%23a0aec0'/%3E%3Ctext x='200' y='225' text-anchor='middle' font-family='sans-serif' font-size='14' fill='%2394a3b8'%3ENo Image%3C/text%3E%3C/svg%3E";
-                  const imgSrc      = c.image_url
-                    ? (c.image_url.startsWith('http') ? c.image_url : `/seller-uploads${c.image_url.startsWith('/') ? '' : '/'}${c.image_url}`)
+                  const _rawImg     = c.image_url;
+                  const _firstImg   = (() => {
+                    if (!_rawImg) return null;
+                    if (String(_rawImg).startsWith('[')) {
+                      try { return JSON.parse(_rawImg).filter(Boolean)[0] || _rawImg; } catch {}
+                    }
+                    return _rawImg;
+                  })();
+                  const imgSrc      = _firstImg
+                    ? (_firstImg.startsWith('http')
+                        ? _firstImg
+                        : _firstImg.startsWith('/uploads')
+                          ? _firstImg.replace('/uploads', '/seller-uploads')
+                          : `/seller-uploads${_firstImg.startsWith('/') ? '' : '/'}${_firstImg}`)
                     : FALLBACK;
                   const detailPath  = campaignId ? `/campaigns/${campaignId}` : '/campaigns';
 
@@ -640,7 +652,7 @@ export default function Home({ isGuest = false }) {
                       {/* Product image */}
                       <div style={{ background: '#f9fafb', overflow: 'hidden' }}>
                         <img src={imgSrc} alt={c.product_name} onError={e => { e.target.src = FALLBACK; }}
-                          style={{ width: '100%', height: 160, objectFit: 'cover', display: 'block' }} />
+                          style={{ width: '100%', height: 160, objectFit: 'contain', display: 'block' }} />
                       </div>
                       {/* Card body */}
                       <div style={{ padding: '8px 10px 10px', flex: 1, display: 'flex', flexDirection: 'column' }}>

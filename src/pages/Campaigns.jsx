@@ -9,14 +9,20 @@ const FALLBACK_IMG =
 
 function resolveImg(url) {
   if (!url) return FALLBACK_IMG;
-  if (url.startsWith('http')) return url;
-  return url.startsWith('/uploads')
-    ? url.replace('/uploads', '/seller-uploads')
-    : `/seller-uploads${url.startsWith('/') ? '' : '/'}${url}`;
+  // image_url may be a JSON array string: '["path1","path2"]'
+  let first = url;
+  if (String(url).startsWith('[')) {
+    try { first = JSON.parse(url).filter(Boolean)[0] || url; } catch {}
+  }
+  if (first.startsWith('http')) return first;
+  return first.startsWith('/uploads')
+    ? first.replace('/uploads', '/seller-uploads')
+    : `/seller-uploads${first.startsWith('/') ? '' : '/'}${first}`;
 }
 
 const STATUS_META = {
   ACTIVE:    { label: 'Active',    bg: '#dcfce7', color: '#15803d', dot: '#16a34a' },
+  PAUSED:    { label: 'Paused',    bg: '#fef3c7', color: '#92400e', dot: '#f59e0b' },
   COMPLETED: { label: 'Completed', bg: '#dbeafe', color: '#1e40af', dot: '#3b82f6' },
   CANCELLED: { label: 'Cancelled', bg: '#fee2e2', color: '#991b1b', dot: '#dc2626' },
 };
@@ -162,7 +168,12 @@ function CampaignRow({ item, leaving, onLeave }) {
           {joined_date && (
             <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Joined on {joined_date}</span>
           )}
-          {status === 'ACTIVE' && (
+          {status === 'PAUSED' && (
+            <span style={{ fontSize: '0.72rem', color: '#92400e', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 3, padding: '2px 8px' }}>
+              Campaign paused — purchases temporarily unavailable
+            </span>
+          )}
+          {(status === 'ACTIVE' || status === 'PAUSED') && (
             <button
               onClick={e => { e.stopPropagation(); onLeave(campaignId); }}
               disabled={leaving === campaignId}
@@ -228,6 +239,7 @@ export default function Campaigns() {
   const filters = [
     { key: 'ALL',       label: 'All' },
     { key: 'ACTIVE',    label: 'Active' },
+    { key: 'PAUSED',    label: 'Paused' },
     { key: 'COMPLETED', label: 'Completed' },
     { key: 'CANCELLED', label: 'Cancelled' },
   ];
