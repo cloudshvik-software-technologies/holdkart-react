@@ -1,97 +1,604 @@
 import { useState, useEffect } from 'react';
-  import { useParams, useNavigate } from 'react-router-dom';
-  import { orderService } from '../services/index.js';
-  import { useAuth } from '../context/AuthContext.jsx';
+import { useParams, useNavigate } from 'react-router-dom';
+import { orderService, reviewService } from '../services/index.js';
+import { useAuth } from '../context/AuthContext.jsx';
 
-  const statusColors = { Pending: 'amber', Confirmed: 'blue', Processing: 'blue', Shipped: 'blue', Delivered: 'green', Cancelled: 'red' };
+const fmtDate = (d, short = false) => {
+  if (!d) return '—';
+  const date = new Date(d);
+  if (short) return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+};
 
-  export default function OrderDetail() {
-    const { id } = useParams();
-    const { isAuthenticated } = useAuth();
-    const navigate = useNavigate();
-    const [order, setOrder] = useState(null);
-    const [loading, setLoading] = useState(true);
+/* Build a timeline of tracking steps from order data */
+const buildTimeline = (order) => {
+  const steps = [];
+  const status = order.order_status;
+  const created = order.created_date || order.created_at;
+  const statusFlow = ['Pending', 'Confirmed', 'Processing', 'Shipped', 'Delivered'];
+  const idx = statusFlow.indexOf(status);
 
-    useEffect(() => {
-      if (!isAuthenticated) { navigate('/login'); return; }
-      orderService.getOrder(id).then(setOrder).catch(() => navigate('/orders')).finally(() => setLoading(false));
-    }, [id, isAuthenticated]);
+  if (created) {
+    steps.push({ label: 'Order Confirmed', date: fmtDate(created, true), time: new Date(created).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }), done: true });
+  }
+  if (idx >= 3 || status === 'Shipped' || status === 'Delivered') {
+    steps.push({ label: 'Shipped', date: fmtDate(created, true), time: 'Via Courier', done: true });
+  }
+  if (status === 'Delivered') {
+    const deliveredDate = order.delivered_date || order.updated_at;
+    steps.push({ label: 'Out For Delivery', date: fmtDate(deliveredDate, true), time: '', done: true });
+    steps.push({ label: 'Delivered', date: fmtDate(deliveredDate, true), time: new Date(deliveredDate || created).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }), done: true });
+  }
+  return steps;
+};
 
-    if (loading) return <div className="page-wrap">Loading…</div>;
-    if (!order) return null;
+export default function OrderDetail() {
+  const { id } = useParams();
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+  const [order, setOrder] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [showUpdates, setShowUpdates] = useState(false);
+  const [feesOpen, setFeesOpen] = useState(false);
+  const [myReview, setMyReview] = useState(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [deletingReview, setDeletingReview] = useState(false);
 
-    const steps = ['Pending', 'Confirmed', 'Processing', 'Shipped', 'Delivered'];
-    const stepIdx = steps.indexOf(order.order_status);
+  const fetchMyReview = async (orderId) => {
+    setReviewLoading(true);
+    try {
+      const data = await reviewService.getMyReview(orderId);
+      setMyReview(data?.review || null);
+    } catch {
+      setMyReview(null);
+    } finally {
+      setReviewLoading(false);
+    }
+  };
 
-    return (
-      <div className="page-wrap">
-        <button onClick={() => navigate('/orders')} style={{ color: 'var(--blue)', fontWeight: 500, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', background: 'none', border: 'none', fontSize: '0.9rem' }}>← Back to Orders</button>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 24, alignItems: 'start' }}>
+  const handleDeleteReview = async () => {
+    if (!myReview || deletingReview) return;
+    if (!window.confirm('Are you sure you want to delete your review?')) return;
+    setDeletingReview(true);
+    try {
+      await reviewService.deleteReview(myReview.id);
+      setMyReview(null);
+    } catch {
+      alert('Failed to delete review. Please try again.');
+    } finally {
+      setDeletingReview(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isAuthenticated) { navigate('/login'); return; }
+    orderService.getOrder(id).then(ord => {
+      setOrder(ord);
+      if (ord?.order_status === 'Delivered') fetchMyReview(ord.id);
+    }).catch(() => navigate('/orders')).finally(() => setLoading(false));
+  }, [id, isAuthenticated]);
+
+  if (loading) return <div className="page-wrap">Loading…</div>;
+  if (!order) return null;
+
+  const timeline = buildTimeline(order);
+  const total = Number(order.order_amount) || 0;
+  const isCOD = (order.payment_method || '').toUpperCase().includes('COD') || (order.payment_method || '').toUpperCase().includes('CASH');
+  const handlingFee = 0;
+  const promiseFee = 0;
+  const basePrice = total;
+
+  const breadcrumb = [
+    { label: 'Home', path: '/home' },
+    { label: 'My Account', path: '/profile' },
+    { label: 'My Orders', path: '/orders' },
+    { label: order.order_number, path: null },
+  ];
+
+  return (
+    <>
+      <style>{`
+        .od-wrap {
+          padding: 100px 24px 60px;
+          max-width: 1060px;
+          margin: 0 auto;
+        }
+        .od-breadcrumb {
+          display: flex; align-items: center; gap: 6px;
+          font-size: 0.82rem; color: var(--muted);
+          margin-bottom: 20px; flex-wrap: wrap;
+        }
+        .od-breadcrumb a { color: var(--muted); cursor: pointer; }
+        .od-breadcrumb a:hover { color: var(--blue); }
+        .od-breadcrumb .sep { color: #d1d5db; }
+        .od-breadcrumb .cur { color: var(--text); font-weight: 500; }
+
+        .od-grid {
+          display: grid;
+          grid-template-columns: 1fr 320px;
+          gap: 20px;
+          align-items: start;
+        }
+        @media (max-width: 760px) {
+          .od-grid { grid-template-columns: 1fr; }
+        }
+
+        /* ── Left cards ── */
+        .od-card {
+          background: #fff;
+          border-radius: 10px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+          padding: 20px;
+          margin-bottom: 16px;
+          font-size: 0.9rem;
+        }
+
+        /* tracking note */
+        .od-track-note {
+          font-size: 0.85rem;
+          color: var(--text);
+          line-height: 1.6;
+          margin-bottom: 6px;
+        }
+        .od-manage-row {
+          display: flex; justify-content: space-between; align-items: center;
+          padding: 14px 0 0;
+          border-top: 1px solid var(--border);
+          margin-top: 12px;
+          font-size: 0.9rem; font-weight: 500; color: var(--text); cursor: pointer;
+        }
+        .od-manage-row svg { color: var(--muted); }
+
+        /* product row */
+        .od-prod-row {
+          display: flex; gap: 16px; align-items: flex-start;
+        }
+        .od-prod-img {
+          width: 80px; height: 80px; object-fit: contain;
+          flex-shrink: 0; border-radius: 8px; background: #f9fafb;
+          border: 1px solid var(--border);
+        }
+        .od-prod-img-placeholder {
+          width: 80px; height: 80px; flex-shrink: 0; border-radius: 8px;
+          background: #f9fafb; border: 1px solid var(--border);
+          display: flex; align-items: center; justify-content: center;
+          font-size: 2rem;
+        }
+        .od-prod-name { font-weight: 600; font-size: 0.93rem; line-height: 1.4; margin-bottom: 4px; }
+        .od-prod-variant { color: var(--muted); font-size: 0.82rem; margin-bottom: 4px; }
+        .od-prod-seller { color: var(--muted); font-size: 0.82rem; margin-bottom: 6px; }
+        .od-prod-price { font-weight: 700; font-size: 1rem; }
+
+        /* timeline */
+        .od-timeline { margin-top: 16px; }
+        .od-tl-item {
+          display: flex; align-items: flex-start; gap: 12px;
+          position: relative; padding-bottom: 16px;
+        }
+        .od-tl-item:last-child { padding-bottom: 0; }
+        .od-tl-dot-wrap {
+          display: flex; flex-direction: column; align-items: center;
+          flex-shrink: 0;
+        }
+        .od-tl-dot {
+          width: 24px; height: 24px; border-radius: 50%;
+          background: #16a34a;
+          display: flex; align-items: center; justify-content: center;
+          color: #fff; font-size: 0.75rem; font-weight: 700;
+          flex-shrink: 0;
+        }
+        .od-tl-line {
+          width: 2px; flex: 1; background: #16a34a;
+          min-height: 16px; margin-top: 2px;
+        }
+        .od-tl-label { font-weight: 600; font-size: 0.9rem; }
+        .od-tl-date { color: var(--muted); font-size: 0.82rem; }
+
+        .od-see-all {
+          color: var(--blue); font-weight: 600; font-size: 0.88rem;
+          cursor: pointer; display: flex; align-items: center; gap: 4px;
+          margin-top: 14px; background: none; border: none;
+        }
+
+        /* chat */
+        .od-chat-btn {
+          width: 100%; border: none; background: none;
+          display: flex; align-items: center; justify-content: center; gap: 8px;
+          padding: 14px; color: var(--text); font-size: 0.9rem; font-weight: 500;
+          cursor: pointer; border-top: 1px solid var(--border); margin-top: 16px;
+        }
+
+        /* star rating */
+        .od-stars { display: flex; gap: 6px; justify-content: center; margin-top: 12px; }
+        .od-star { font-size: 1.6rem; color: #d1d5db; cursor: pointer; transition: color 0.15s; }
+        .od-star:hover, .od-star.active { color: #f59e0b; }
+        .od-rate-label { font-size: 0.85rem; color: var(--muted); display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+
+        /* review display */
+        .od-review-box {
+          border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px;
+        }
+        .od-review-stars { display: flex; gap: 2px; margin-bottom: 6px; }
+        .od-review-star { font-size: 1.2rem; }
+        .od-review-comment { font-size: 0.88rem; color: var(--text); line-height: 1.5; margin-bottom: 10px; }
+        .od-review-meta { font-size: 0.78rem; color: var(--muted); margin-bottom: 10px; }
+        .od-delete-review-btn {
+          display: inline-flex; align-items: center; gap: 6px;
+          border: 1.5px solid #ef4444; border-radius: 8px; background: #fff;
+          padding: 6px 14px; color: #ef4444; font-weight: 600;
+          font-size: 0.82rem; cursor: pointer; font-family: inherit;
+          transition: background 0.15s;
+        }
+        .od-delete-review-btn:hover { background: #fef2f2; }
+        .od-delete-review-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* order number footer */
+        .od-order-num {
+          font-size: 0.82rem; color: var(--muted);
+          padding-top: 14px; border-top: 1px solid var(--border);
+          margin-top: 16px; display: flex; align-items: center; gap: 6px;
+        }
+
+        /* ── Right cards ── */
+        .od-right-card {
+          background: #fff;
+          border-radius: 10px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+          padding: 20px;
+          margin-bottom: 16px;
+          font-size: 0.9rem;
+        }
+        .od-right-title { font-weight: 700; font-size: 0.95rem; margin-bottom: 14px; }
+        .od-delivery-row {
+          display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px;
+        }
+        .od-delivery-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+        .od-delivery-label { font-weight: 500; font-size: 0.85rem; }
+        .od-delivery-val { color: var(--muted); font-size: 0.82rem; line-height: 1.5; }
+        .od-person-row {
+          display: flex; align-items: center; gap: 10px; margin-bottom: 4px;
+        }
+
+        /* price detail */
+        .od-price-row {
+          display: flex; justify-content: space-between; align-items: center;
+          padding: 5px 0; font-size: 0.88rem;
+        }
+        .od-price-row.strike { color: var(--muted); text-decoration: line-through; }
+        .od-price-row .val-strike { text-decoration: line-through; color: var(--muted); }
+        .od-price-total {
+          display: flex; justify-content: space-between; align-items: center;
+          padding: 10px 0 0; font-weight: 700; font-size: 0.95rem;
+          border-top: 1px dashed var(--border); margin-top: 8px;
+        }
+        .od-fees-sub {
+          padding-left: 14px;
+        }
+        .od-fees-sub .od-price-row { color: var(--muted); font-size: 0.82rem; }
+        .od-paid-by {
+          display: flex; justify-content: space-between; align-items: center;
+          padding: 10px 0 0; font-size: 0.88rem;
+          border-top: 1px solid var(--border); margin-top: 8px;
+        }
+
+        /* download invoice btn */
+        .od-dl-btn {
+          width: 100%; border: 1.5px solid var(--border); background: #fff;
+          border-radius: 8px; padding: 12px; font-size: 0.9rem; font-weight: 600;
+          cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+          margin-top: 12px; color: var(--text); transition: background 0.15s;
+        }
+        .od-dl-btn:hover { background: #f4f6fa; }
+
+        /* ── MODAL ── */
+        .od-modal-overlay {
+          position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+          z-index: 1000; display: flex; align-items: center; justify-content: center;
+          padding: 20px;
+        }
+        .od-modal {
+          background: #fff; border-radius: 12px;
+          width: 100%; max-width: 480px; max-height: 80vh;
+          display: flex; flex-direction: column;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+          overflow: hidden;
+        }
+        .od-modal-head {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 18px 20px; border-bottom: 1px solid var(--border);
+        }
+        .od-modal-title { font-weight: 700; font-size: 1rem; }
+        .od-modal-close {
+          background: none; border: none; font-size: 1.3rem; cursor: pointer;
+          color: var(--muted); line-height: 1; padding: 2px 6px;
+        }
+        .od-modal-body { overflow-y: auto; padding: 20px; flex: 1; }
+
+        /* modal timeline */
+        .od-mtl-item {
+          position: relative; padding-left: 28px; padding-bottom: 20px;
+        }
+        .od-mtl-item:last-child { padding-bottom: 0; }
+        .od-mtl-dot {
+          position: absolute; left: 0; top: 4px;
+          width: 16px; height: 16px; border-radius: 50%;
+          background: #16a34a; border: 2px solid #16a34a;
+          display: flex; align-items: center; justify-content: center;
+        }
+        .od-mtl-line {
+          position: absolute; left: 7px; top: 20px;
+          width: 2px; height: calc(100% - 16px); background: #16a34a;
+        }
+        .od-mtl-item:last-child .od-mtl-line { display: none; }
+        .od-mtl-header {
+          font-weight: 700; font-size: 0.92rem; margin-bottom: 6px;
+        }
+        .od-mtl-header .od-mtl-time { font-weight: 400; color: var(--muted); font-size: 0.83rem; }
+        .od-mtl-sub { font-size: 0.83rem; color: var(--text); margin-bottom: 2px; }
+        .od-mtl-subtime { font-size: 0.78rem; color: var(--muted); }
+      `}</style>
+
+      <div className="od-wrap">
+        {/* Breadcrumb */}
+        <div className="od-breadcrumb">
+          {breadcrumb.map((b, i) => (
+            <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {i > 0 && <span className="sep">›</span>}
+              {b.path
+                ? <a onClick={() => navigate(b.path)}>{b.label}</a>
+                : <span className="cur">{b.label}</span>
+              }
+            </span>
+          ))}
+        </div>
+
+        <div className="od-grid">
+          {/* ─── LEFT ─── */}
           <div>
-            <div className="card" style={{ marginBottom: 20 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-                <div>
-                  <h2 style={{ fontWeight: 700, marginBottom: 4 }}>Order #{order.order_number}</h2>
-                  <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>Placed on {new Date(order.created_date).toLocaleString()}</p>
+            {/* Product + status card */}
+            <div className="od-card">
+              <div className="od-prod-row">
+                {order.product_image
+                  ? <img src={order.product_image} alt={order.product_name} className="od-prod-img" />
+                  : <div className="od-prod-img-placeholder">📦</div>
+                }
+                <div style={{ flex: 1 }}>
+                  <div className="od-prod-name">{order.product_name}</div>
+                  {order.variant && <div className="od-prod-variant">{order.variant}</div>}
+                  {order.sellerName && <div className="od-prod-seller">Seller: {order.sellerName}</div>}
+                  <div className="od-prod-price">₹{Number(order.order_amount).toLocaleString('en-IN')}</div>
                 </div>
-                <span className={`badge badge-${statusColors[order.order_status] || 'gray'}`} style={{ fontSize: '0.85rem', padding: '6px 14px' }}>{order.order_status}</span>
               </div>
-              <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '0 0 20px' }} />
-              <h4 style={{ fontWeight: 700, marginBottom: 12 }}>Product</h4>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontWeight: 600 }}>{order.product_name}</div>
-                  <div style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>Category: {order.category}</div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Qty: {order.quantity}</div>
-                  <div style={{ fontWeight: 700, color: 'var(--blue-dark)', fontSize: '1.1rem' }}>₹{order.order_amount?.toLocaleString()}</div>
-                </div>
+
+              {/* Timeline */}
+              <div className="od-timeline">
+                {timeline.map((step, i) => (
+                  <div key={i} className="od-tl-item">
+                    <div className="od-tl-dot-wrap">
+                      <div className="od-tl-dot">✓</div>
+                      {i < timeline.length - 1 && <div className="od-tl-line" />}
+                    </div>
+                    <div>
+                      <div className="od-tl-label">{step.label}, {step.date}</div>
+                      {step.time && <div className="od-tl-date">{step.time}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <button className="od-see-all" onClick={() => setShowUpdates(true)}>
+                See All Updates ›
+              </button>
+
+              <div className="od-chat-btn" onClick={() => navigate('/complaints')}>
+                <span>💬</span> Chat with us
               </div>
             </div>
 
-            {order.order_status !== 'Cancelled' && (
-              <div className="card" style={{ marginBottom: 20 }}>
-                <h4 style={{ fontWeight: 700, marginBottom: 20 }}>Order Progress</h4>
-                <div style={{ display: 'flex', gap: 0 }}>
-                  {steps.map((step, i) => (
-                    <div key={step} style={{ flex: 1, textAlign: 'center', position: 'relative' }}>
-                      {i < steps.length - 1 && (
-                        <div style={{ position: 'absolute', top: 14, left: '50%', right: '-50%', height: 3, background: i < stepIdx ? 'var(--blue)' : 'var(--border)', zIndex: 0 }} />
-                      )}
-                      <div style={{ width: 30, height: 30, borderRadius: '50%', background: i <= stepIdx ? 'var(--blue)' : 'var(--border)', margin: '0 auto 8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.75rem', fontWeight: 700, position: 'relative', zIndex: 1 }}>
-                        {i < stepIdx ? '✓' : i + 1}
-                      </div>
-                      <div style={{ fontSize: '0.7rem', color: i <= stepIdx ? 'var(--blue)' : 'var(--muted)', fontWeight: i === stepIdx ? 600 : 400 }}>{step}</div>
-                    </div>
-                  ))}
+            {/* Rate your experience */}
+            {order.order_status === 'Delivered' && !reviewLoading && myReview && (
+              <div className="od-card">
+                <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 12 }}>Your Review</div>
+                <div className="od-review-box">
+                  <div className="od-review-stars">
+                    {[1,2,3,4,5].map(s => (
+                      <span key={s} className="od-review-star" style={{ color: s <= myReview.rating ? '#16a34a' : '#d1d5db' }}>★</span>
+                    ))}
+                  </div>
+                  {myReview.comment && (
+                    <div className="od-review-comment">{myReview.comment}</div>
+                  )}
+                  {myReview.created_date && (
+                    <div className="od-review-meta">Reviewed on {fmtDate(myReview.created_date)}</div>
+                  )}
+                  <button
+                    className="od-delete-review-btn"
+                    onClick={handleDeleteReview}
+                    disabled={deletingReview}
+                  >
+                    {deletingReview ? 'Deleting…' : 'Delete Review'}
+                  </button>
                 </div>
               </div>
             )}
 
-            <div className="card">
-              <h4 style={{ fontWeight: 700, marginBottom: 16 }}>Delivery Address</h4>
-              <p style={{ color: 'var(--text)', lineHeight: 1.7 }}>{order.address}<br />{order.city}, {order.state} — {order.pincode}</p>
+            {/* Order number */}
+            <div className="od-card" style={{ padding: '14px 20px' }}>
+              <div className="od-order-num">
+                Order #{order.order_number}
+                <span style={{ cursor: 'pointer', color: 'var(--blue)', fontSize: '0.85rem' }}
+                  onClick={() => navigator.clipboard?.writeText(order.order_number)}>⧉</span>
+              </div>
             </div>
           </div>
 
+          {/* ─── RIGHT ─── */}
           <div>
-            <div className="card" style={{ marginBottom: 16 }}>
-              <h4 style={{ fontWeight: 700, marginBottom: 16 }}>Payment Info</h4>
-              <div className="summary-row"><span style={{ color: 'var(--muted)' }}>Method</span><span>{order.payment_method}</span></div>
-              <div className="summary-row"><span style={{ color: 'var(--muted)' }}>Status</span><span className={`badge badge-${order.payment_status === 'Paid' ? 'green' : 'amber'}`}>{order.payment_status}</span></div>
-              <div className="summary-row summary-total"><span>Amount</span><span style={{ color: 'var(--blue-dark)' }}>₹{order.order_amount?.toLocaleString()}</span></div>
-            </div>
-            {order.sellerName && (
-              <div className="card">
-                <h4 style={{ fontWeight: 700, marginBottom: 12 }}>Seller</h4>
-                <p style={{ fontWeight: 600 }}>{order.sellerName}</p>
-                {order.sellerEmail && <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>{order.sellerEmail}</p>}
+            {/* Delivery details */}
+            <div className="od-right-card">
+              <div className="od-right-title">Delivery details</div>
+              <div className="od-delivery-row">
+                <div className="od-delivery-icon">🏠</div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span className="od-delivery-label">Home</span>
+                  </div>
+                  <div className="od-delivery-val">
+                    {[order.address, order.city, order.state, order.pincode].filter(Boolean).join(', ')}
+                  </div>
+                </div>
               </div>
-            )}
+              <div className="od-person-row">
+                <div className="od-delivery-icon">👤</div>
+                <div className="od-delivery-val">
+                  {order.customer_name}
+                  {order.customer_phone && ` ${order.customer_phone}`}
+                </div>
+              </div>
+            </div>
+
+            {/* Price details */}
+            {(() => {
+              const prodAmt   = Number(order.order_amount) || 0;
+              const phFee     = Number(order.payment_handling_fee) || 0;
+              const pfFee     = Number(order.platform_fee)         || 0;
+              const ppFee     = Number(order.protect_promise_fee)  || 0;
+              const totalFees = phFee + pfFee + ppFee;
+              const grandTotal = prodAmt + totalFees;
+              return (
+                <div className="od-right-card">
+                  <div className="od-right-title">Price details</div>
+
+                  <div className="od-price-row">
+                    <span>Listing price</span>
+                    <span className="val-strike">₹{prodAmt.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="od-price-row">
+                    <span>Selling price</span>
+                    <span>₹{prodAmt.toLocaleString('en-IN')}</span>
+                  </div>
+
+                  {/* Total fees — only show if any fee exists */}
+                  {totalFees > 0 && (
+                    <>
+                      <div className="od-price-row" style={{ cursor: 'pointer', userSelect: 'none' }}
+                        onClick={() => setFeesOpen(f => !f)}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          Total fees <span style={{ fontSize: '0.8rem' }}>{feesOpen ? '∧' : '∨'}</span>
+                        </span>
+                        <span>₹{totalFees}</span>
+                      </div>
+                      {feesOpen && (
+                        <div className="od-fees-sub">
+                          {phFee > 0 && <div className="od-price-row"><span style={{ borderBottom: '1px dotted #9ca3af' }}>Payment Handling Fee</span><span>₹{phFee}</span></div>}
+                          {pfFee > 0 && <div className="od-price-row"><span style={{ borderBottom: '1px dotted #9ca3af' }}>Platform fee</span><span>₹{pfFee}</span></div>}
+                          {ppFee > 0 && <div className="od-price-row"><span style={{ borderBottom: '1px dotted #9ca3af' }}>Protect Promise Fee</span><span>₹{ppFee}</span></div>}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  <div className="od-price-total">
+                    <span>Total amount</span>
+                    <span>₹{grandTotal.toLocaleString('en-IN')}</span>
+                  </div>
+
+                  <div className="od-paid-by">
+                    <span>Paid By</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
+                      {isCOD ? '💵' : '💳'} {isCOD ? 'Cash On Delivery' : (order.payment_method || 'Online')}
+                    </span>
+                  </div>
+
+                  <button className="od-dl-btn" onClick={() => navigate(`/invoice/${id}`)}>
+                    ⬇ Download Invoice
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
-    );
-  }
-  
+
+      {/* ── See All Updates Modal ── */}
+      {showUpdates && (
+        <div className="od-modal-overlay" onClick={() => setShowUpdates(false)}>
+          <div className="od-modal" onClick={e => e.stopPropagation()}>
+            <div className="od-modal-head">
+              <div className="od-modal-title">Order Updates</div>
+              <button className="od-modal-close" onClick={() => setShowUpdates(false)}>✕</button>
+            </div>
+            <div className="od-modal-body">
+              {/* Detailed timeline */}
+              {(() => {
+                const created = order.created_date || order.created_at;
+                const delivered = order.delivered_date || order.updated_at;
+                const createdFmt = d => new Date(d).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) + " '" + new Date(d).getFullYear().toString().slice(2);
+                const timeFmt = d => new Date(d).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false }) + (d ? '' : '');
+
+                const events = [];
+
+                events.push({
+                  stage: 'Order Confirmed',
+                  when: `${createdFmt(created)} - ${timeFmt(created)}`,
+                  subs: [
+                    { text: 'Your Order has been placed.', when: `${createdFmt(created)} - ${timeFmt(created)}` },
+                    { text: 'Seller has processed your order.', when: null },
+                    { text: 'Your item has been picked up by delivery partner.', when: null },
+                  ]
+                });
+
+                if (['Shipped', 'Delivered'].includes(order.order_status)) {
+                  events.push({
+                    stage: 'Shipped',
+                    when: `${createdFmt(created)} - ${timeFmt(created)}`,
+                    subs: [
+                      { text: `${order.sellerName || 'Courier Partner'}`, when: null, bold: true },
+                      { text: 'Your item has been shipped.', when: `${createdFmt(created)} - ${timeFmt(created)}` },
+                      { text: 'Your item has been received in the hub nearest to you', when: null },
+                    ]
+                  });
+                }
+
+                if (order.order_status === 'Delivered') {
+                  events.push({
+                    stage: 'Out For Delivery',
+                    when: `${createdFmt(delivered)} - ${timeFmt(delivered)}`,
+                    subs: [
+                      { text: 'Your item is out for delivery', when: `${createdFmt(delivered)} - ${timeFmt(delivered)}` },
+                    ]
+                  });
+                  events.push({
+                    stage: 'Delivered',
+                    when: `${createdFmt(delivered)} - ${timeFmt(delivered)}`,
+                    subs: [
+                      { text: 'Your item has been delivered', when: `${createdFmt(delivered)} - ${timeFmt(delivered)}` },
+                    ]
+                  });
+                }
+
+                return events.map((ev, i) => (
+                  <div key={i} className="od-mtl-item">
+                    <div className="od-mtl-dot">
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff', display: 'block' }} />
+                    </div>
+                    <div className="od-mtl-line" />
+                    <div className="od-mtl-header">
+                      {ev.stage} <span className="od-mtl-time">{ev.when}</span>
+                    </div>
+                    {ev.subs.map((s, j) => (
+                      <div key={j}>
+                        <div className="od-mtl-sub" style={s.bold ? { fontWeight: 600 } : {}}>{s.text}</div>
+                        {s.when && <div className="od-mtl-subtime">{s.when}</div>}
+                      </div>
+                    ))}
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

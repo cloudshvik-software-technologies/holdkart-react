@@ -3,16 +3,24 @@ import { createPortal } from 'react-dom';
 import { campaignService, paymentService } from '../services/index.js';
 import toast from 'react-hot-toast';
 
-function loadRazorpayScript() {
-  return new Promise((resolve) => {
-    if (window.Razorpay) { resolve(true); return; }
+// Singleton promise — only ever appends one <script> tag.
+// Starts loading immediately when this module is first imported,
+// so by the time the user opens the modal and clicks Pay the SDK is ready.
+let _cfScriptPromise = null;
+function loadCashfreeScript() {
+  if (window.Cashfree) return Promise.resolve(true);
+  if (_cfScriptPromise) return _cfScriptPromise;
+  _cfScriptPromise = new Promise((resolve) => {
     const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js';
     script.onload  = () => resolve(true);
     script.onerror = () => resolve(false);
     document.body.appendChild(script);
   });
+  return _cfScriptPromise;
 }
+// Preload immediately on import (fire-and-forget)
+loadCashfreeScript();
 
 export default function JoinDealModal({ product, bestGroupPrice, maxDiscountPct, remainingSlots, onClose, onJoinSuccess, campaignAction }) {
   const [qty, setQty]       = useState(1);
@@ -40,56 +48,61 @@ export default function JoinDealModal({ product, bestGroupPrice, maxDiscountPct,
   const handlePay = async () => {
     setPaying(true);
     try {
-      let orderData = null;
+      // Run SDK load and order creation in parallel — both were already kicked off,
+      // so this typically resolves with zero or near-zero wait.
+      let orderData, loaded;
       try {
-        orderData = await paymentService.createRazorpayOrder({
-          amount: totalDeposit,
-          currency: 'INR',
-          receipt: `deal_${product.productId}_${Date.now()}`,
-        });
+        [orderData, loaded] = await Promise.all([
+          paymentService.createCashfreeOrder({
+            amount: totalDeposit,
+            currency: 'INR',
+            receipt: `deal_${product.productId}_${Date.now()}`,
+          }),
+          loadCashfreeScript(),
+        ]);
       } catch {
+        // If payment backend is unavailable, fall through to free join
         await doJoin();
         return;
       }
 
-      if (!orderData || !orderData.keyId) {
+      if (!orderData || !orderData.paymentSessionId) {
         await doJoin();
         return;
       }
 
-      const loaded = await loadRazorpayScript();
       if (!loaded) {
-        await doJoin();
+        toast.error('Cashfree SDK failed to load. Please try again.');
+        setPaying(false);
         return;
       }
 
-      const options = {
-        key: orderData.keyId,
-        amount: orderData.amount,
-        currency: orderData.currency || 'INR',
-        name: 'HoldKart',
-        description: `Group Deal Deposit — ${product.name} × ${qty}`,
-        order_id: orderData.orderId,
-        handler: async (response) => {
-          try {
-            await paymentService.verifyPayment({
-              razorpay_order_id:   response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature:  response.razorpay_signature,
-            });
-            await doJoin();
-          } catch (err) {
-            toast.error(err?.response?.data?.message || 'Payment verification failed');
-            setPaying(false);
+      // Open Cashfree checkout modal (sandbox mode)
+      const cashfree = window.Cashfree({ mode: 'sandbox' });
+      cashfree.checkout({
+        paymentSessionId: orderData.paymentSessionId,
+        redirectTarget: '_modal',
+      }).then(async (result) => {
+        if (result.error) {
+          if (result.error.message !== 'User closed the checkout') {
+            toast.error(result.error.message || 'Payment failed');
           }
-        },
-        prefill: {},
-        theme: { color: '#2a5298' },
-        modal: { ondismiss: () => setPaying(false) },
-      };
+          setPaying(false);
+          return;
+        }
+        // Payment attempted — verify then join
+        try {
+          await paymentService.verifyPayment({ orderId: orderData.orderId });
+          await doJoin();
+        } catch (err) {
+          toast.error(err?.response?.data?.message || 'Payment verification failed');
+          setPaying(false);
+        }
+      }).catch((err) => {
+        toast.error(err?.message || 'Payment failed');
+        setPaying(false);
+      });
 
-      const rzp = new window.Razorpay(options);
-      rzp.open();
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Failed to join the deal');
       setPaying(false);

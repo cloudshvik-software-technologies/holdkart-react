@@ -6,15 +6,15 @@ import { getNotifications } from '../services/notification.service.js';
 import toast from 'react-hot-toast';
 
 const CATEGORIES = [
-  { name: 'Mobiles',     icon: '📱', path: '/products?category=Mobile' },
-  { name: 'Laptops',     icon: '💻', path: '/products?category=Laptop' },
-  { name: 'Electronics', icon: '🔌', path: '/products?category=Electronics' },
-  { name: 'Audio',       icon: '🎧', path: '/products?category=Audio' },
-  { name: 'TVs',         icon: '📺', path: '/products?category=TV' },
-  { name: 'Cameras',     icon: '📷', path: '/products?category=Camera' },
-  { name: 'Gaming',      icon: '🎮', path: '/products?category=Gaming' },
-  { name: 'Watches',     icon: '⌚', path: '/products?category=Watch' },
-  { name: 'Accessories', icon: '🎒', path: '/products?category=Accessories' },
+  { name: 'Automotive',  path: '/products?category=Automotive' },
+  { name: 'Beauty',      path: '/products?category=Beauty' },
+  { name: 'Books',       path: '/products?category=Books' },
+  { name: 'Electronics', path: '/products?category=Electronics' },
+  { name: 'Fashion',     path: '/products?category=Fashion' },
+  { name: 'Grocery',     path: '/products?category=Grocery' },
+  { name: 'Health',      path: '/products?category=Health' },
+  { name: 'Sports',      path: '/products?category=Sports' },
+  { name: 'Toys',        path: '/products?category=Toys' },
 ];
 
 const AUTH_PAGES = ['/login', '/register', '/forgot', '/reset-password'];
@@ -526,41 +526,47 @@ export default function Header() {
               maxWidth: 1600, margin: '0 auto', gap: 0,
             }}
           >
-            {/* All Products — public */}
-            <button
-              className={`hk-cat-btn${isActive('/products') ? ' active' : ''}`}
-              onClick={() => navigate('/products')}
-            >
-              ☰ All
-            </button>
-
-            {CATEGORIES.map(cat => (
+            {/* Left section — All + categories spread evenly */}
+            <div style={{ display: 'flex', alignItems: 'center', flex: 1, justifyContent: 'space-evenly' }}>
               <button
-                key={cat.name}
-                className={`hk-cat-btn${isActive(cat.path) ? ' active' : ''}`}
-                onClick={() => navigate(cat.path)}
+                className={`hk-cat-btn${isActive('/products') ? ' active' : ''}`}
+                onClick={() => navigate('/products')}
+                style={{ padding: '0 8px' }}
               >
-                {cat.icon} {cat.name}
+                ☰ All
               </button>
-            ))}
+
+              {CATEGORIES.map(cat => (
+                <button
+                  key={cat.name}
+                  className={`hk-cat-btn${isActive(cat.path) ? ' active' : ''}`}
+                  onClick={() => navigate(cat.path)}
+                  style={{ padding: '0 8px' }}
+                >
+                  {cat.name}
+                </button>
+              ))}
+            </div>
 
             <div style={{ width: 1, height: 18, background: 'rgba(255,255,255,0.15)', margin: '0 8px', flexShrink: 0 }} />
 
-            {/* These pages require login */}
-            {[
-              { label: '🎯 Hold Deals',    path: '/campaigns' },
-              { label: '❤️ Wishlist',      path: '/wishlist' },
-              { label: '💬 Support',       path: '/complaints' },
-              { label: '🔔 Notifications', path: '/notifications' },
-            ].map(l => (
-              <button
-                key={l.label}
-                className={`hk-cat-btn${isActive(l.path) ? ' active' : ''}`}
-                onClick={() => isAuthenticated ? navigate(l.path) : navigate('/login')}
-              >
-                {l.label}
-              </button>
-            ))}
+            {/* Right section — action links fixed */}
+            <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+              {[
+                { label: '🎯 Hold Deals',    path: '/campaigns' },
+                { label: '❤️ Wishlist',      path: '/wishlist' },
+                { label: '💬 Support',       path: '/complaints' },
+                { label: '🔔 Notifications', path: '/notifications' },
+              ].map(l => (
+                <button
+                  key={l.label}
+                  className={`hk-cat-btn${isActive(l.path) ? ' active' : ''}`}
+                  onClick={() => isAuthenticated ? navigate(l.path) : navigate('/login')}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </header>

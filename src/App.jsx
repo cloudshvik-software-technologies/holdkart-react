@@ -15,6 +15,7 @@ import Cart          from './pages/Cart.jsx';
 import Checkout      from './pages/Checkout.jsx';
 import Orders        from './pages/Orders.jsx';
 import OrderDetail   from './pages/OrderDetail.jsx';
+import Invoice        from './pages/Invoice.jsx';
 import Wishlist      from './pages/Wishlist.jsx';
 import Profile       from './pages/Profile.jsx';
 import Notifications from './pages/Notifications.jsx';
@@ -84,6 +85,7 @@ function AppRoutes() {
             <Route path="/checkout"       element={<Checkout />} />
             <Route path="/orders"         element={<Orders />} />
             <Route path="/order/:id"      element={<OrderDetail />} />
+            <Route path="/invoice/:id"    element={<Invoice />} />
             <Route path="/wishlist"       element={<Wishlist />} />
             <Route path="/profile"        element={<Profile />} />
             <Route path="/notifications"  element={<Notifications />} />

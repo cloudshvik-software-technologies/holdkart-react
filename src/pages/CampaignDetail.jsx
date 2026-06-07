@@ -9,10 +9,15 @@ const FALLBACK_IMG =
 
 function resolveImg(url) {
   if (!url || url.startsWith('data:')) return FALLBACK_IMG;
-  if (url.startsWith('http')) return url;
-  const n = url.startsWith('/uploads')
-    ? url.replace('/uploads', '/seller-uploads')
-    : `/seller-uploads${url.startsWith('/') ? '' : '/'}${url}`;
+  // image_url may be a JSON array string: '["path1","path2"]'
+  let first = url;
+  if (String(url).startsWith('[')) {
+    try { first = JSON.parse(url).filter(Boolean)[0] || url; } catch {}
+  }
+  if (first.startsWith('http')) return first;
+  const n = first.startsWith('/uploads')
+    ? first.replace('/uploads', '/seller-uploads')
+    : `/seller-uploads${first.startsWith('/') ? '' : '/'}${first}`;
   return n;
 }
 

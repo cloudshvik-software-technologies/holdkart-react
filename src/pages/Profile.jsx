@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { profileService } from '../services/index.js';
+import { deleteProfileImage } from '../services/profile.service.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import toast from 'react-hot-toast';
 
@@ -29,6 +30,7 @@ export default function Profile() {
   const [saving, setSaving]         = useState(false);
   const [imgFile, setImgFile]       = useState(null);
   const [profileImg, setProfileImg] = useState('');
+  const [uploading, setUploading]   = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) { navigate('/login'); return; }
@@ -65,16 +67,33 @@ export default function Profile() {
     }
   };
 
-  const handleImageUpload = async () => {
-    if (!imgFile) return;
+  const handleImageUpload = async (file) => {
+    if (!file) return;
     const fd = new FormData();
-    fd.append('profileImage', imgFile);
+    fd.append('profileImage', file);
+    setUploading(true);
     try {
       const res = await profileService.uploadProfileImage(fd);
       setProfileImg(res.imageUrl || '');
+      setImgFile(null);
       toast.success('Profile photo updated!');
     } catch {
       toast.error('Failed to upload photo');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDeleteImage = async () => {
+    setUploading(true);
+    try {
+      await deleteProfileImage();
+      setProfileImg('');
+      toast.success('Profile photo removed');
+    } catch {
+      toast.error('Failed to remove photo');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -206,13 +225,13 @@ export default function Profile() {
 
         .myn-avatar-wrap {
           position: relative;
-          width: 80px;
-          height: 80px;
+          width: 110px;
+          height: 110px;
           margin: 0 auto 12px;
         }
         .myn-avatar-img {
-          width: 80px;
-          height: 80px;
+          width: 110px;
+          height: 110px;
           border-radius: 50%;
           object-fit: cover;
           border: 3px solid #fff;
@@ -278,16 +297,16 @@ export default function Profile() {
 
           {/* Profile mini-card */}
           <div style={{ padding: '24px 20px 20px', borderBottom: '1px solid #eaeaec', textAlign: 'center' }}>
-            <div style={{ position: 'relative', width: 64, height: 64, margin: '0 auto 12px' }}>
+            <div style={{ position: 'relative', width: 90, height: 90, margin: '0 auto 12px' }}>
               {profileImg ? (
                 <img src={getImgUrl(profileImg)} alt="Profile"
-                  style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', border: '2px solid #f4f4f5' }} />
+                  style={{ width: 90, height: 90, borderRadius: '50%', objectFit: 'cover', border: '2px solid #f4f4f5' }} />
               ) : (
                 <div style={{
-                  width: 64, height: 64, borderRadius: '50%',
+                  width: 90, height: 90, borderRadius: '50%',
                   background: `linear-gradient(135deg, ${MYNTRA_PINK}, #4f7ccc)`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '1.6rem', color: '#fff', fontWeight: 700,
+                  fontSize: '2rem', color: '#fff', fontWeight: 700,
                 }}>
                   {form.name?.[0]?.toUpperCase() || 'U'}
                 </div>
@@ -329,15 +348,32 @@ export default function Profile() {
 
                 {/* Profile photo row */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 32, padding: '16px 20px', background: '#f4f4f5', borderRadius: 8 }}>
-                  <div className="myn-avatar-wrap">
+                  <div className="myn-avatar-wrap" style={{ position: 'relative' }}>
                     {profileImg ? (
-                      <img src={getImgUrl(profileImg)} alt="Profile" className="myn-avatar-img" />
+                      <>
+                        <img src={getImgUrl(profileImg)} alt="Profile" className="myn-avatar-img" />
+                        {/* Delete ✕ */}
+                        <button
+                          type="button"
+                          onClick={handleDeleteImage}
+                          disabled={uploading}
+                          title="Remove photo"
+                          style={{
+                            position: 'absolute', top: -8, right: -2,
+                            width: 20, height: 20, borderRadius: '50%',
+                            background: 'rgba(0,0,0,0.22)', border: '1.5px solid rgba(255,255,255,0.7)',
+                            color: 'rgba(255,255,255,0.85)', fontSize: '0.62rem', fontWeight: 600,
+                            cursor: 'pointer', display: 'flex', alignItems: 'center',
+                            justifyContent: 'center', lineHeight: 1, padding: 0,
+                          }}
+                        >✕</button>
+                      </>
                     ) : (
                       <div style={{
-                        width: 80, height: 80, borderRadius: '50%',
+                        width: 110, height: 110, borderRadius: '50%',
                         background: `linear-gradient(135deg, ${MYNTRA_PINK}, #4f7ccc)`,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '2rem', color: '#fff', fontWeight: 700,
+                        fontSize: '2.6rem', color: '#fff', fontWeight: 700,
                         boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
                       }}>
                         {form.name?.[0]?.toUpperCase() || 'U'}
@@ -346,26 +382,21 @@ export default function Profile() {
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 700, color: '#282c3f', marginBottom: 6 }}>Profile Photo</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <label style={{
-                        display: 'inline-block', cursor: 'pointer',
-                        border: `1px solid ${MYNTRA_PINK}`, color: MYNTRA_PINK,
-                        borderRadius: 4, padding: '6px 16px', fontSize: '0.82rem', fontWeight: 700,
-                      }}>
-                        Change Photo
-                        <input type="file" accept="image/*" style={{ display: 'none' }}
-                          onChange={e => setImgFile(e.target.files[0])} />
-                      </label>
-                      {imgFile && (
-                        <button type="button" onClick={handleImageUpload}
-                          style={{ background: MYNTRA_PINK, color: '#fff', border: 'none', borderRadius: 4, padding: '6px 16px', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                          Upload
-                        </button>
-                      )}
-                    </div>
-                    {imgFile && (
-                      <div style={{ fontSize: '0.75rem', color: '#999', marginTop: 4 }}>{imgFile.name}</div>
-                    )}
+                    <label style={{
+                      display: 'inline-block', cursor: uploading ? 'not-allowed' : 'pointer',
+                      border: `1px solid ${MYNTRA_PINK}`, color: MYNTRA_PINK,
+                      borderRadius: 4, padding: '6px 16px', fontSize: '0.82rem', fontWeight: 700,
+                      opacity: uploading ? 0.6 : 1,
+                    }}>
+                      {uploading ? 'Uploading…' : 'Change Photo'}
+                      <input type="file" accept="image/*" style={{ display: 'none' }}
+                        disabled={uploading}
+                        onChange={e => {
+                          const f = e.target.files[0];
+                          if (f) { setImgFile(f); handleImageUpload(f); }
+                          e.target.value = '';
+                        }} />
+                    </label>
                   </div>
                 </div>
 
