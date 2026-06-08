@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { orderService } from '../services/index.js';
-import { canReview, addReview } from '../services/review.service.js';
+import { returnOrder as returnOrderApi } from '../services/order.service.js';
+import { addReview } from '../services/review.service.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import toast from 'react-hot-toast';
 
@@ -582,11 +583,11 @@ function OrderCard({ order, onCancelClick, onReturnClick, onReviewClick }) {
                 </button>
               )}
               {isDelivered && (
-                <button className="amz-btn-secondary" onClick={() => onCancelClick(order)}>
+                <button className="amz-btn-secondary" onClick={() => onReturnClick(order)}>
                   Return or replace
                 </button>
               )}
-              {isDelivered && (
+              {isDelivered && !order.has_reviewed && (
                 <button className="amz-btn-review" onClick={() => onReviewClick(order)}>
                   ★ Write a Review
                 </button>
@@ -639,7 +640,8 @@ export default function Orders() {
   const fetchOrders = async () => {
     try {
       const data = await orderService.listOrders();
-      setOrders(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setOrders(list);
     } catch {
       setOrders([]);
     } finally {
@@ -857,7 +859,7 @@ export default function Orders() {
       {reviewOrder && (
         <ReviewModal
           order={reviewOrder}
-          onClose={handleModalClose}
+          onClose={() => { handleModalClose(); fetchOrders(); }}
         />
       )}
 

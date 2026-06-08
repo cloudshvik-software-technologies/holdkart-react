@@ -36,11 +36,16 @@ export default function JoinDealModal({ product, bestGroupPrice, maxDiscountPct,
   const totalDeposit   = depositPerUnit * qty;
   const maxQty         = Math.max(1, remainingSlots);
 
-  const doJoin = async () => {
+  const doJoin = async ({ cashfreeOrderId = null, depositAmount = 0 } = {}) => {
     if (campaignAction) {
-      await campaignAction(qty);
+      await campaignAction(qty, { cashfreeOrderId, depositAmount });
     } else {
-      await campaignService.startOrJoinCampaign({ productId: product.productId, quantity: qty });
+      await campaignService.startOrJoinCampaign({
+        productId: product.productId,
+        quantity: qty,
+        cashfreeOrderId,
+        depositAmount,
+      });
     }
     onJoinSuccess(qty);
   };
@@ -93,7 +98,7 @@ export default function JoinDealModal({ product, bestGroupPrice, maxDiscountPct,
         // Payment attempted — verify then join
         try {
           await paymentService.verifyPayment({ orderId: orderData.orderId });
-          await doJoin();
+          await doJoin({ cashfreeOrderId: orderData.orderId, depositAmount: totalDeposit });
         } catch (err) {
           toast.error(err?.response?.data?.message || 'Payment verification failed');
           setPaying(false);
