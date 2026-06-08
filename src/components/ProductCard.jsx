@@ -137,17 +137,14 @@ export default function ProductCard({ product, alreadyJoined = false }) {
     setShowJoinModal(true);
   };
 
-  const hasGroupDeal   = product.holdTarget > 0;
+  const hasGroupDeal   = product.holdTarget > 0 && product.holdPrice > 0;
   const safeHold       = Math.min(localHold, product.holdTarget || 0);
-  const discountPct    = hasGroupDeal ? safeHold : 0;
-  const displayPrice   = hasGroupDeal && discountPct > 0
-    ? Math.round(product.retailPrice * (1 - discountPct / 100))
-    : product.retailPrice;
   const progressPct    = hasGroupDeal ? Math.round((safeHold / product.holdTarget) * 100) : 0;
-  const maxDiscountPct = hasGroupDeal ? product.holdTarget : 0;
-  const bestGroupPrice = hasGroupDeal
-    ? Math.round(product.retailPrice * (1 - maxDiscountPct / 100))
-    : product.retailPrice;
+  const bestGroupPrice = hasGroupDeal ? product.holdPrice : product.retailPrice;
+  const maxDiscountPct = hasGroupDeal && product.retailPrice > 0
+    ? Math.round(((product.retailPrice - product.holdPrice) / product.retailPrice) * 100)
+    : 0;
+  const displayPrice   = product.retailPrice;
 
   return (
     <>
@@ -199,7 +196,7 @@ export default function ProductCard({ product, alreadyJoined = false }) {
             src={imgSrc}
             alt={product.name}
             onError={() => setImgSrc(FALLBACK_IMG)}
-            style={{ width: '100%', height: 160, objectFit: 'contain', display: 'block' }}
+            style={{ width: '100%', height: 160, objectFit: 'cover', display: 'block' }}
           />
         </div>
 
@@ -257,11 +254,7 @@ export default function ProductCard({ product, alreadyJoined = false }) {
               <span style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0f1111' }}>
                 ₹{displayPrice.toLocaleString('en-IN')}
               </span>
-              {discountPct > 0 && (
-                <span style={{ fontSize: '0.78rem', color: '#9ca3af', textDecoration: 'line-through' }}>
-                  ₹{product.retailPrice.toLocaleString('en-IN')}
-                </span>
-              )}
+
             </div>
             <p style={{ fontSize: '0.65rem', color: '#6b7280', marginTop: 1 }}>Inclusive of all taxes</p>
           </div>

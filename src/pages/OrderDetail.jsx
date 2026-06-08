@@ -43,6 +43,38 @@ export default function OrderDetail() {
   const [myReview, setMyReview] = useState(null);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [deletingReview, setDeletingReview] = useState(false);
+  const [writeReview, setWriteReview] = useState({ rating: 0, comment: '', submitting: false, hover: 0, images: [], previews: [] });
+
+  const handleReviewImages = (e) => {
+    const files = Array.from(e.target.files);
+    const newImages = [...writeReview.images, ...files].slice(0, 5);
+    const newPreviews = newImages.map(f => URL.createObjectURL(f));
+    setWriteReview(p => ({ ...p, images: newImages, previews: newPreviews }));
+  };
+
+  const removeReviewImage = (i) => {
+    const images = writeReview.images.filter((_, idx) => idx !== i);
+    const previews = writeReview.previews.filter((_, idx) => idx !== i);
+    setWriteReview(p => ({ ...p, images, previews }));
+  };
+
+  const handleSubmitReview = async () => {
+    if (!writeReview.rating) { alert('Please select a star rating.'); return; }
+    setWriteReview(p => ({ ...p, submitting: true }));
+    try {
+      const fd = new FormData();
+      fd.append('productId', order.product_id);
+      fd.append('rating', writeReview.rating);
+      fd.append('comment', writeReview.comment);
+      writeReview.images.forEach(img => fd.append('reviewImages', img));
+      await reviewService.addReview(fd);
+      await fetchMyReview(order.id);
+    } catch {
+      alert('Failed to submit review. Please try again.');
+    } finally {
+      setWriteReview(p => ({ ...p, submitting: false }));
+    }
+  };
 
   const fetchMyReview = async (orderId) => {
     setReviewLoading(true);
@@ -231,6 +263,19 @@ export default function OrderDetail() {
         }
         .od-delete-review-btn:hover { background: #fef2f2; }
         .od-delete-review-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .od-star-btn { background: none; border: none; font-size: 1.6rem; cursor: pointer; padding: 0 2px; line-height: 1; transition: transform 0.1s; }
+        .od-star-btn:hover { transform: scale(1.2); }
+        .od-review-textarea { width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 10px 12px; font-size: 0.88rem; font-family: inherit; resize: vertical; min-height: 80px; box-sizing: border-box; margin-top: 10px; }
+        .od-review-textarea:focus { outline: none; border-color: #2a5298; }
+        .od-submit-review-btn { margin-top: 12px; background: #e47911; color: #fff; border: none; border-radius: 20px; padding: 8px 22px; font-size: 0.88rem; font-weight: 600; cursor: pointer; font-family: inherit; }
+        .od-submit-review-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .od-submit-review-btn:hover:not(:disabled) { background: #c96a00; }
+        .od-img-upload-label { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; cursor: pointer; font-size: 0.84rem; color: #2a5298; font-weight: 500; border: 1px dashed #90a8d4; border-radius: 6px; padding: 7px 14px; }
+        .od-img-upload-label:hover { background: #f0f4ff; }
+        .od-img-previews { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+        .od-img-preview-wrap { position: relative; width: 72px; height: 72px; }
+        .od-img-preview { width: 72px; height: 72px; object-fit: cover; border-radius: 6px; border: 1px solid #e5e7eb; }
+        .od-img-remove { position: absolute; top: -6px; right: -6px; background: #ef4444; color: #fff; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; }
 
         /* order number footer */
         .od-order-num {
@@ -419,6 +464,59 @@ export default function OrderDetail() {
                     {deletingReview ? 'Deleting…' : 'Delete Review'}
                   </button>
                 </div>
+              </div>
+            )}
+
+            {order.order_status === 'Delivered' && !reviewLoading && !myReview && (
+              <div className="od-card">
+                <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 4 }}>Rate this product</div>
+                <div style={{ fontSize: '0.82rem', color: '#6b7280', marginBottom: 12 }}>Share your experience to help other buyers</div>
+                <div style={{ display: 'flex', gap: 2, marginBottom: 4 }}>
+                  {[1,2,3,4,5].map(s => (
+                    <button
+                      key={s}
+                      className="od-star-btn"
+                      style={{ color: s <= (writeReview.hover || writeReview.rating) ? '#16a34a' : '#d1d5db' }}
+                      onMouseEnter={() => setWriteReview(p => ({ ...p, hover: s }))}
+                      onMouseLeave={() => setWriteReview(p => ({ ...p, hover: 0 }))}
+                      onClick={() => setWriteReview(p => ({ ...p, rating: s }))}
+                    >★</button>
+                  ))}
+                  {writeReview.rating > 0 && (
+                    <span style={{ fontSize: '0.82rem', color: '#6b7280', alignSelf: 'center', marginLeft: 6 }}>
+                      {['','Terrible','Poor','Average','Good','Excellent'][writeReview.rating]}
+                    </span>
+                  )}
+                </div>
+                <textarea
+                  className="od-review-textarea"
+                  placeholder="Write your review here (optional)..."
+                  value={writeReview.comment}
+                  onChange={e => setWriteReview(p => ({ ...p, comment: e.target.value }))}
+                />
+                <div>
+                  <label className="od-img-upload-label">
+                    📷 Add Photos {writeReview.images.length > 0 && `(${writeReview.images.length}/5)`}
+                    <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleReviewImages} />
+                  </label>
+                  {writeReview.previews.length > 0 && (
+                    <div className="od-img-previews">
+                      {writeReview.previews.map((src, i) => (
+                        <div key={i} className="od-img-preview-wrap">
+                          <img src={src} className="od-img-preview" alt="" />
+                          <button className="od-img-remove" onClick={() => removeReviewImage(i)}>✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button
+                  className="od-submit-review-btn"
+                  onClick={handleSubmitReview}
+                  disabled={writeReview.submitting || !writeReview.rating}
+                >
+                  {writeReview.submitting ? 'Submitting…' : 'Submit Review'}
+                </button>
               </div>
             )}
 
