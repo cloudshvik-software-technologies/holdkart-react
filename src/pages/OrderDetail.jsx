@@ -44,6 +44,8 @@ export default function OrderDetail() {
   const [reviewLoading, setReviewLoading] = useState(false);
   const [deletingReview, setDeletingReview] = useState(false);
   const [writeReview, setWriteReview] = useState({ rating: 0, comment: '', submitting: false, hover: 0, images: [], previews: [] });
+  const [tracking, setTracking]       = useState(null);
+  const [trackLoading, setTrackLoading] = useState(false);
 
   const handleReviewImages = (e) => {
     const files = Array.from(e.target.files);
@@ -107,6 +109,14 @@ export default function OrderDetail() {
     orderService.getOrder(id).then(ord => {
       setOrder(ord);
       if (ord?.order_status === 'Delivered') fetchMyReview(ord.id);
+      // Fetch live Shiprocket tracking if order has an AWB code
+      if (ord?.awb_code) {
+        setTrackLoading(true);
+        orderService.trackOrder(id)
+          .then(t => setTracking(t?.tracking || null))
+          .catch(() => setTracking(null))
+          .finally(() => setTrackLoading(false));
+      }
     }).catch(() => navigate('/orders')).finally(() => setLoading(false));
   }, [id, isAuthenticated]);
 
@@ -284,7 +294,42 @@ export default function OrderDetail() {
           margin-top: 16px; display: flex; align-items: center; gap: 6px;
         }
 
-        /* ── Right cards ── */
+        /* ── Shipment tracking ── */
+        .od-track-header {
+          display: flex; align-items: center; justify-content: space-between;
+          margin-bottom: 14px;
+        }
+        .od-track-title { font-weight: 700; font-size: 0.95rem; }
+        .od-track-badge {
+          font-size: 0.75rem; font-weight: 700; padding: 3px 10px;
+          border-radius: 20px; background: #dcfce7; color: #15803d;
+        }
+        .od-track-badge.pending { background: #fef9c3; color: #854d0e; }
+        .od-track-row {
+          display: flex; justify-content: space-between; align-items: center;
+          font-size: 0.83rem; color: var(--muted); margin-bottom: 6px;
+        }
+        .od-track-row span:last-child { color: var(--text); font-weight: 500; }
+        .od-track-activities { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 14px; }
+        .od-track-act-item {
+          display: flex; gap: 10px; align-items: flex-start; padding-bottom: 12px;
+          position: relative;
+        }
+        .od-track-act-item:last-child { padding-bottom: 0; }
+        .od-track-act-dot {
+          width: 10px; height: 10px; border-radius: 50%; background: #2a5298;
+          flex-shrink: 0; margin-top: 4px;
+        }
+        .od-track-act-dot.latest { background: #16a34a; width: 12px; height: 12px; }
+        .od-track-act-line {
+          position: absolute; left: 4px; top: 14px;
+          width: 2px; height: calc(100% - 10px); background: #e5e7eb;
+        }
+        .od-track-act-item:last-child .od-track-act-line { display: none; }
+        .od-track-act-desc { font-size: 0.83rem; color: var(--text); line-height: 1.45; }
+        .od-track-act-time { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+
+
         .od-right-card {
           background: #fff;
           border-radius: 10px;
@@ -517,6 +562,79 @@ export default function OrderDetail() {
                 >
                   {writeReview.submitting ? 'Submitting…' : 'Submit Review'}
                 </button>
+              </div>
+            )}
+
+            {/* ── Shipment Tracking — only shown when AWB code exists ── */}
+            {order.awb_code && (
+              <div className="od-card">
+                <div className="od-track-header">
+                  <div className="od-track-title">🚚 Shipment Tracking</div>
+                  {trackLoading && (
+                    <span style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>Loading…</span>
+                  )}
+                  {!trackLoading && tracking && (
+                    <span className={`od-track-badge ${tracking.currentStatus === 'Delivered' ? '' : 'pending'}`}>
+                      {tracking.currentStatus}
+                    </span>
+                  )}
+                </div>
+
+                {/* AWB + Courier info */}
+                <div className="od-track-row">
+                  <span>AWB Number</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {order.awb_code}
+                    <span style={{ cursor: 'pointer', color: 'var(--blue)', fontSize: '0.85rem' }}
+                      onClick={() => navigator.clipboard?.writeText(order.awb_code)}>⧉</span>
+                  </span>
+                </div>
+                {tracking?.courierName && (
+                  <div className="od-track-row">
+                    <span>Courier</span>
+                    <span>{tracking.courierName}</span>
+                  </div>
+                )}
+                {tracking?.etd && (
+                  <div className="od-track-row">
+                    <span>Expected Delivery</span>
+                    <span>{fmtDate(tracking.etd)}</span>
+                  </div>
+                )}
+
+                {/* No tracking data yet */}
+                {!trackLoading && !tracking && (
+                  <p style={{ fontSize: '0.82rem', color: 'var(--muted)', marginTop: 6 }}>
+                    Tracking details will appear once the courier picks up your order.
+                  </p>
+                )}
+
+                {/* Activity timeline */}
+                {!trackLoading && tracking?.activities?.length > 0 && (
+                  <div className="od-track-activities">
+                    {tracking.activities.slice(0, 5).map((act, i) => (
+                      <div key={i} className="od-track-act-item">
+                        <div className={`od-track-act-dot${i === 0 ? ' latest' : ''}`} />
+                        {i < Math.min(tracking.activities.length, 5) - 1 && (
+                          <div className="od-track-act-line" />
+                        )}
+                        <div>
+                          <div className="od-track-act-desc">
+                            {act.activity || act.sr_status || act.status || '—'}
+                          </div>
+                          {(act.date || act.updated_at) && (
+                            <div className="od-track-act-time">
+                              {new Date(act.date || act.updated_at).toLocaleString('en-IN', {
+                                day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+                              })}
+                              {act.location ? ` · ${act.location}` : ''}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

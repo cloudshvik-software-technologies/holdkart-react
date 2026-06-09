@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { productService, cartService, wishlistService, reviewService, campaignService } from '../services/index.js';
+import { productService, cartService, wishlistService, reviewService, campaignService, profileService } from '../services/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import StarRating from '../components/StarRating.jsx';
 import JoinDealModal from '../components/JoinDealModal.jsx';
@@ -506,14 +506,19 @@ const S = {
    GROUP BUY SECTION
 ─────────────────────────────────────────────────────────── */
 function GroupBuySection({ product, localHold, onJoin, onLeave, onAddProduct, joinLoading, hasJoined }) {
-  const { holdTarget, retailPrice } = product;
+  const { holdTarget, holdPrice, retailPrice } = product;
   if (!holdTarget || holdTarget <= 0) return null;
 
+  // holdPrice is the absolute deal price; holdTarget is the number of slots needed
+  const finalPrice      = holdPrice > 0 ? holdPrice : retailPrice;
+  const discountPctFull = retailPrice > 0 ? Math.round((1 - finalPrice / retailPrice) * 100) : 0;
   const safeHold        = Math.min(localHold, holdTarget);
-  const discountedPrice = Math.round(retailPrice * (1 - safeHold / 100));
-  const finalPrice      = Math.round(retailPrice * (1 - holdTarget / 100));
   const pct             = Math.round((safeHold / holdTarget) * 100);
   const remaining       = holdTarget - safeHold;
+  // Current effective price scales toward deal price as more people join
+  const discountedPrice = safeHold > 0
+    ? Math.round(retailPrice - (retailPrice - finalPrice) * (safeHold / holdTarget))
+    : retailPrice;
 
   return (
     <div style={S.groupDealBox}>
@@ -532,7 +537,7 @@ function GroupBuySection({ product, localHold, onJoin, onLeave, onAddProduct, jo
         <span style={{ fontWeight: 700, color: '#0f1111' }}>Best price on hold</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontWeight: 800, color: '#dc2626' }}>₹{finalPrice.toLocaleString('en-IN')}</span>
-          <span style={{ background: '#dc2626', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: '0.75rem' }}>{holdTarget}% off</span>
+          <span style={{ background: '#dc2626', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: '0.75rem' }}>{discountPctFull}% off</span>
         </div>
       </div>
 
@@ -603,6 +608,12 @@ export default function ProductDetail() {
   const [showJoinModal, setShowJoinModal]   = useState(false);
   const [isAddMore, setIsAddMore]           = useState(false);
   const [campaignPaused, setCampaignPaused] = useState(false); // true when seller has paused the campaign
+  const [addedToCart, setAddedToCart] = useState(false);
+  const [deliveryAddress, setDeliveryAddress] = useState(null); // { address, city, state, pincode, name }
+  const [deliveryDate, setDeliveryDate] = useState(null);
+  const [deliveryLoading, setDeliveryLoading] = useState(false);
+  const [showAddressModal, setShowAddressModal] = useState(false);
+  const [manualPincode, setManualPincode] = useState('');
   const pollRef                             = useRef(null);
 
   // Poll campaign status every 4s while user has joined — redirect all participants when deal completes
@@ -803,9 +814,101 @@ export default function ProductDetail() {
     }).catch(() => {});
   }, [isAuthenticated, product?.productId]);
 
+  // Check if this product is already in the cart (persists across page visits / removes)
+  useEffect(() => {
+    if (!isAuthenticated || !product) return;
+    cartService.getCart().then(res => {
+      const items = Array.isArray(res) ? res : (res?.data?.items || res?.data || res?.items || []);
+      const inCart = Array.isArray(items) && items.some(
+        item => String(item.productId) === String(product.productId)
+      );
+      setAddedToCart(inCart);
+    }).catch(() => {});
+  }, [isAuthenticated, product?.productId]);
+
+  // Fetch profile address and then delivery estimate
+  useEffect(() => {
+    if (!product) return;
+    const fetchAddressAndEstimate = async () => {
+      let pincode = null;
+      if (isAuthenticated) {
+        try {
+          const profileRes = await profileService.getProfile();
+          const p = profileRes?.data || profileRes;
+          if (p?.pincode) {
+            setDeliveryAddress({
+              name: p.name || '',
+              address: p.address || '',
+              city: p.city || '',
+              state: p.state || '',
+              pincode: p.pincode,
+            });
+            pincode = p.pincode;
+          }
+        } catch { /* ignore */ }
+      }
+      if (pincode) {
+        setDeliveryLoading(true);
+        try {
+          const res = await fetch(
+            `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081'}/api/customer/product/${product.productId}/delivery-estimate?pincode=${pincode}`
+          );
+          const data = await res.json();
+          if (data?.estimatedDate) {
+            // Parse and format: "2025-06-12" or "12 Jun, Fri" style
+            try {
+              const d = new Date(data.estimatedDate);
+              if (!isNaN(d)) {
+                const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+                const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                setDeliveryDate(`${d.getDate()} ${months[d.getMonth()]}, ${days[d.getDay()]}`);
+              } else {
+                setDeliveryDate(data.estimatedDate);
+              }
+            } catch { setDeliveryDate(data.estimatedDate); }
+          } else {
+            setDeliveryDate(null);
+          }
+        } catch { setDeliveryDate(null); }
+        finally { setDeliveryLoading(false); }
+      }
+    };
+    fetchAddressAndEstimate();
+  }, [isAuthenticated, product?.productId]);
+
+  const handleSelectPincode = async (pincode) => {
+    if (!/^[1-9][0-9]{5}$/.test(pincode)) return;
+    setManualPincode(pincode);
+    setShowAddressModal(false);
+    setDeliveryAddress(prev => ({ ...(prev || {}), pincode }));
+    setDeliveryLoading(true);
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081'}/api/customer/product/${product.productId}/delivery-estimate?pincode=${pincode}`
+      );
+      const data = await res.json();
+      if (data?.estimatedDate) {
+        try {
+          const d = new Date(data.estimatedDate);
+          if (!isNaN(d)) {
+            const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            setDeliveryDate(`${d.getDate()} ${months[d.getMonth()]}, ${days[d.getDay()]}`);
+          } else {
+            setDeliveryDate(data.estimatedDate);
+          }
+        } catch { setDeliveryDate(data.estimatedDate); }
+      } else {
+        setDeliveryDate(null);
+      }
+    } catch { setDeliveryDate(null); }
+    finally { setDeliveryLoading(false); }
+  };
+
   const handleCart = async () => {
     if (!isAuthenticated) { toast.error('Please sign in to add items to cart'); navigate('/login'); return; }
-    try { await cartService.addToCart({ productId: product.productId, quantity: qty }); toast.success('Added to cart!'); }
+    if (addedToCart) { navigate('/cart'); return; }
+    try { await cartService.addToCart({ productId: product.productId, quantity: qty }); toast.success('Added to cart!'); setAddedToCart(true); }
     catch(e) { toast.error(e?.response?.data?.message || 'Failed'); }
   };
 
@@ -966,21 +1069,26 @@ export default function ProductDetail() {
   const avgRating    = reviews.length ? (reviews.reduce((a, r) => a + r.rating, 0) / reviews.length) : 0;
   const hasGroupBuy  = product.holdTarget > 0;
   const safeHold     = Math.min(localHold, product.holdTarget || 0);
-  const discountPct  = safeHold;
-  const displayPrice = hasGroupBuy && discountPct > 0
-    ? Math.round(product.retailPrice * (1 - discountPct / 100))
+  // Use holdPrice as the absolute deal price (set by seller on campaign)
+  const bestGroupPrice = hasGroupBuy && product.holdPrice > 0
+    ? product.holdPrice
+    : product.retailPrice;
+  const maxDiscountPct = hasGroupBuy && product.retailPrice > 0
+    ? Math.round((1 - bestGroupPrice / product.retailPrice) * 100)
+    : 0;
+  // Display price scales toward deal price proportionally as slots fill
+  const displayPrice = hasGroupBuy && safeHold > 0 && product.holdTarget > 0
+    ? Math.round(product.retailPrice - (product.retailPrice - bestGroupPrice) * (safeHold / product.holdTarget))
     : product.retailPrice;
   // If the campaign is PAUSED, treat product as out of stock for all customers.
-  // (Existing holders can view the page but cannot buy.)
-  const inStock      = product.stock > 0 && !campaignPaused;
-  const maxDiscountPct = hasGroupBuy ? product.holdTarget : 0;
-  const bestGroupPrice = hasGroupBuy
-    ? Math.round(product.retailPrice * (1 - maxDiscountPct / 100))
-    : product.retailPrice;
+  // remainingStock is the number of units available for regular Add to Cart
+  // (total stock minus slots committed to the active campaign).
+  const remainingStock = product.remainingStock ?? product.stock;
+  const inStock      = remainingStock > 0 && !campaignPaused;
 
   const features = [
     product.category && `Category: ${product.category}`,
-    inStock          && `In Stock: ${product.stock} units available`,
+    inStock          && `In Stock: ${remainingStock} unit${remainingStock !== 1 ? 's' : ''} available`,
     product.warehouseLocation && `Dispatched from: ${product.warehouseLocation}`,
     'Quality Certified by HoldKart',
     '7-Day Returns',
@@ -1100,7 +1208,7 @@ export default function ProductDetail() {
                   <span style={S.priceSymbol}>₹</span>
                   {displayPrice.toLocaleString('en-IN')}
                 </span>
-                {discountPct > 0 && (
+                {maxDiscountPct > 0 && (
                   <span style={{ fontSize: '0.88rem', color: '#9ca3af', textDecoration: 'line-through' }}>
                     ₹{product.retailPrice.toLocaleString('en-IN')}
                   </span>
@@ -1154,27 +1262,67 @@ export default function ProductDetail() {
               {displayPrice.toLocaleString('en-IN')}
             </p>
 
-            {/* Delivery */}
+            {/* Delivery details */}
             <div style={{ marginBottom: 10 }}>
-              <div style={S.deliveryRow}>
-                <span style={S.deliveryLabel}>Delivery:</span>
-                <span style={S.deliveryVal}>FREE delivery available</span>
+              {/* Address row */}
+              <div style={{ fontSize: '0.82rem', color: '#374151', marginBottom: 8, background: '#f8faff', border: '1px solid #e0e7ff', borderRadius: 6, padding: '8px 10px' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                  <span style={{ fontSize: '1rem', marginTop: 1 }}></span>
+                  <div style={{ flex: 1 }}>
+                    {deliveryAddress?.pincode ? (
+                      <div>
+                        <span style={{ fontWeight: 700, color: '#1e3c72' }}>
+                          {deliveryAddress.name ? deliveryAddress.name.split(' ')[0].toUpperCase() + '  ' : ''}
+                        </span>
+                        <span style={{ color: '#374151' }}>
+                          {[deliveryAddress.address, deliveryAddress.city, deliveryAddress.state, deliveryAddress.pincode].filter(Boolean).join(', ')}
+                        </span>
+                        <span
+                          onClick={() => setShowAddressModal(true)}
+                          style={{ marginLeft: 8, color: '#2a5298', cursor: 'pointer', fontSize: '0.78rem', textDecoration: 'underline' }}
+                        >Change</span>
+                      </div>
+                    ) : (
+                      <div>
+                        <span style={{ color: '#6b7280' }}>Location not set </span>
+                        <span
+                          onClick={() => setShowAddressModal(true)}
+                          style={{ color: '#2a5298', cursor: 'pointer', fontWeight: 600 }}
+                        >Select delivery location ›</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {/* Delivery date */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, paddingTop: 6, borderTop: '1px solid #e0e7ff' }}>
+                  <span style={{ fontSize: '1rem' }}></span>
+                  {deliveryLoading ? (
+                    <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>Checking delivery…</span>
+                  ) : deliveryDate ? (
+                    <span style={{ fontWeight: 700, color: '#111' }}>Delivery by {deliveryDate}</span>
+                  ) : deliveryAddress?.pincode ? (
+                    <span style={{ color: '#b45309', fontSize: '0.8rem' }}>Delivery estimate unavailable</span>
+                  ) : (
+                    <span style={{ color: '#6b7280', fontSize: '0.8rem' }}>Enter pincode to see delivery date</span>
+                  )}
+                </div>
               </div>
+
+              {/* Sold by */}
+              {product.sellerName && (
+                <div style={{ fontSize: '0.82rem', color: '#374151', marginBottom: 4 }}>
+                  <span style={{ color: '#6b7280' }}>Sold by: </span>
+                  <span style={{ color: '#2a5298', fontWeight: 600 }}>{product.sellerName}</span>
+                </div>
+              )}
               <div style={S.deliveryRow}>
                 <span style={S.deliveryLabel}>Ships from:</span>
                 <span>HoldKart Warehouse</span>
-              </div>
-              <div style={S.deliveryRow}>
-                <span style={S.deliveryLabel}>Sold by:</span>
-                <span style={{ color: '#2a5298', fontWeight: 600 }}>HoldKart</span>
               </div>
             </div>
 
             <div style={S.divider} />
 
-            <p style={S.stockStatus(inStock)}>
-              {inStock ? 'In Stock' : campaignPaused ? 'Out of Stock' : 'Currently Unavailable'}
-            </p>
             {campaignPaused && (
               <p style={{ fontSize: '0.78rem', color: '#b45309', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 4, padding: '8px 12px', marginBottom: 10 }}>
                 This campaign is temporarily paused. New purchases are unavailable right now.
@@ -1183,24 +1331,12 @@ export default function ProductDetail() {
 
             {inStock && (
               <>
-                {/* Qty */}
-                <div style={S.qtyRow}>
-                  <span>Qty:</span>
-                  <div style={S.qtyCtrl}>
-                    <button style={S.qtyBtn} onClick={() => setQty(q => Math.max(1, q - 1))}>−</button>
-                    <span style={S.qtyVal}>{qty}</span>
-                    <button style={S.qtyBtn} onClick={() => setQty(q => Math.min(product.stock || 99, q + 1))}>+</button>
-                  </div>
-                  <span style={{ fontSize: '0.78rem', color: '#6b7280' }}>
-                    (max {product.stock})
-                  </span>
-                </div>
 
                 {/* Buy box buttons */}
                 {hasGroupBuy && hasJoined ? (
                   <>
                     <button style={S.addToCartBtn} onClick={handleCart}>
-                      Add to Cart
+                      {addedToCart ? 'Go to Cart' : 'Add to Cart'}
                     </button>
                     <p style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 4, marginBottom: 10, textAlign: 'center' }}>
                       Buys at regular price with no discount
@@ -1220,7 +1356,7 @@ export default function ProductDetail() {
                     {hasGroupBuy ? (
                       <>
                         <button style={S.addToCartBtn} onClick={handleCart}>
-                          Add to Cart
+                          {addedToCart ? 'Go to Cart' : 'Add to Cart'}
                         </button>
                         <p style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 4, marginBottom: 10, textAlign: 'center' }}>
                           Buys at regular price with no discount
@@ -1238,7 +1374,7 @@ export default function ProductDetail() {
                       </>
                     ) : (
                       <>
-                        <button style={S.addToCartBtn} onClick={handleCart}>Add to Cart</button>
+                        <button style={S.addToCartBtn} onClick={handleCart}>{addedToCart ? 'Go to Cart' : 'Add to Cart'}</button>
                         <button style={S.buyNowBtn} onClick={handleBuyNow}>Buy Now</button>
                       </>
                     )}
@@ -2068,6 +2204,85 @@ export default function ProductDetail() {
             ))}
           </div>
         )}
+      </div>
+    )}
+    {/* ── Address / Pincode Selection Modal ── */}
+    {showAddressModal && (
+      <div
+        onClick={() => setShowAddressModal(false)}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 560,
+            padding: '24px 20px 32px', boxShadow: '0 -4px 32px rgba(0,0,0,0.15)' }}
+        >
+          {/* Handle */}
+          <div style={{ width: 40, height: 4, background: '#d1d5db', borderRadius: 99, margin: '0 auto 20px' }} />
+
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f1111', margin: 0 }}>Select delivery address</h3>
+            <button onClick={() => setShowAddressModal(false)}
+              style={{ background: 'none', border: 'none', fontSize: '1.3rem', color: '#6b7280', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+          </div>
+
+          {/* Pincode input */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: 8,
+              padding: '0 12px', background: '#f9fafb' }}>
+              <span style={{ color: '#9ca3af', marginRight: 8, fontSize: '0.9rem' }}>🔍</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="Enter pincode"
+                value={manualPincode}
+                onChange={e => setManualPincode(e.target.value.replace(/\D/g, ''))}
+                style={{ border: 'none', background: 'none', outline: 'none', fontSize: '0.9rem',
+                  color: '#0f1111', width: '100%', padding: '10px 0' }}
+              />
+            </div>
+            <button
+              onClick={() => handleSelectPincode(manualPincode)}
+              disabled={!/^[1-9][0-9]{5}$/.test(manualPincode)}
+              style={{ padding: '10px 18px', background: /^[1-9][0-9]{5}$/.test(manualPincode) ? '#2a5298' : '#e5e7eb',
+                color: /^[1-9][0-9]{5}$/.test(manualPincode) ? '#fff' : '#9ca3af',
+                border: 'none', borderRadius: 8, fontWeight: 700, fontSize: '0.88rem', cursor: /^[1-9][0-9]{5}$/.test(manualPincode) ? 'pointer' : 'not-allowed' }}
+            >
+              Apply
+            </button>
+          </div>
+
+          <div style={{ height: 1, background: '#e5e7eb', margin: '16px 0' }} />
+
+          {/* Saved address */}
+          <p style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', marginBottom: 12 }}>Saved addresses</p>
+          {isAuthenticated && deliveryAddress?.pincode ? (
+            <div
+              onClick={() => { setShowAddressModal(false); }}
+              style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 14px',
+                border: '1.5px solid #2a5298', borderRadius: 8, cursor: 'pointer', background: '#f0f4ff' }}
+            >
+              <span style={{ fontSize: '1.2rem', marginTop: 2 }}>🏠</span>
+              <div>
+                <p style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e3c72', margin: '0 0 2px' }}>HOME</p>
+                <p style={{ fontSize: '0.82rem', color: '#374151', margin: 0 }}>
+                  {[deliveryAddress.address, deliveryAddress.city, deliveryAddress.state, deliveryAddress.pincode].filter(Boolean).join(', ')}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#2a5298', fontSize: '0.88rem', padding: '4px 0' }}>
+              <span style={{ fontSize: '1.1rem' }}>👤</span>
+              {isAuthenticated
+                ? <span style={{ color: '#6b7280' }}>No saved address — add one in your profile</span>
+                : <span style={{ cursor: 'pointer', fontWeight: 600 }} onClick={() => navigate('/login')}>Login to see saved addresses</span>
+              }
+            </div>
+          )}
+        </div>
       </div>
     )}
     </React.Fragment>

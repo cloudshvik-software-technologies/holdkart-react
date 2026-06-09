@@ -53,13 +53,13 @@ export default function Cart() {
   const itemCount    = cart.reduce((s, i) => s + i.quantity, 0);
 
   /* ── fees (always collected) ── */
-  const deliveryCharge = 49;
+  const deliveryCharge = 79;
   const platformFee    = 10;
 
   /* ── prepaid deposit deduction ──
-     depositPaid is the actual amount the customer paid upfront when joining the deal.
-     It is stored on the cart row at join-time — NOT derived from current cart quantity,
-     because the cart quantity may be larger if the deal completed multiple times.       */
+     depositPaid = actual money the customer paid upfront when joining the deal
+     (stored at join time per slot in campaign_hold.deposit_amount, summed on completion).
+     At checkout they owe: holdPrice × qty - depositPaid + fees. */
   const totalPrepaid = cart.reduce((s, i) => s + (i.depositPaid || 0), 0);
   const amountDue = Math.max(0, subtotalEff - totalPrepaid + deliveryCharge + platformFee);
 
@@ -144,7 +144,10 @@ export default function Cart() {
                       }}
                     >
                       {/* Image */}
-                      <div style={{ border: '1px solid #e5e7eb', borderRadius: 4, overflow: 'hidden', background: '#f9fafb' }}>
+                      <div
+                        onClick={() => navigate(`/product/${item.productId}`)}
+                        style={{ border: '1px solid #e5e7eb', borderRadius: 4, overflow: 'hidden', background: '#f9fafb', cursor: 'pointer' }}
+                      >
                         <img
                           src={resolveImg(item.imageUrl)}
                           alt={item.name}
@@ -155,7 +158,10 @@ export default function Cart() {
 
                       {/* Info */}
                       <div>
-                        <p style={{ fontWeight: 400, fontSize: '1rem', color: '#0f1111', marginBottom: 4, lineHeight: 1.4 }}>
+                        <p
+                          onClick={() => navigate(`/product/${item.productId}`)}
+                          style={{ fontWeight: 400, fontSize: '1rem', color: '#0f1111', marginBottom: 4, lineHeight: 1.4, cursor: 'pointer' }}
+                        >
                           {item.name}
                         </p>
                         <p style={{ fontSize: '0.78rem', color: '#007600', fontWeight: 600, marginBottom: 4 }}>
@@ -208,16 +214,19 @@ export default function Cart() {
                             onClick={() => remove(item.cartId)}
                             style={{ background: 'none', border: 'none', color: '#2a5298', fontSize: '0.82rem', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
                           >
-                            Delete
+                            Remove
                           </button>
 
                           <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>|</span>
 
                           <button
-                            onClick={() => navigate(`/product/${item.productId}`)}
+                            onClick={() => {
+                              if (!isAuthenticated) { toast.error('Please sign in to checkout'); navigate('/login'); return; }
+                              navigate('/buy-now', { state: { buyNowItem: item } });
+                            }}
                             style={{ background: 'none', border: 'none', color: '#2a5298', fontSize: '0.82rem', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
                           >
-                            View item
+                            Buy Now
                           </button>
                         </div>
                       </div>
