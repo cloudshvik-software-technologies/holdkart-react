@@ -159,6 +159,8 @@ export default function Checkout() {
 
   const fillFromProfile = () => {
     if (!profile) { toast.error('No profile data found'); return; }
+    const hasAddress = profile.address || profile.city || profile.state || profile.pincode;
+    if (!hasAddress) { toast.error('No saved address in your profile. Please enter your address manually.'); return; }
     setAddress(prev => ({
       ...prev,
       address: profile.address || '',

@@ -20,6 +20,7 @@ export default function Cart() {
   const [cart, setCart]     = useState([]);
   const [loading, setLoading] = useState(true);
   const [showFeeTooltip, setShowFeeTooltip] = useState(false);
+  const [dealRemoveItem, setDealRemoveItem] = useState(null); // item pending deal-removal confirmation
 
   const fetchCart = async () => {
     try {
@@ -211,7 +212,7 @@ export default function Cart() {
                           )}
 
                           <button
-                            onClick={() => remove(item.cartId)}
+                            onClick={() => item.hasGroupDeal ? setDealRemoveItem(item) : remove(item.cartId)}
                             style={{ background: 'none', border: 'none', color: '#2a5298', fontSize: '0.82rem', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
                           >
                             Remove
@@ -394,6 +395,62 @@ export default function Cart() {
           </div>
         )}
       </div>
+
+      {/* ── Deal Remove Warning Modal ── */}
+      {dealRemoveItem && (
+        <div
+          onClick={() => setDealRemoveItem(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 12, padding: 28, maxWidth: 440, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+              <span style={{ fontSize: '1.5rem' }}>⚠️</span>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#b45309' }}>
+                Remove Group Deal Item?
+              </h3>
+            </div>
+
+            {/* Product name */}
+            <p style={{ margin: '0 0 12px', fontWeight: 600, color: '#0f1111', fontSize: '0.95rem' }}>
+              {dealRemoveItem.name}
+            </p>
+
+            {/* Warning body */}
+            <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, padding: '12px 14px', marginBottom: 16, fontSize: '0.85rem', color: '#78350f', lineHeight: 1.6 }}>
+              <p style={{ margin: '0 0 8px', fontWeight: 600 }}>This item is part of a completed group deal.</p>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                <li>You joined a hold campaign and unlocked the discounted group deal price.</li>
+                <li>The deposit you paid to join this deal (<strong>₹{(dealRemoveItem.depositPaid || 0).toLocaleString('en-IN')}</strong>) is <strong>non-refundable</strong> once removed.</li>
+                <li>Removing this item will permanently forfeit your group deal spot and deposit.</li>
+              </ul>
+            </div>
+
+            <p style={{ margin: '0 0 20px', fontSize: '0.82rem', color: '#6b7280' }}>
+              Are you sure you want to remove this item and lose your deposit?
+            </p>
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setDealRemoveItem(null)}
+                style={{ padding: '8px 20px', borderRadius: 6, border: '1px solid #d1d5db', background: '#f9fafb', fontSize: '0.88rem', fontWeight: 600, color: '#374151', cursor: 'pointer' }}
+              >
+                Keep Item
+              </button>
+              <button
+                onClick={async () => { await remove(dealRemoveItem.cartId); setDealRemoveItem(null); }}
+                style={{ padding: '8px 20px', borderRadius: 6, border: 'none', background: '#dc2626', fontSize: '0.88rem', fontWeight: 600, color: '#fff', cursor: 'pointer' }}
+              >
+                Yes, Remove & Forfeit Deposit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

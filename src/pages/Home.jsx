@@ -148,6 +148,7 @@ export default function Home({ isGuest = false }) {
   const [joinedProductIds, setJoinedProductIds] = useState(new Set());
   const [wishlistCount, setWishlistCount] = useState(0);
   const [loading, setLoading]             = useState(true);
+  const [dealSections, setDealSections]   = useState(DEAL_SECTIONS_STATIC);
   const [slideIdx, setSlideIdx]           = useState(0);
   const [transitioning, setTransitioning] = useState(false);
   const [countdown, setCountdown]         = useState({ h: 2, m: 34, s: 59 });
@@ -162,7 +163,51 @@ export default function Home({ isGuest = false }) {
           const featArr = Array.isArray(f) ? f : [];
           setFeatured(featArr);
           setFeaturedHasMore(featArr.length === 10);
-          // Hold Deals section is hidden for guests — do not fetch campaigns
+          // Fetch real deal sections for guests too (listCampaigns is public)
+          try {
+            const allCampaigns = await campaignService.listCampaigns().catch(() => []);
+            const campaignList = Array.isArray(allCampaigns) ? allCampaigns : [];
+            if (campaignList.length > 0) {
+              const categoryMap = {};
+              for (const cam of campaignList) {
+                const cat = cam.category;
+                if (!cat) continue;
+                if (!categoryMap[cat]) categoryMap[cat] = [];
+                categoryMap[cat].push(cam);
+              }
+              const topCategories = Object.entries(categoryMap)
+                .sort((a, b) => b[1].length - a[1].length)
+                .slice(0, 4);
+              const resolveImg = (raw) => {
+                if (!raw) return null;
+                let first = raw;
+                if (String(raw).startsWith('[')) {
+                  try { first = JSON.parse(raw).filter(Boolean)[0] || raw; } catch {}
+                }
+                if (first.startsWith('http')) return first;
+                return first.startsWith('/uploads')
+                  ? first.replace('/uploads', '/seller-uploads')
+                  : `/seller-uploads${first.startsWith('/') ? '' : '/'}${first}`;
+              };
+              const sections = topCategories.map(([cat, cams], idx) => {
+                const sorted = [...cams].sort((a, b) => (b.target || 0) - (a.target || 0));
+                const seen = new Set();
+                const items = [];
+                for (const cam of sorted) {
+                  if (items.length >= 4) break;
+                  const pid = cam.product_id;
+                  if (seen.has(pid)) continue;
+                  seen.add(pid);
+                  items.push({ img: resolveImg(cam.image_url), label: cam.product_name || cat, sub: cam.target > 0 ? `Up to ${cam.target}% off` : 'Group Deal', productId: pid });
+                }
+                const fallback = DEAL_SECTIONS_STATIC[idx]?.items || [];
+                while (items.length < 4 && fallback[items.length]) items.push(fallback[items.length]);
+                const maxDiscount = Math.max(...cams.map(c => c.target || 0));
+                return { id: `cat-${cat}`, title: maxDiscount > 0 ? `Up to ${maxDiscount}% off | ${cat}` : cat, link: `/products?category=${encodeURIComponent(cat)}`, items };
+              });
+              if (sections.length > 0) setDealSections(sections);
+            }
+          } catch { /* keep static fallback */ }
         } else {
           const [f, c, wl, camp] = await Promise.all([
             productService.getFeatured(1, 10).catch(() => []),
@@ -177,7 +222,78 @@ export default function Home({ isGuest = false }) {
           setWishlistCount(Array.isArray(wl) ? wl.length : 0);
           const campArr = Array.isArray(camp) ? camp : [];
           setCampaigns(campArr.slice(0, 6));
-          setJoinedProductIds(new Set(campArr.map(c => Number(c.product_id))));
+          // Only ACTIVE or PAUSED campaigns count as "joined" — exclude CANCELLED
+          const activeCamp = campArr.filter(c => c.campaignStatus === 'ACTIVE' || c.campaignStatus === 'PAUSED');
+          setJoinedProductIds(new Set(activeCamp.map(c => Number(c.product_id))));
+
+          // ── Load real deal sections from active campaigns ──
+          // Group active campaigns by category, pick top 4 categories by deal count
+          // then pick up to 4 products per category as section items
+          try {
+            const allCampaigns = await campaignService.listCampaigns().catch(() => []);
+            const campaignList = Array.isArray(allCampaigns) ? allCampaigns : [];
+            if (campaignList.length > 0) {
+              // Count campaigns per category and collect products
+              const categoryMap = {};
+              for (const cam of campaignList) {
+                const cat = cam.category;
+                if (!cat) continue;
+                if (!categoryMap[cat]) categoryMap[cat] = [];
+                categoryMap[cat].push(cam);
+              }
+              // Sort categories by number of active deals descending, take top 4
+              const topCategories = Object.entries(categoryMap)
+                .sort((a, b) => b[1].length - a[1].length)
+                .slice(0, 4);
+
+              const resolveImg = (raw) => {
+                if (!raw) return null;
+                let first = raw;
+                if (String(raw).startsWith('[')) {
+                  try { first = JSON.parse(raw).filter(Boolean)[0] || raw; } catch {}
+                }
+                if (first.startsWith('http')) return first;
+                return first.startsWith('/uploads')
+                  ? first.replace('/uploads', '/seller-uploads')
+                  : `/seller-uploads${first.startsWith('/') ? '' : '/'}${first}`;
+              };
+
+              const sections = topCategories.map(([cat, cams], idx) => {
+                // Sort by highest discount potential (target%) descending
+                const sorted = [...cams].sort((a, b) => (b.target || 0) - (a.target || 0));
+                // Take up to 4 unique products as items
+                const seen = new Set();
+                const items = [];
+                for (const cam of sorted) {
+                  if (items.length >= 4) break;
+                  const pid = cam.product_id;
+                  if (seen.has(pid)) continue;
+                  seen.add(pid);
+                  const img = resolveImg(cam.image_url);
+                  items.push({
+                    img,
+                    label: cam.product_name || cat,
+                    sub: cam.target > 0 ? `Up to ${cam.target}% off` : 'Group Deal',
+                    productId: pid,
+                  });
+                }
+                // Pad with static fallback items if fewer than 4 products
+                const fallback = DEAL_SECTIONS_STATIC[idx]?.items || [];
+                while (items.length < 4 && fallback[items.length]) {
+                  items.push(fallback[items.length]);
+                }
+                const maxDiscount = Math.max(...cams.map(c => c.target || 0));
+                return {
+                  id: `cat-${cat}`,
+                  title: maxDiscount > 0 ? `Up to ${maxDiscount}% off | ${cat}` : cat,
+                  link: `/products?category=${encodeURIComponent(cat)}`,
+                  items,
+                };
+              });
+
+              if (sections.length > 0) setDealSections(sections);
+            }
+          } catch { /* keep static fallback */ }
         }
       } catch {} finally { setLoading(false); }
     })();
@@ -203,7 +319,9 @@ export default function Home({ isGuest = false }) {
         const camp = await campaignService.getMyCampaigns();
         const campArr = Array.isArray(camp) ? camp : [];
         setCampaigns(campArr.slice(0, 6));
-        setJoinedProductIds(new Set(campArr.map(c => Number(c.product_id))));
+        // Only ACTIVE or PAUSED campaigns count as "joined" — exclude CANCELLED
+        const activeCamp = campArr.filter(c => c.campaignStatus === 'ACTIVE' || c.campaignStatus === 'PAUSED');
+        setJoinedProductIds(new Set(activeCamp.map(c => Number(c.product_id))));
       } catch {}
     };
     window.addEventListener('campaignJoined', handleCampaignJoined);
@@ -561,16 +679,21 @@ export default function Home({ isGuest = false }) {
 
         {/* ── 4-column deal grid ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 12 }}>
-          {DEAL_SECTIONS_STATIC.map((sec) => (
+          {dealSections.map((sec) => (
             <div key={sec.id} className="hk-deal-card" onClick={() => guardedNav(sec.link)} style={{ border: '1px solid #ddd' }}>
               <h3 style={{ fontWeight: 800, fontSize: '0.98rem', color: '#0f1111', marginBottom: 12, lineHeight: 1.3, minHeight: 42 }}>{sec.title}</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 {sec.items.map((item) => (
                   <div key={item.label} className="hk-sub-item" style={{ background: '#f7f7f7', borderRadius: 4, overflow: 'hidden', textAlign: 'center', cursor: 'pointer' }}>
-                    <div style={{ width: '100%', height: 80, overflow: 'hidden' }}>
-                      <img src={item.img} alt={item.label}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                        onError={e => { e.target.style.display = 'none'; e.target.parentNode.style.background = '#eee'; }} />
+                    <div style={{ width: '100%', height: 110, overflow: 'hidden', background: '#f7f7f7', padding: 6, boxSizing: 'border-box' }}>
+                      {item.img ? (
+                        <img src={item.img} alt={item.label}
+                          style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+                          onError={e => { e.target.onerror = null; e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='110' viewBox='0 0 200 110'%3E%3Crect width='200' height='110' fill='%23f0f4f8'/%3E%3Crect x='70' y='20' width='60' height='50' rx='6' fill='%23d1d9e6'/%3E%3Ccircle cx='100' cy='38' r='10' fill='%23a0aec0'/%3E%3Cpath d='M75 68 Q100 48 125 68Z' fill='%23a0aec0'/%3E%3Ctext x='100' y='96' text-anchor='middle' font-family='sans-serif' font-size='9' fill='%2394a3b8'%3ENo Image%3C/text%3E%3C/svg%3E"; }} />
+                      ) : (
+                        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='110' viewBox='0 0 200 110'%3E%3Crect width='200' height='110' fill='%23f0f4f8'/%3E%3Crect x='70' y='20' width='60' height='50' rx='6' fill='%23d1d9e6'/%3E%3Ccircle cx='100' cy='38' r='10' fill='%23a0aec0'/%3E%3Cpath d='M75 68 Q100 48 125 68Z' fill='%23a0aec0'/%3E%3Ctext x='100' y='96' text-anchor='middle' font-family='sans-serif' font-size='9' fill='%2394a3b8'%3ENo Image%3C/text%3E%3C/svg%3E" alt={item.label}
+                          style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+                      )}
                     </div>
                     <div style={{ padding: '6px 6px 8px' }}>
                       <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0f1111', lineHeight: 1.3 }}>{item.label}</div>

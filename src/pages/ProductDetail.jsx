@@ -667,7 +667,7 @@ export default function ProductDetail() {
     setProduct(p);
     setLocalHold(p.currentHold || 0);
     setMainImg(p.images?.[0] || '');
-    setReviews(Array.isArray(r) ? r : []);
+    setReviews((Array.isArray(r) ? r : []).map(rv => ({ ...rv, likes: rv.likes ?? 0, userVote: rv.userVote ?? null })));
     return p;
   };
 
@@ -791,16 +791,21 @@ export default function ProductDetail() {
           }
           if (collected.length > 0) setYouMayAlsoLike(collected);
         } catch { /* non-critical */ }
-        if (isAuthenticated) {
-          try {
-            const { data } = await reviewService.canReview(p.productId);
-            setCanWriteReview(data?.canReview === true);
-          } catch { setCanWriteReview(false); }
-        }
       } catch { toast.error('Product not found'); navigate('/products'); }
       finally { setLoading(false); }
     })();
-  }, [id, isAuthenticated]);
+  }, [id]);
+
+  // Separately handle auth-dependent data (canReview) without re-fetching the whole product
+  useEffect(() => {
+    if (!isAuthenticated || !product) return;
+    (async () => {
+      try {
+        const { data } = await reviewService.canReview(product.productId);
+        setCanWriteReview(data?.canReview === true);
+      } catch { setCanWriteReview(false); }
+    })();
+  }, [isAuthenticated, product?.productId]);
 
   useEffect(() => {
     if (!isAuthenticated || !product) return;
@@ -1047,7 +1052,7 @@ export default function ProductDetail() {
       await reviewService.addReview(formData);
       toast.success('Review submitted!');
       const r = await reviewService.getProductReviews(id);
-      setReviews(Array.isArray(r) ? r : []);
+      setReviews((Array.isArray(r) ? r : []).map(rv => ({ ...rv, likes: rv.likes ?? 0, userVote: rv.userVote ?? null })));
       setReviewForm({ rating: 5, comment: '' });
       setReviewImages([]);
       setReviewImagePreviews([]);
@@ -1607,17 +1612,42 @@ export default function ProductDetail() {
                         paddingTop: 12, borderTop: '1px solid #f3f4f6' }}>
                         <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Helpful?</span>
                         <button
-                          onClick={() => {
+                          type="button"
+                          onClick={async (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const reviewId = r.id;
+                            const alreadyLiked = r.userVote === 'like';
+                            // Optimistic update using total count
                             setReviews(prev => prev.map(rv => {
-                              if (rv.id !== r.id) return rv;
-                              const alreadyLiked = rv.userVote === 'like';
+                              if (rv.id !== reviewId) return rv;
                               return {
                                 ...rv,
                                 userVote: alreadyLiked ? null : 'like',
-                                likes:    alreadyLiked ? (rv.likes || 1) - 1 : (rv.likes || 0) + 1,
-                                dislikes: rv.userVote === 'dislike' ? (rv.dislikes || 1) - 1 : (rv.dislikes || 0),
+                                likes: alreadyLiked ? Math.max((rv.likes || 1) - 1, 0) : (rv.likes || 0) + 1,
+                                dislikes: rv.userVote === 'dislike' ? Math.max((rv.dislikes || 1) - 1, 0) : (rv.dislikes || 0),
                               };
                             }));
+                            try {
+                              // Server returns { likes, userVote } — interceptor already unwraps res.data
+                              const res = await reviewService.toggleReviewLike(reviewId);
+                              setReviews(prev => prev.map(rv =>
+                                rv.id === reviewId
+                                  ? { ...rv, likes: Number(res.likes), userVote: res.userVote }
+                                  : rv
+                              ));
+                            } catch {
+                              // Revert optimistic update on error
+                              setReviews(prev => prev.map(rv => {
+                                if (rv.id !== reviewId) return rv;
+                                return {
+                                  ...rv,
+                                  userVote: alreadyLiked ? 'like' : null,
+                                  likes: alreadyLiked ? (rv.likes || 0) + 1 : Math.max((rv.likes || 1) - 1, 0),
+                                  dislikes: rv.userVote === 'dislike' ? Math.max((rv.dislikes || 1) - 1, 0) : (rv.dislikes || 0),
+                                };
+                              }));
+                            }
                           }}
                           style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px',
                             border: `1px solid ${r.userVote === 'like' ? '#2a5298' : '#d1d5db'}`,
@@ -1634,15 +1664,18 @@ export default function ProductDetail() {
                           {r.likes || 0}
                         </button>
                         <button
-                          onClick={() => {
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
                             setReviews(prev => prev.map(rv => {
                               if (rv.id !== r.id) return rv;
                               const alreadyDisliked = rv.userVote === 'dislike';
                               return {
                                 ...rv,
                                 userVote: alreadyDisliked ? null : 'dislike',
-                                dislikes: alreadyDisliked ? (rv.dislikes || 1) - 1 : (rv.dislikes || 0) + 1,
-                                likes:    rv.userVote === 'like' ? (rv.likes || 1) - 1 : (rv.likes || 0),
+                                dislikes: alreadyDisliked ? Math.max((rv.dislikes || 1) - 1, 0) : (rv.dislikes || 0) + 1,
+                                likes:    rv.userVote === 'like' ? Math.max((rv.likes || 1) - 1, 0) : (rv.likes || 0),
                               };
                             }));
                           }}
