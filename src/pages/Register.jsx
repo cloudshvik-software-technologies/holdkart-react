@@ -26,273 +26,144 @@ export default function Register() {
     }
   };
 
-  const inputStyle = {
-    width: '100%',
-    padding: '12px 14px',
-    border: '1px solid #d9e2f2',
-    borderRadius: 12,
-    background: '#f8fbff',
-    outline: 'none',
-    fontSize: '0.88rem',
-    color: '#1f2937',
-    boxSizing: 'border-box',
-    transition: 'border-color 0.2s',
-  };
-
-  const labelStyle = {
-    fontSize: '0.82rem',
-    fontWeight: 700,
-    color: '#1f2937',
-    marginBottom: 7,
-    display: 'block',
+  const s = {
+    page:       { minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#fff', padding: '20px 16px 30px', fontFamily: '-apple-system, "Segoe UI", Roboto, Arial, sans-serif' },
+    logoWrap:   { marginBottom: 16 },
+    logo:       { fontSize: '2rem', fontWeight: 800, color: '#1f2937', letterSpacing: '-0.5px' },
+    logoAccent: { color: '#2a5298' },
+    card:       { width: '100%', maxWidth: 380, border: '1px solid #e3e6e6', borderRadius: 8, padding: '16px 28px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' },
+    title:      { fontSize: '1.7rem', fontWeight: 500, color: '#1f2937', marginBottom: 8 },
+    labelStyle: { display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: 4, color: '#0f1111' },
+    optionalSpan: { color: '#9ca3af', fontWeight: 400 },
+    inputStyle: { width: '100%', padding: '6px 10px', border: '1px solid #a6a6a6', borderRadius: 4, outline: 'none', fontSize: '0.95rem', color: '#1f2937', boxSizing: 'border-box' },
+    passBox:    { position: 'relative' },
+    passToggle: { position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#2a5298', fontSize: '0.8rem', fontWeight: 600 },
+    fieldGap:   { marginBottom: 8 },
+    hint:       { fontSize: '0.72rem', color: '#6b7280', marginTop: 2 },
+    errorHint:  { color: '#ef4444', fontSize: '0.75rem', marginTop: 4 },
+    submitBtn:  { width: '100%', background: loading ? '#f0d9a8' : '#f6c343', color: '#0f1111', padding: '8px', borderRadius: 8, fontWeight: 500, fontSize: '0.95rem', cursor: loading ? 'not-allowed' : 'pointer', border: '1px solid #d8a92e', marginTop: 6 },
+    smallText:  { fontSize: '0.78rem', color: '#555', lineHeight: 1.6, marginTop: 8 },
+    link:       { color: '#2a5298', textDecoration: 'none' },
+    divider:    { display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0 10px', width: '100%', maxWidth: 380 },
+    dividerLine:{ flex: 1, height: 1, background: '#e3e6e6' },
+    dividerText:{ fontSize: '0.78rem', color: '#767676' },
+    signinBtn:  { display: 'inline-block', width: '100%', maxWidth: 380, padding: '8px', borderRadius: 8, border: '1px solid #a6a6a6', background: '#f3f3f3', color: '#0f1111', fontSize: '0.9rem', fontWeight: 500, textAlign: 'center', textDecoration: 'none', boxSizing: 'border-box' },
   };
 
   return (
-    <div style={{
-      minHeight: 'calc(100vh - 140px)',
-      background: 'linear-gradient(135deg,#eef4ff,#f7faff)',
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'flex-start',
-      padding: '100px 20px 50px',
-    }}>
-
-      <div style={{
-        width: '100%',
-        maxWidth: 900,
-        background: '#fff',
-        borderRadius: 24,
-        overflow: 'hidden',
-        display: 'grid',
-        gridTemplateColumns: '300px 1fr',
-        boxShadow: '0 20px 60px rgba(30,60,114,.10)',
-      }}>
-
-        {/* LEFT */}
-        <div style={{
-          background: 'linear-gradient(160deg,#0f2c6b,#1f4fa8)',
-          padding: '40px 28px',
-          color: '#fff',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-        }}>
-
-          <div>
-            <div style={{
-              fontSize: '0.72rem',
-              letterSpacing: '2px',
-              textTransform: 'uppercase',
-              color: 'rgba(255,255,255,.7)',
-              marginBottom: 16,
-              fontWeight: 700,
-            }}>
-              HoldKart Customer Portal
-            </div>
-
-            <h1 style={{
-              fontSize: '1.8rem',
-              lineHeight: 1.3,
-              fontWeight: 800,
-              marginBottom: 16,
-            }}>
-              Join HoldKart <br /> Today
-            </h1>
-
-            <p style={{
-              color: 'rgba(255,255,255,.8)',
-              lineHeight: 1.7,
-              fontSize: '0.88rem',
-            }}>
-              Create your account and start shopping for quality products at unbeatable prices.
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {[
-              'Quality Certified Products',
-              'Easy Returns & Refunds',
-              'Fast Pan-India Delivery',
-              'Warranty on All Items',
-            ].map((t, i) => (
-              <div
-                key={i}
-                style={{
-                  padding: '14px 16px',
-                  borderRadius: 14,
-                  background: 'rgba(255,255,255,.08)',
-                  border: '1px solid rgba(255,255,255,.08)',
-                  fontSize: '0.84rem',
-                  fontWeight: 500,
-                }}
-              >
-                ✓ {t}
-              </div>
-            ))}
-          </div>
-
-        </div>
-
-        {/* RIGHT */}
-        <div style={{ padding: '38px' }}>
-
-          <h1 style={{
-            fontSize: '2rem',
-            fontWeight: 800,
-            color: '#1f2937',
-            marginBottom: 34,
-          }}>
-            Create Account
-          </h1>
-
-          <form onSubmit={handleSubmit}>
-            <div style={{ display: 'grid', gap: 18 }}>
-
-              {/* Full Name */}
-              <div>
-                <label style={labelStyle}>
-                  Full Name <span style={{ color: 'red' }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="John Doe"
-                  required
-                  value={form.name}
-                  onChange={set('name')}
-                  style={inputStyle}
-                  onFocus={e => e.target.style.borderColor = '#2a5298'}
-                  onBlur={e => e.target.style.borderColor = '#d9e2f2'}
-                />
-              </div>
-
-              {/* Email + Mobile */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div>
-                  <label style={labelStyle}>
-                    Email Address <span style={{ color: 'red' }}>*</span>
-                  </label>
-                  <input
-                    type="email"
-                    placeholder="you@example.com"
-                    required
-                    value={form.email}
-                    onChange={set('email')}
-                    style={inputStyle}
-                    onFocus={e => e.target.style.borderColor = '#2a5298'}
-                    onBlur={e => e.target.style.borderColor = '#d9e2f2'}
-                  />
-                </div>
-                <div>
-                  <label style={labelStyle}>
-                    Mobile{' '}
-                    <span style={{ color: '#9ca3af', fontWeight: 400 }}>(optional)</span>
-                  </label>
-                  <input
-                    type="tel"
-                    placeholder="+91 XXXXXXXXXX"
-                    value={form.mobile}
-                    onChange={set('mobile')}
-                    style={inputStyle}
-                    onFocus={e => e.target.style.borderColor = '#2a5298'}
-                    onBlur={e => e.target.style.borderColor = '#d9e2f2'}
-                  />
-                </div>
-              </div>
-
-              {/* Password + Confirm */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div>
-                  <label style={labelStyle}>
-                    Password <span style={{ color: 'red' }}>*</span>
-                  </label>
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      type={showPwd ? 'text' : 'password'}
-                      placeholder="Min 6 characters"
-                      required
-                      value={form.password}
-                      onChange={set('password')}
-                      style={{ ...inputStyle, paddingRight: 42 }}
-                      onFocus={e => e.target.style.borderColor = '#2a5298'}
-                      onBlur={e => e.target.style.borderColor = '#d9e2f2'}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPwd(s => !s)}
-                      style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.9rem', color: '#9ca3af' }}
-                    >
-                      {showPwd ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label style={labelStyle}>
-                    Confirm Password <span style={{ color: 'red' }}>*</span>
-                  </label>
-                  <input
-                    type={showPwd ? 'text' : 'password'}
-                    placeholder="Re-enter password"
-                    required
-                    value={form.confirm}
-                    onChange={set('confirm')}
-                    style={{
-                      ...inputStyle,
-                      borderColor: form.confirm && form.confirm !== form.password ? '#ef4444' : '#d9e2f2',
-                    }}
-                    onFocus={e => e.target.style.borderColor = '#2a5298'}
-                    onBlur={e => {
-                      if (form.confirm && form.confirm !== form.password) e.target.style.borderColor = '#ef4444';
-                      else e.target.style.borderColor = '#d9e2f2';
-                    }}
-                  />
-                  {form.confirm && form.confirm !== form.password && (
-                    <p style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: 4 }}>Passwords don't match</p>
-                  )}
-                </div>
-              </div>
-
-            </div>
-
-            {/* Buttons */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 38 }}>
-              <button
-                type="submit"
-                disabled={loading}
-                style={{
-                  padding: '12px 30px',
-                  border: 'none',
-                  borderRadius: 12,
-                  background: loading ? '#93c5fd' : 'linear-gradient(135deg,#1f4fa8,#0f2c6b)',
-                  color: '#fff',
-                  fontWeight: 700,
-                  fontSize: '0.92rem',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  boxShadow: loading ? 'none' : '0 4px 14px rgba(30,60,114,0.35)',
-                  transition: 'all 0.2s',
-                }}
-              >
-                {loading ? 'Creating account…' : 'Create My Account →'}
-              </button>
-            </div>
-
-            <p style={{
-              textAlign: 'center',
-              marginTop: 24,
-              color: '#6b7280',
-              fontSize: '0.84rem',
-            }}>
-              Already have an account?{' '}
-              <Link to="/login" style={{ color: '#1f4fa8', fontWeight: 700, textDecoration: 'none' }}>
-                Sign In
-              </Link>
-            </p>
-
-          </form>
-
-        </div>
-
+    <div style={s.page}>
+      <div style={s.logoWrap}>
+        <span style={s.logo}>Hold<span style={s.logoAccent}>Kart</span></span>
       </div>
 
+      <div style={s.card}>
+        <h1 style={s.title}>Create account</h1>
+
+        <form onSubmit={handleSubmit}>
+          <div style={s.fieldGap}>
+            <label style={s.labelStyle}>Your name</label>
+            <input
+              type="text"
+              placeholder="First and last name"
+              required
+              value={form.name}
+              onChange={set('name')}
+              style={s.inputStyle}
+              onFocus={e => { e.target.style.borderColor = '#2a5298'; e.target.style.boxShadow = '0 0 0 3px rgba(42,82,152,0.15)'; }}
+              onBlur={e => { e.target.style.borderColor = '#a6a6a6'; e.target.style.boxShadow = 'none'; }}
+            />
+          </div>
+
+          <div style={s.fieldGap}>
+            <label style={s.labelStyle}>Email address</label>
+            <input
+              type="email"
+              placeholder="you@example.com"
+              required
+              value={form.email}
+              onChange={set('email')}
+              style={s.inputStyle}
+              onFocus={e => { e.target.style.borderColor = '#2a5298'; e.target.style.boxShadow = '0 0 0 3px rgba(42,82,152,0.15)'; }}
+              onBlur={e => { e.target.style.borderColor = '#a6a6a6'; e.target.style.boxShadow = 'none'; }}
+            />
+          </div>
+
+          <div style={s.fieldGap}>
+            <label style={s.labelStyle}>Mobile number <span style={s.optionalSpan}>(optional)</span></label>
+            <input
+              type="tel"
+              placeholder="+91 XXXXXXXXXX"
+              value={form.mobile}
+              onChange={set('mobile')}
+              style={s.inputStyle}
+              onFocus={e => { e.target.style.borderColor = '#2a5298'; e.target.style.boxShadow = '0 0 0 3px rgba(42,82,152,0.15)'; }}
+              onBlur={e => { e.target.style.borderColor = '#a6a6a6'; e.target.style.boxShadow = 'none'; }}
+            />
+          </div>
+
+          <div style={s.fieldGap}>
+            <label style={s.labelStyle}>Password</label>
+            <div style={s.passBox}>
+              <input
+                type={showPwd ? 'text' : 'password'}
+                placeholder="At least 6 characters"
+                required
+                value={form.password}
+                onChange={set('password')}
+                style={{ ...s.inputStyle, paddingRight: 56 }}
+                onFocus={e => { e.target.style.borderColor = '#2a5298'; e.target.style.boxShadow = '0 0 0 3px rgba(42,82,152,0.15)'; }}
+                onBlur={e => { e.target.style.borderColor = '#a6a6a6'; e.target.style.boxShadow = 'none'; }}
+              />
+              <button type="button" style={s.passToggle} onClick={() => setShowPwd(s2 => !s2)}>
+                {showPwd ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            <p style={s.hint}>Passwords must be at least 6 characters.</p>
+          </div>
+
+          <div style={s.fieldGap}>
+            <label style={s.labelStyle}>Re-enter password</label>
+            <input
+              type={showPwd ? 'text' : 'password'}
+              required
+              value={form.confirm}
+              onChange={set('confirm')}
+              style={{
+                ...s.inputStyle,
+                borderColor: form.confirm && form.confirm !== form.password ? '#ef4444' : '#a6a6a6',
+              }}
+              onFocus={e => { e.target.style.borderColor = '#2a5298'; e.target.style.boxShadow = '0 0 0 3px rgba(42,82,152,0.15)'; }}
+              onBlur={e => {
+                e.target.style.boxShadow = 'none';
+                e.target.style.borderColor = (form.confirm && form.confirm !== form.password) ? '#ef4444' : '#a6a6a6';
+              }}
+            />
+            {form.confirm && form.confirm !== form.password && (
+              <p style={s.errorHint}>Passwords don't match</p>
+            )}
+          </div>
+
+          <button type="submit" style={s.submitBtn} disabled={loading}>
+            {loading ? 'Creating account…' : 'Verify email'}
+          </button>
+        </form>
+
+        <p style={s.smallText}>
+          By creating an account, you agree to HoldKart's{' '}
+          <Link to="/terms" style={s.link}>Conditions of Use</Link> and{' '}
+          <Link to="/privacy" style={s.link}>Privacy Notice</Link>.
+        </p>
+      </div>
+
+      <div style={s.divider}>
+        <div style={s.dividerLine} />
+        <span style={s.dividerText}>Already a customer?</span>
+        <div style={s.dividerLine} />
+      </div>
+
+      <Link to="/login" style={s.signinBtn}>
+        Sign in to your account
+      </Link>
     </div>
   );
 }

@@ -31,108 +31,98 @@ export default function Login() {
   };
 
   const s = {
-    wrapper:    { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '80px 16px', background: '#f4f6fa' },
-    card:       { background: '#fff', borderRadius: 16, boxShadow: '0 8px 40px rgba(0,0,0,0.1)', overflow: 'hidden', width: '100%', maxWidth: 860, display: 'grid', gridTemplateColumns: '1fr 1fr' },
-    left:       { background: 'linear-gradient(135deg,#2a5298,#1e3c72)', padding: '48px 36px', color: '#fff', display: 'flex', flexDirection: 'column', justifyContent: 'center' },
-    leftH2:     { fontSize: '1.8rem', fontWeight: 800, marginBottom: 16 },
-    leftP:      { color: 'rgba(255,255,255,0.8)', lineHeight: 1.7, fontSize: '0.95rem' },
-    right:      { padding: '48px 40px' },
-    rightH3:    { fontSize: '1.4rem', fontWeight: 700, marginBottom: 28, color: '#1f2937' },
-    submitBtn:  { width: '100%', background: loading ? '#6b7280' : 'linear-gradient(135deg,#2a5298,#1e3c72)', color: '#fff', padding: '12px', borderRadius: 8, fontWeight: 700, fontSize: '1rem', cursor: loading ? 'not-allowed' : 'pointer', border: 'none', marginTop: 8 },
+    page:       { minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#fff', padding: '40px 16px 60px', fontFamily: '-apple-system, "Segoe UI", Roboto, Arial, sans-serif' },
+    logoWrap:   { marginBottom: 24 },
+    logo:       { fontSize: '2rem', fontWeight: 800, color: '#1f2937', letterSpacing: '-0.5px' },
+    logoAccent: { color: '#2a5298' },
+    card:       { width: '100%', maxWidth: 380, border: '1px solid #e3e6e6', borderRadius: 8, padding: '24px 28px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' },
+    title:      { fontSize: '1.7rem', fontWeight: 500, color: '#1f2937', marginBottom: 18 },
+    banner:     { background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', padding: '10px 14px', borderRadius: 6, marginBottom: 18, fontSize: '0.85rem', fontWeight: 600 },
+    labelStyle: { display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: 4, color: '#0f1111' },
+    inputStyle: { width: '100%', padding: '9px 10px', border: '1px solid #a6a6a6', borderRadius: 4, outline: 'none', fontSize: '0.95rem', color: '#1f2937', boxSizing: 'border-box' },
     passBox:    { position: 'relative' },
-    passToggle: { position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: '1rem' },
-    forgotLink: { textAlign: 'right', marginTop: -12, marginBottom: 16 },
-    inputStyle: { width: '100%', padding: '12px 14px', border: '1.5px solid #e5e7eb', borderRadius: 8, background: '#f8fbff', outline: 'none', fontSize: '0.92rem', color: '#1f2937', boxSizing: 'border-box' },
-    labelStyle: { display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 8, color: '#374151' },
+    passToggle: { position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#2a5298', fontSize: '0.8rem', fontWeight: 600 },
+    forgotLink: { display: 'block', marginTop: 6, marginBottom: 16 },
+    submitBtn:  { width: '100%', background: loading ? '#f0d9a8' : '#f6c343', color: '#0f1111', padding: '9px', borderRadius: 8, fontWeight: 500, fontSize: '0.95rem', cursor: loading ? 'not-allowed' : 'pointer', border: '1px solid #d8a92e', marginTop: 6 },
+    fieldGap:   { marginBottom: 16 },
+    divider:    { display: 'flex', alignItems: 'center', gap: 10, margin: '20px 0 16px' },
+    dividerLine:{ flex: 1, height: 1, background: '#e3e6e6' },
+    dividerText:{ fontSize: '0.78rem', color: '#767676' },
+    smallText:  { fontSize: '0.78rem', color: '#555', lineHeight: 1.6, marginTop: 14 },
+    link:       { color: '#2a5298', textDecoration: 'none' },
+    footerCard: { width: '100%', maxWidth: 380, textAlign: 'center', marginTop: 18, paddingTop: 16, borderTop: '1px solid #e3e6e6' },
+    createBtn:  { display: 'inline-block', width: '100%', maxWidth: 380, marginTop: 12, padding: '9px', borderRadius: 8, border: '1px solid #a6a6a6', background: '#f3f3f3', color: '#0f1111', fontSize: '0.9rem', fontWeight: 500, textAlign: 'center', textDecoration: 'none', boxSizing: 'border-box' },
   };
 
   return (
-    <div style={s.wrapper}>
-      <div style={s.card}>
-
-        {/* Left panel */}
-        <div style={s.left}>
-          <h2 style={s.leftH2}>Welcome Back</h2>
-          <p style={s.leftP}>Sign in to your HoldKart account and continue shopping for quality refurbished electronics.</p>
-          <div style={{ marginTop: 40 }}>
-            {['Quality Certified Products', 'Easy Returns & Refunds', 'Fast Delivery', 'Warranty on All Items'].map(f => (
-              <div key={f} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                <span style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', flexShrink: 0 }}>✓</span>
-                <span style={{ fontSize: '0.88rem', color: 'rgba(255,255,255,0.85)' }}>{f}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Right panel */}
-        <div style={s.right}>
-          <h3 style={s.rightH3}>Login</h3>
-
-          {/* Registration success banner */}
-          {justRegistered && (
-            <div style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', padding: '10px 16px', borderRadius: 8, marginBottom: 16, fontSize: '0.88rem', fontWeight: 600 }}>
-              ✅ Account created! Please log in to continue.
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: 20 }}>
-              <label style={s.labelStyle}>Email / Mobile</label>
-              <input
-                type="text"
-                placeholder="you@example.com"
-                required
-                value={form.email}
-                onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
-                style={s.inputStyle}
-                onFocus={e => e.target.style.borderColor = '#2a5298'}
-                onBlur={e => e.target.style.borderColor = '#e5e7eb'}
-              />
-            </div>
-
-            <div style={{ marginBottom: 14 }}>
-              <label style={s.labelStyle}>Password</label>
-              <div style={s.passBox}>
-                <input
-                  type={showPwd ? 'text' : 'password'}
-                  placeholder="••••••••"
-                  required
-                  value={form.password}
-                  onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
-                  style={{ ...s.inputStyle, paddingRight: 56 }}
-                  onFocus={e => e.target.style.borderColor = '#2a5298'}
-                  onBlur={e => e.target.style.borderColor = '#e5e7eb'}
-                />
-                <button type="button" style={s.passToggle} onClick={() => setShowPwd(prev => !prev)}>
-                  {showPwd ? 'Hide' : 'Show'}
-                </button>
-              </div>
-            </div>
-
-            <div style={s.forgotLink}>
-              <Link to="/forgot" style={{ color: '#2a5298', fontSize: '0.85rem', fontWeight: 500 }}>
-                Forgot Password?
-              </Link>
-            </div>
-
-            <button type="submit" style={s.submitBtn} disabled={loading}>
-              {loading ? 'Signing in…' : 'Sign In →'}
-            </button>
-          </form>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '24px 0' }}>
-            <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
-            <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>OR</span>
-            <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
-          </div>
-
-          <p style={{ textAlign: 'center', fontSize: '0.88rem', color: '#6b7280' }}>
-            Don't have an account?{' '}
-            <Link to="/register" style={{ color: '#2a5298', fontWeight: 600 }}>Create one free →</Link>
-          </p>
-        </div>
-
+    <div style={s.page}>
+      <div style={s.logoWrap}>
+        <span style={s.logo}>Hold<span style={s.logoAccent}>Kart</span></span>
       </div>
+
+      <div style={s.card}>
+        <h1 style={s.title}>Sign in</h1>
+
+        {justRegistered && (
+          <div style={s.banner}>✅ Account created! Please log in to continue.</div>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          <div style={s.fieldGap}>
+            <label style={s.labelStyle}>Email or mobile number</label>
+            <input
+              type="text"
+              required
+              value={form.email}
+              onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
+              style={s.inputStyle}
+              onFocus={e => { e.target.style.borderColor = '#2a5298'; e.target.style.boxShadow = '0 0 0 3px rgba(42,82,152,0.15)'; }}
+              onBlur={e => { e.target.style.borderColor = '#a6a6a6'; e.target.style.boxShadow = 'none'; }}
+            />
+          </div>
+
+          <div>
+            <label style={s.labelStyle}>Password</label>
+            <div style={s.passBox}>
+              <input
+                type={showPwd ? 'text' : 'password'}
+                required
+                value={form.password}
+                onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
+                style={{ ...s.inputStyle, paddingRight: 56 }}
+                onFocus={e => { e.target.style.borderColor = '#2a5298'; e.target.style.boxShadow = '0 0 0 3px rgba(42,82,152,0.15)'; }}
+                onBlur={e => { e.target.style.borderColor = '#a6a6a6'; e.target.style.boxShadow = 'none'; }}
+              />
+              <button type="button" style={s.passToggle} onClick={() => setShowPwd(prev => !prev)}>
+                {showPwd ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            <Link to="/forgot" style={{ ...s.link, ...s.forgotLink, fontSize: '0.8rem' }}>
+              Forgot Password?
+            </Link>
+          </div>
+
+          <button type="submit" style={s.submitBtn} disabled={loading}>
+            {loading ? 'Signing in…' : 'Sign In'}
+          </button>
+        </form>
+
+        <p style={s.smallText}>
+          By continuing, you agree to HoldKart's{' '}
+          <Link to="/terms" style={s.link}>Conditions of Use</Link> and{' '}
+          <Link to="/privacy" style={s.link}>Privacy Notice</Link>.
+        </p>
+      </div>
+
+      <div style={s.divider}>
+        <div style={s.dividerLine} />
+        <span style={s.dividerText}>New to HoldKart?</span>
+        <div style={s.dividerLine} />
+      </div>
+
+      <Link to="/register" style={s.createBtn}>
+        Create your HoldKart account
+      </Link>
     </div>
   );
 }

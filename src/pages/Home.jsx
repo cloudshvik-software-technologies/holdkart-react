@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ProductCard from '../components/ProductCard.jsx';
-import { productService, wishlistService, campaignService } from '../services/index.js';
+import { productService, wishlistService, campaignService, cartService } from '../services/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { HeroBannerAd, ScrollBannerAd, ProductSpotlightAd, PopupAd, SidebarBoxAd } from '../components/AdBanner.jsx';
 
 /* ─── BRAND LOGOS ───────────────────────────────────────────────── */
 const BRANDS = [
@@ -39,9 +40,7 @@ const SLIDES = [
     offer: '10% Instant discount* on UPI transactions',
     color1: '#e47911',
     color2: '#febd69',
-    /* Galaxy S-series phone on black — blends naturally with dark banner */
     leftImg:  { src: 'https://images.unsplash.com/photo-1616348436168-de43ad0db179?w=480&q=90', alt: 'Smartphone' },
-    /* MacBook on minimal dark surface */
     rightImg: { src: 'https://images.unsplash.com/photo-1525547719571-a2d4ac8945e2?w=480&q=90', alt: 'Laptop' },
   },
   {
@@ -56,7 +55,6 @@ const SLIDES = [
     offer: 'More members = lower price for all',
     color1: '#00b4d8',
     color2: '#90e0ef',
-    /* Single image on right — Sony WH-1000XM4 on dark blue-ish surface */
     leftImg:  null,
     rightImg: { src: 'https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=520&q=90', alt: 'Headphones' },
   },
@@ -72,7 +70,6 @@ const SLIDES = [
     offer: 'Free delivery on orders above ₹499',
     color1: '#ff6b35',
     color2: '#ffa07a',
-    /* AirPods on dark left, over-ear headphones on dark right */
     leftImg:  { src: 'https://images.unsplash.com/photo-1606220945770-b5b6c2c55bf1?w=480&q=90', alt: 'Earbuds' },
     rightImg: { src: 'https://images.unsplash.com/photo-1583394838336-acd977736f90?w=480&q=90', alt: 'Over-ear headphones' },
   },
@@ -127,17 +124,463 @@ const DEAL_SECTIONS_STATIC = [
 ];
 
 /* ─── COMPONENT ─────────────────────────────────────────────────── */
+/* ─── SUGGESTED FOR YOU CAROUSEL ────────────────────────────────── */
+function SuggestedForYou({ featured, loading, guardedNav }) {
+  const trackRef = useRef(null);
+  const [canRight, setCanRight] = useState(true);
+
+  const updateArrows = () => {
+    const t = trackRef.current;
+    if (!t) return;
+    setCanRight(t.scrollLeft + t.clientWidth < t.scrollWidth - 4);
+  };
+
+  const scroll = (dir) => {
+    const t = trackRef.current;
+    if (!t) return;
+    t.scrollBy({ left: dir * 900, behavior: 'smooth' });
+    setTimeout(updateArrows, 400);
+  };
+
+  if (loading || !featured || featured.length === 0) return null;
+
+  // Use all featured products so the row is fully populated with no empty space
+  const items = featured;
+  const catName = featured[0]?.category || featured[0]?.categoryName || 'Products';
+
+  const resolveImg = (p) => {
+    const raw = p.imageUrl || p.image_url || p.image;
+    if (!raw) return null;
+    if (raw.startsWith('http')) return raw;
+    return raw.startsWith('/uploads')
+      ? raw.replace('/uploads', '/seller-uploads')
+      : `/seller-uploads${raw.startsWith('/') ? '' : '/'}${raw}`;
+  };
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 4, border: '1px solid #ddd', padding: '16px 20px', marginBottom: 12, position: 'relative' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <h2 style={{ fontWeight: 800, fontSize: '1.15rem', color: '#0f1111', margin: 0 }}>Suggested For You</h2>
+        <button
+          onClick={() => guardedNav(`/products`)}
+          style={{ width: 38, height: 38, borderRadius: '50%', background: '#0f1111', border: 'none', color: '#fff', fontSize: '1.1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+        >→</button>
+      </div>
+
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+        <div
+          ref={trackRef}
+          onScroll={updateArrows}
+          style={{ display: 'flex', gap: 12, overflowX: 'auto', scrollBehavior: 'smooth', scrollbarWidth: 'none', msOverflowStyle: 'none', padding: '4px 2px' }}
+        >
+          {items.map((p) => {
+            const imgSrc  = resolveImg(p);
+            const price   = Number(p.price || p.retailPrice || p.retail_price) || 0;
+            const mrp     = Number(p.mrp || p.originalPrice || price) || price;
+            const upiPrice = price > 0 ? Math.round(price * 0.9) : 0;
+
+            return (
+              <div
+                key={p.productId}
+                onClick={() => guardedNav(`/product/${p.productId}`)}
+                style={{ flexShrink: 0, width: 220, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 6 }}
+              >
+                <div style={{ width: 220, height: 220, background: '#f7f7f7', borderRadius: 8, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {imgSrc
+                    ? <img src={imgSrc} alt={p.name || p.productName} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={e => { e.target.style.display = 'none'; }} />
+                    : <div style={{ fontSize: '2.5rem', color: '#ccc' }}>📦</div>
+                  }
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#0f1111', fontWeight: 500, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                  {p.name || p.productName || catName}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                  {mrp > price && <span style={{ fontSize: '0.75rem', color: '#878787', textDecoration: 'line-through' }}>₹{mrp.toLocaleString('en-IN')}</span>}
+                  <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f1111' }}>₹{price.toLocaleString('en-IN')}</span>
+                </div>
+                {upiPrice > 0 && price > 0 && (
+                  <div style={{ fontSize: '0.72rem', color: '#2874f0', fontWeight: 600 }}>
+                    ₹{upiPrice.toLocaleString('en-IN')} <span style={{ fontWeight: 400 }}>with UPI offer + more</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {canRight && (
+          <button
+            onClick={() => scroll(1)}
+            style={{ position: 'absolute', right: -12, zIndex: 10, width: 32, height: 80, background: '#fff', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
+          >›</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── SHOP MORE GRID ─────────────────────────────────────────────── */
+function ShopMoreGrid({ featured, categories, loading, guardedNav }) {
+  if (loading || !featured || featured.length === 0) return null;
+
+  // Group featured products by category, pick top 4 categories
+  const catMap = {};
+  for (const p of featured) {
+    const cat = p.category || p.categoryName || 'More';
+    if (!catMap[cat]) catMap[cat] = [];
+    catMap[cat].push(p);
+  }
+
+  const SECTION_TITLES = [
+    'Explore more', 'Keep shopping for', 'Up to 50% off | Top picks', 'Continue shopping for',
+  ];
+
+  const entries = Object.entries(catMap).slice(0, 4);
+  // Pad with static fallback sections if fewer than 4 categories
+  while (entries.length < 4) {
+    entries.push([`Deals`, featured.slice(entries.length * 2, entries.length * 2 + 4)]);
+  }
+
+  const resolveImg = (p) => {
+    const raw = p.imageUrl || p.image_url || p.image;
+    if (!raw) return null;
+    if (raw.startsWith('http')) return raw;
+    return raw.startsWith('/uploads')
+      ? raw.replace('/uploads', '/seller-uploads')
+      : `/seller-uploads${raw.startsWith('/') ? '' : '/'}${raw}`;
+  };
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 12 }}>
+      {entries.map(([cat, items], si) => {
+        const hero = items[0];
+        const thumbs = items.slice(0, 4);
+        const heroImg = resolveImg(hero);
+        const price = Number(hero.price || hero.retailPrice || hero.retail_price) || 0;
+        const mrp   = Number(hero.mrp || hero.originalPrice || price) || price;
+
+        return (
+          <div key={cat} style={{ background: '#fff', borderRadius: 4, border: '1px solid #ddd', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {/* Title */}
+            <h3 style={{ fontWeight: 800, fontSize: '1rem', color: '#0f1111', lineHeight: 1.3, margin: 0 }}>
+              {SECTION_TITLES[si] || cat}
+            </h3>
+
+            {/* Hero image */}
+            <div
+              onClick={() => guardedNav(`/product/${hero.productId}`)}
+              style={{ cursor: 'pointer', width: '100%', height: 180, background: '#f7f7f7', borderRadius: 4, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              {heroImg
+                ? <img src={heroImg} alt={hero.name || hero.productName} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} onError={e => { e.target.style.display = 'none'; }} />
+                : <div style={{ fontSize: '2.5rem', color: '#ccc' }}>📦</div>
+              }
+            </div>
+
+            {/* Product name */}
+            <div style={{ fontSize: '0.78rem', color: '#0f1111', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+              {hero.name || hero.productName || cat}
+            </div>
+
+            {/* Price */}
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <span style={{ fontSize: '0.92rem', fontWeight: 700 }}>
+                ₹{price.toLocaleString('en-IN')}
+                <sup style={{ fontSize: '0.55rem', verticalAlign: 'super' }}>00</sup>
+              </span>
+              {mrp > price && (
+                <span style={{ fontSize: '0.72rem', color: '#565959' }}>
+                  M.R.P: <span style={{ textDecoration: 'line-through' }}>₹{mrp.toLocaleString('en-IN')}</span>
+                </span>
+              )}
+            </div>
+
+            {/* Thumbnails */}
+            <div style={{ display: 'flex', gap: 6 }}>
+              {thumbs.map((p, ti) => {
+                const tImg = resolveImg(p);
+                return (
+                  <div
+                    key={ti}
+                    onClick={() => guardedNav(`/product/${p.productId}`)}
+                    style={{
+                      width: 52, height: 52, borderRadius: 4, border: ti === 0 ? '2px solid #007185' : '1px solid #ddd',
+                      background: '#f7f7f7', overflow: 'hidden', cursor: 'pointer', flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    {tImg
+                      ? <img src={tImg} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={e => { e.target.style.display = 'none'; }} />
+                      : <span style={{ fontSize: '1rem', color: '#ccc' }}>📦</span>
+                    }
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* See more */}
+            <a onClick={() => guardedNav(`/products?category=${encodeURIComponent(cat)}`)} style={{ fontSize: '0.78rem', color: '#007185', cursor: 'pointer', fontWeight: 500, marginTop: 'auto' }}>
+              See more
+            </a>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─── BROWSING HISTORY CAROUSEL ─────────────────────────────────── */
+function BrowsingHistoryCarousel({ featured, loading, guardedNav, joinedProductIds }) {
+  const trackRef = useRef(null);
+  const [canLeft,  setCanLeft]  = useState(false);
+  const [canRight, setCanRight] = useState(true);
+  const CARD_W = 180; // card width + gap
+
+  const updateArrows = () => {
+    const t = trackRef.current;
+    if (!t) return;
+    setCanLeft(t.scrollLeft > 4);
+    setCanRight(t.scrollLeft + t.clientWidth < t.scrollWidth - 4);
+  };
+
+  const scroll = (dir) => {
+    const t = trackRef.current;
+    if (!t) return;
+    t.scrollBy({ left: dir * CARD_W * 3, behavior: 'smooth' });
+    setTimeout(updateArrows, 400);
+  };
+
+  if (loading || !featured || featured.length === 0) return null;
+
+  // Show up to 14 items
+  const items = featured.slice(0, 14);
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 4, border: '1px solid #ddd', padding: '16px', marginBottom: 12, position: 'relative' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#0f1111' }}>Inspired by your browsing history</h2>
+        <span style={{ fontSize: '0.78rem', color: '#565959' }}>Page 1 of {Math.ceil(featured.length / 7)}</span>
+      </div>
+
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+        {/* Left arrow */}
+        <button
+          onClick={() => scroll(-1)}
+          disabled={!canLeft}
+          style={{
+            position: 'absolute', left: -16, zIndex: 10,
+            width: 32, height: 90, background: '#fff',
+            border: '1px solid #ddd', borderRadius: 4,
+            cursor: canLeft ? 'pointer' : 'default',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '1.2rem', color: canLeft ? '#333' : '#ccc',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+            transition: 'all 0.15s', flexShrink: 0,
+          }}
+        >‹</button>
+
+        {/* Scrollable track */}
+        <div
+          ref={trackRef}
+          onScroll={updateArrows}
+          style={{
+            display: 'flex', gap: 12, overflowX: 'auto', scrollBehavior: 'smooth',
+            scrollbarWidth: 'none', msOverflowStyle: 'none',
+            padding: '4px 0',
+          }}
+        >
+          <style>{`.hk-bh-track::-webkit-scrollbar { display: none; }`}</style>
+          {items.map((p) => {
+            const rawImg = p.imageUrl || p.image_url || p.image;
+            const imgSrc = rawImg
+              ? (rawImg.startsWith('http') ? rawImg : rawImg.startsWith('/uploads')
+                ? rawImg.replace('/uploads', '/seller-uploads')
+                : `/seller-uploads${rawImg.startsWith('/') ? '' : '/'}${rawImg}`)
+              : null;
+            const price   = Number(p.price || p.retailPrice || p.retail_price) || 0;
+            const mrp     = Number(p.mrp || p.originalPrice || price) || price;
+            const discPct = mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
+
+            return (
+              <div
+                key={p.productId}
+                onClick={() => guardedNav(`/product/${p.productId}`)}
+                style={{
+                  flexShrink: 0, width: 168, cursor: 'pointer',
+                  display: 'flex', flexDirection: 'column', gap: 6,
+                }}
+              >
+                <div style={{ width: 168, height: 168, background: '#f7f7f7', borderRadius: 4, overflow: 'hidden', border: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {imgSrc
+                    ? <img src={imgSrc} alt={p.name || p.productName} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} onError={e => { e.target.style.display = 'none'; }} />
+                    : <div style={{ fontSize: '2rem', color: '#ccc' }}>📦</div>
+                  }
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#007185', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                  {p.name || p.productName || 'Product'}
+                </div>
+                {discPct > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#cc0c39' }}>-{discPct}%</span>
+                    <span style={{ fontSize: '0.88rem', fontWeight: 700 }}>₹{price.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {mrp > price && (
+                  <div style={{ fontSize: '0.7rem', color: '#565959' }}>
+                    M.R.P: <span style={{ textDecoration: 'line-through' }}>₹{mrp.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Right arrow */}
+        <button
+          onClick={() => scroll(1)}
+          disabled={!canRight}
+          style={{
+            position: 'absolute', right: -16, zIndex: 10,
+            width: 32, height: 90, background: '#fff',
+            border: '1px solid #ddd', borderRadius: 4,
+            cursor: canRight ? 'pointer' : 'default',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '1.2rem', color: canRight ? '#333' : '#ccc',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+            transition: 'all 0.15s', flexShrink: 0,
+          }}
+        >›</button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── BASED ON YOUR CART CAROUSEL ───────────────────────────────── */
+function BasedOnCartCarousel({ featured, cartItems, loading, guardedNav }) {
+  const trackRef = useRef(null);
+  const [canLeft,  setCanLeft]  = useState(false);
+  const [canRight, setCanRight] = useState(true);
+
+  const updateArrows = () => {
+    const t = trackRef.current;
+    if (!t) return;
+    setCanLeft(t.scrollLeft > 4);
+    setCanRight(t.scrollLeft + t.clientWidth < t.scrollWidth - 4);
+  };
+
+  const scroll = (dir) => {
+    const t = trackRef.current;
+    if (!t) return;
+    t.scrollBy({ left: dir * 900, behavior: 'smooth' });
+    setTimeout(updateArrows, 400);
+  };
+
+  if (loading || !featured || featured.length === 0) return null;
+
+  const resolveImg = (p) => {
+    const raw = p.imageUrl || p.image_url || p.image;
+    if (!raw) return null;
+    if (raw.startsWith('http')) return raw;
+    return raw.startsWith('/uploads')
+      ? raw.replace('/uploads', '/seller-uploads')
+      : `/seller-uploads${raw.startsWith('/') ? '' : '/'}${raw}`;
+  };
+
+  // Build a set of categories from cart items
+  const cartCategories = new Set(
+    (cartItems || []).map(ci => ci.category || ci.categoryName || '').filter(Boolean)
+  );
+  const cartProductIds = new Set(
+    (cartItems || []).map(ci => Number(ci.productId || ci.product_id))
+  );
+
+  // Filter featured: prefer products whose category matches cart, exclude items already in cart
+  let items = [];
+  if (cartCategories.size > 0) {
+    items = featured.filter(p =>
+      cartCategories.has(p.category || p.categoryName || '') &&
+      !cartProductIds.has(Number(p.productId))
+    );
+  }
+  // If cart is empty or no category match, fall back to all featured products
+  if (items.length < 4) {
+    const extra = featured.filter(p => !cartProductIds.has(Number(p.productId)));
+    const seen = new Set(items.map(p => p.productId));
+    for (const p of extra) {
+      if (!seen.has(p.productId)) { items.push(p); seen.add(p.productId); }
+    }
+  }
+
+  if (items.length === 0) return null;
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 4, border: '1px solid #ddd', padding: '16px 20px', marginBottom: 12, position: 'relative' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#0f1111', margin: 0 }}>Based on your cart</h2>
+        <button
+          onClick={() => guardedNav('/products')}
+          style={{ background: 'none', border: 'none', color: '#007185', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', padding: 0 }}
+        >See more →</button>
+      </div>
+
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+        {canLeft && (
+          <button onClick={() => scroll(-1)}
+            style={{ position: 'absolute', left: -12, zIndex: 10, width: 32, height: 80, background: '#fff', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
+          >‹</button>
+        )}
+
+        <div
+          ref={trackRef}
+          onScroll={updateArrows}
+          style={{ display: 'flex', gap: 0, overflowX: 'auto', scrollBehavior: 'smooth', scrollbarWidth: 'none', msOverflowStyle: 'none', padding: '2px 0' }}
+        >
+          {items.map((p) => {
+            const imgSrc = resolveImg(p);
+            return (
+              <div
+                key={p.productId}
+                onClick={() => guardedNav(`/product/${p.productId}`)}
+                style={{ flexShrink: 0, width: 220, height: 220, cursor: 'pointer', overflow: 'hidden', position: 'relative' }}
+              >
+                {imgSrc
+                  ? <img src={imgSrc} alt={p.name || p.productName}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'transform 0.2s' }}
+                      onError={e => { e.target.style.display = 'none'; }}
+                      onMouseEnter={e => e.target.style.transform = 'scale(1.04)'}
+                      onMouseLeave={e => e.target.style.transform = 'scale(1)'}
+                    />
+                  : <div style={{ width: '100%', height: '100%', background: '#f7f7f7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2.5rem', color: '#ccc' }}>📦</div>
+                }
+              </div>
+            );
+          })}
+        </div>
+
+        {canRight && (
+          <button onClick={() => scroll(1)}
+            style={{ position: 'absolute', right: -12, zIndex: 10, width: 32, height: 80, background: '#fff', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
+          >›</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Home({ isGuest = false }) {
   const { customer } = useAuth();
   const navigate = useNavigate();
 
   const guardedNav = (path) => {
-    // Campaign detail pages handle their own auth check internally,
-    // so guests can navigate directly to view the deal.
     if (isGuest && !path.startsWith('/campaigns/')) { navigate('/login'); return; }
+    window.scrollTo(0, 0);
     navigate(path);
   };
 
+  // ── Advertisement state is managed inside AdBanner components ───────────────
+
+  const [cartItems, setCartItems]         = useState([]);
   const [featured, setFeatured]           = useState([]);
   const [featuredPage, setFeaturedPage]   = useState(1);
   const [featuredHasMore, setFeaturedHasMore] = useState(true);
@@ -155,6 +598,12 @@ export default function Home({ isGuest = false }) {
   const timerRef = useRef(null);
   const slide = SLIDES[slideIdx];
 
+  // ── Fetch all ad slots on mount ───────────────────────────────────────────────
+  useEffect(() => {
+    const API = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081';
+    // Advertisements are fetched inside AdBanner components
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {
@@ -163,7 +612,6 @@ export default function Home({ isGuest = false }) {
           const featArr = Array.isArray(f) ? f : [];
           setFeatured(featArr);
           setFeaturedHasMore(featArr.length === 10);
-          // Fetch real deal sections for guests too (listCampaigns is public)
           try {
             const allCampaigns = await campaignService.listCampaigns().catch(() => []);
             const campaignList = Array.isArray(allCampaigns) ? allCampaigns : [];
@@ -209,31 +657,29 @@ export default function Home({ isGuest = false }) {
             }
           } catch { /* keep static fallback */ }
         } else {
-          const [f, c, wl, camp] = await Promise.all([
+          const [f, c, wl, camp, cartRes] = await Promise.all([
             productService.getFeatured(1, 10).catch(() => []),
             productService.getCategories().catch(() => []),
             wishlistService.getWishlist().catch(() => []),
             campaignService.getMyCampaigns().catch(() => []),
+            cartService.getCart().catch(() => []),
           ]);
           const featArr = Array.isArray(f) ? f : [];
           setFeatured(featArr);
           setFeaturedHasMore(featArr.length === 10);
           setCategories(Array.isArray(c) ? c : []);
           setWishlistCount(Array.isArray(wl) ? wl.length : 0);
+          const cartArr = Array.isArray(cartRes) ? cartRes : (cartRes?.items || cartRes?.data || []);
+          setCartItems(Array.isArray(cartArr) ? cartArr : []);
           const campArr = Array.isArray(camp) ? camp : [];
           setCampaigns(campArr.slice(0, 6));
-          // Only ACTIVE or PAUSED campaigns count as "joined" — exclude CANCELLED
           const activeCamp = campArr.filter(c => c.campaignStatus === 'ACTIVE' || c.campaignStatus === 'PAUSED');
           setJoinedProductIds(new Set(activeCamp.map(c => Number(c.product_id))));
 
-          // ── Load real deal sections from active campaigns ──
-          // Group active campaigns by category, pick top 4 categories by deal count
-          // then pick up to 4 products per category as section items
           try {
             const allCampaigns = await campaignService.listCampaigns().catch(() => []);
             const campaignList = Array.isArray(allCampaigns) ? allCampaigns : [];
             if (campaignList.length > 0) {
-              // Count campaigns per category and collect products
               const categoryMap = {};
               for (const cam of campaignList) {
                 const cat = cam.category;
@@ -241,7 +687,6 @@ export default function Home({ isGuest = false }) {
                 if (!categoryMap[cat]) categoryMap[cat] = [];
                 categoryMap[cat].push(cam);
               }
-              // Sort categories by number of active deals descending, take top 4
               const topCategories = Object.entries(categoryMap)
                 .sort((a, b) => b[1].length - a[1].length)
                 .slice(0, 4);
@@ -259,9 +704,7 @@ export default function Home({ isGuest = false }) {
               };
 
               const sections = topCategories.map(([cat, cams], idx) => {
-                // Sort by highest discount potential (target%) descending
                 const sorted = [...cams].sort((a, b) => (b.target || 0) - (a.target || 0));
-                // Take up to 4 unique products as items
                 const seen = new Set();
                 const items = [];
                 for (const cam of sorted) {
@@ -277,7 +720,6 @@ export default function Home({ isGuest = false }) {
                     productId: pid,
                   });
                 }
-                // Pad with static fallback items if fewer than 4 products
                 const fallback = DEAL_SECTIONS_STATIC[idx]?.items || [];
                 while (items.length < 4 && fallback[items.length]) {
                   items.push(fallback[items.length]);
@@ -310,8 +752,6 @@ export default function Home({ isGuest = false }) {
     return () => clearInterval(t);
   }, []);
 
-  // Listen for any join/start event fired from ProductDetail, CampaignDetail, or GroupBuyWidget
-  // and instantly refresh the My Hold Deals section without a full page reload.
   useEffect(() => {
     if (isGuest) return;
     const handleCampaignJoined = async () => {
@@ -319,7 +759,6 @@ export default function Home({ isGuest = false }) {
         const camp = await campaignService.getMyCampaigns();
         const campArr = Array.isArray(camp) ? camp : [];
         setCampaigns(campArr.slice(0, 6));
-        // Only ACTIVE or PAUSED campaigns count as "joined" — exclude CANCELLED
         const activeCamp = campArr.filter(c => c.campaignStatus === 'ACTIVE' || c.campaignStatus === 'PAUSED');
         setJoinedProductIds(new Set(activeCamp.map(c => Number(c.product_id))));
       } catch {}
@@ -342,8 +781,6 @@ export default function Home({ isGuest = false }) {
   const manualSlide = (i) => { clearInterval(timerRef.current); goSlide(i); };
   const pad = (n) => String(n).padStart(2, '0');
 
-  /* ── Load more featured products on scroll ──────────────────── */
-  // isFetching ref prevents concurrent fetches regardless of render cycles
   const isFetchingRef = useRef(false);
 
   const loadMoreFeatured = useCallback(async () => {
@@ -367,7 +804,6 @@ export default function Home({ isGuest = false }) {
     }
   }, [featuredHasMore, featuredPage]);
 
-  // Scroll-based trigger: fires whenever user scrolls within 400px of the sentinel
   useEffect(() => {
     const handleScroll = () => {
       if (isFetchingRef.current) return;
@@ -379,7 +815,6 @@ export default function Home({ isGuest = false }) {
       }
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
-    // Also check immediately in case all products fit in the viewport
     handleScroll();
     return () => window.removeEventListener('scroll', handleScroll);
   }, [loadMoreFeatured]);
@@ -392,42 +827,33 @@ export default function Home({ isGuest = false }) {
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Inter', 'Segoe UI', sans-serif; }
 
-        /* Banner */
         .hk-banner-content { transition: opacity 0.35s ease, transform 0.35s ease; }
         .hk-banner-content.out { opacity: 0; transform: translateX(-14px); }
         .hk-banner-content.in  { opacity: 1; transform: translateX(0); }
 
-        /* Product images — fade in only, no rotation/float */
         .hk-prod-img { transition: opacity 0.35s ease; }
         .hk-prod-img.out { opacity: 0; }
         .hk-prod-img.in  { opacity: 1; }
 
-        /* Deal cards */
         .hk-deal-card { background:#fff; border-radius:4px; padding:16px; transition:box-shadow 0.2s; cursor:pointer; }
         .hk-deal-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.18); }
         .hk-sub-item { transition: opacity 0.15s; }
         .hk-sub-item:hover { opacity: 0.78; }
 
-        /* Product card wrap */
         .hk-prod-wrap { transition: transform 0.2s, box-shadow 0.2s; }
         .hk-prod-wrap:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.13); }
 
-        /* Order row */
         .hk-ord-row { transition: background 0.15s; cursor:pointer; }
         .hk-ord-row:hover { background: #f3f3f3 !important; }
 
-        /* Campaign card */
         .hk-camp-card { background:#fff; border-radius:4px; overflow:hidden; transition:box-shadow 0.2s; cursor:pointer; border:1px solid #ddd; }
         .hk-camp-card:hover { box-shadow:0 4px 20px rgba(0,0,0,0.15); }
 
-        /* Skeleton */
         .hk-skel { background:linear-gradient(90deg,#e8e8e8 25%,#f5f5f5 50%,#e8e8e8 75%); background-size:400% 100%; animation:skel 1.4s ease-in-out infinite; border-radius:4px; }
         @keyframes skel { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
 
-        /* Promo pill */
         .hk-promo-pill { display:inline-block; border:1px solid rgba(255,255,255,0.25); border-radius:3px; padding:4px 12px; font-size:0.72rem; font-weight:700; margin-bottom:8px; }
 
-        /* Arrows — flush to edge, translucent */
         .hk-arrow {
           position: absolute; top: 50%; transform: translateY(-50%);
           background: rgba(0,0,0,0.32); border: none; cursor: pointer;
@@ -440,20 +866,16 @@ export default function Home({ isGuest = false }) {
         .hk-arrow.left  { left: 0; border-radius: 0 4px 4px 0; }
         .hk-arrow.right { right: 0; border-radius: 4px 0 0 4px; }
 
-        /* Section links */
         .hk-see-more { color:#007185; font-size:0.8rem; font-weight:500; text-decoration:none; }
         .hk-see-more:hover { color:#c7511f; text-decoration:underline; }
 
-        /* CTA buttons */
         .hk-cta { display:inline-block; background:linear-gradient(180deg,#f7dfa5,#f0c14b); border:1px solid #a88734; border-radius:3px; padding:9px 24px; font-size:0.88rem; font-weight:700; color:#111; cursor:pointer; margin-top:14px; transition:background 0.15s; font-family:inherit; }
         .hk-cta:hover { background:linear-gradient(180deg,#f5d78e,#e8b842); }
         .hk-cta-blue { background:linear-gradient(180deg,#7ac6e6,#4ba3cc); border-color:#367c96; color:#fff; }
         .hk-cta-blue:hover { background:linear-gradient(180deg,#6ab8da,#3a95be); }
 
-        /* Flash countdown digit */
         .hk-digit { background:#111; color:#fff; border-radius:4px; padding:6px 10px; font-size:1.15rem; font-weight:800; min-width:36px; text-align:center; display:inline-block; font-variant-numeric:tabular-nums; }
 
-        /* Brand marquee */
         .hk-brands-track { display:flex; animation:brandScroll 30s linear infinite; width:max-content; }
         .hk-brands-track:hover { animation-play-state:paused; }
         @keyframes brandScroll { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
@@ -487,195 +909,83 @@ export default function Home({ isGuest = false }) {
         </span>
       </div>
 
-      {/* ════════════ HERO BANNER ════════════
-          Layout:
-          • Left product image (absolutely positioned, no card)
-          • Centered promotional text
-          • Right product image (absolutely positioned, no card)
-          Images sit directly on the dark banner background — no borders, no containers.
-      ══════════════════════════════════════ */}
-      <div style={{ position: 'relative', background: slide.bg, overflow: 'hidden', height: 390, transition: 'background 0.5s ease' }}>
+      {/* ════════════ HERO BANNER AD — shows carousel of ads; falls back to original carousel if no active ads ════════════ */}
+      <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: 24 }}>
+      <HeroBannerAd>
+        {/* Original hero carousel (shown only when no hero_banner ad is active) */}
+        <div style={{ position: 'relative', background: slide.bg, overflow: 'hidden', height: 390, transition: 'background 0.5s ease' }}>
 
-        {/* ── Left product image ── */}
-        {slide.leftImg && (
-          <div
-            className={`hk-prod-img ${transitioning ? 'out' : 'in'}`}
-            style={{
-              position: 'absolute',
-              left: 0,
-              top: 0,
-              width: '28%',
-              height: '100%',
-              overflow: 'hidden',
-              zIndex: 2,
-              pointerEvents: 'none',
-              maskImage: 'linear-gradient(to right, transparent 0%, black 18%, black 72%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)',
-              WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 18%, black 72%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)',
-              maskComposite: 'intersect',
-              WebkitMaskComposite: 'destination-in',
-            }}
-          >
-            <img
-              src={slide.leftImg.src}
-              alt={slide.leftImg.alt}
+          {slide.leftImg && (
+            <div
+              className={`hk-prod-img ${transitioning ? 'out' : 'in'}`}
               style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                objectPosition: 'center',
-                display: 'block',
-                mixBlendMode: 'screen',
+                position: 'absolute', left: 0, top: 0, width: '28%', height: '100%',
+                overflow: 'hidden', zIndex: 2, pointerEvents: 'none',
+                maskImage: 'linear-gradient(to right, transparent 0%, black 18%, black 72%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)',
+                WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 18%, black 72%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)',
+                maskComposite: 'intersect', WebkitMaskComposite: 'destination-in',
               }}
-            />
-          </div>
-        )}
+            >
+              <img src={slide.leftImg.src} alt={slide.leftImg.alt}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center', display: 'block', mixBlendMode: 'screen' }} />
+            </div>
+          )}
 
-        {/* ── Right product image ── */}
-        {slide.rightImg && (
-          <div
-            className={`hk-prod-img ${transitioning ? 'out' : 'in'}`}
-            style={{
-              position: 'absolute',
-              right: 0,
-              top: 0,
-              width: '28%',
-              height: '100%',
-              overflow: 'hidden',
-              zIndex: 2,
-              pointerEvents: 'none',
-              maskImage: 'linear-gradient(to left, transparent 0%, black 18%, black 72%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)',
-              WebkitMaskImage: 'linear-gradient(to left, transparent 0%, black 18%, black 72%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)',
-              maskComposite: 'intersect',
-              WebkitMaskComposite: 'destination-in',
-            }}
-          >
-            <img
-              src={slide.rightImg.src}
-              alt={slide.rightImg.alt}
+          {slide.rightImg && (
+            <div
+              className={`hk-prod-img ${transitioning ? 'out' : 'in'}`}
               style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                objectPosition: 'center',
-                display: 'block',
-                mixBlendMode: 'screen',
+                position: 'absolute', right: 0, top: 0, width: '28%', height: '100%',
+                overflow: 'hidden', zIndex: 2, pointerEvents: 'none',
+                maskImage: 'linear-gradient(to left, transparent 0%, black 18%, black 72%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)',
+                WebkitMaskImage: 'linear-gradient(to left, transparent 0%, black 18%, black 72%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)',
+                maskComposite: 'intersect', WebkitMaskComposite: 'destination-in',
               }}
-            />
+            >
+              <img src={slide.rightImg.src} alt={slide.rightImg.alt}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center', display: 'block', mixBlendMode: 'screen' }} />
+            </div>
+          )}
+
+          <div
+            className={`hk-banner-content ${transitioning ? 'out' : 'in'}`}
+            style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', zIndex: 10, width: 460 }}
+          >
+            <h1 style={{ fontSize: 'clamp(2.2rem, 4.5vw, 3.4rem)', fontWeight: 900, color: '#fff', lineHeight: 1.15, marginBottom: 10, textShadow: '0 2px 12px rgba(0,0,0,0.45)', whiteSpace: 'pre-line' }}>
+              {slide.headline}
+            </h1>
+            <p style={{ fontSize: '1.1rem', fontWeight: 500, color: 'rgba(255,255,255,0.88)', marginBottom: 16, textShadow: '0 1px 6px rgba(0,0,0,0.35)' }}>
+              {slide.sub}
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 14 }}>
+              {slide.brands.map(b => (
+                <span key={b} style={{ background: 'rgba(255,255,255,0.14)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', borderRadius: 3, padding: '3px 13px', fontSize: '0.75rem', fontWeight: 700 }}>{b}</span>
+              ))}
+            </div>
+            <div className="hk-promo-pill" style={{ background: slide.color1, color: '#fff', border: 'none', marginRight: 6 }}>
+              {slide.badge}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 6 }}>
+              <span style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.22)', color: 'rgba(255,255,255,0.82)', borderRadius: 3, padding: '5px 14px', fontSize: '0.75rem' }}>{slide.offer}</span>
+            </div>
+            <button className="hk-cta" onClick={() => guardedNav('/products')}>Shop Now</button>
           </div>
-        )}
 
-        {/* ── CENTER: Promotional text ── */}
-        <div
-          className={`hk-banner-content ${transitioning ? 'out' : 'in'}`}
-          style={{
-            position: 'absolute',
-            left: '50%',
-            top: '50%',
-            transform: 'translate(-50%, -50%)',
-            textAlign: 'center',
-            zIndex: 10,
-            width: 460,
-          }}
-        >
-          {/* Headline */}
-          <h1 style={{
-            fontSize: 'clamp(2.2rem, 4.5vw, 3.4rem)',
-            fontWeight: 900,
-            color: '#fff',
-            lineHeight: 1.15,
-            marginBottom: 10,
-            textShadow: '0 2px 12px rgba(0,0,0,0.45)',
-            whiteSpace: 'pre-line',
-          }}>
-            {slide.headline}
-          </h1>
-
-          <p style={{ fontSize: '1.1rem', fontWeight: 500, color: 'rgba(255,255,255,0.88)', marginBottom: 16, textShadow: '0 1px 6px rgba(0,0,0,0.35)' }}>
-            {slide.sub}
-          </p>
-
-          {/* Brand pills */}
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 14 }}>
-            {slide.brands.map(b => (
-              <span key={b} style={{
-                background: 'rgba(255,255,255,0.14)',
-                color: '#fff',
-                border: '1px solid rgba(255,255,255,0.35)',
-                borderRadius: 3,
-                padding: '3px 13px',
-                fontSize: '0.75rem',
-                fontWeight: 700,
-              }}>{b}</span>
+          <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 6, zIndex: 20 }}>
+            {SLIDES.map((_, i) => (
+              <button key={i} onClick={() => manualSlide(i)}
+                style={{ width: i === slideIdx ? 22 : 8, height: 8, borderRadius: 99, background: i === slideIdx ? slide.color1 : 'rgba(255,255,255,0.45)', border: 'none', cursor: 'pointer', transition: 'all 0.35s', padding: 0 }} />
             ))}
           </div>
 
-          {/* Offer pills */}
-          <div className="hk-promo-pill" style={{ background: slide.color1, color: '#fff', border: 'none', marginRight: 6 }}>
-            {slide.badge}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 6 }}>
-            <span style={{
-              background: 'rgba(255,255,255,0.1)',
-              border: '1px solid rgba(255,255,255,0.22)',
-              color: 'rgba(255,255,255,0.82)',
-              borderRadius: 3,
-              padding: '5px 14px',
-              fontSize: '0.75rem',
-            }}>{slide.offer}</span>
-          </div>
-
-          <button className="hk-cta" onClick={() => guardedNav('/products')}>Shop Now</button>
+          <button className="hk-arrow left"  onClick={() => manualSlide((slideIdx - 1 + SLIDES.length) % SLIDES.length)}>‹</button>
+          <button className="hk-arrow right" onClick={() => manualSlide((slideIdx + 1) % SLIDES.length)}>›</button>
         </div>
-
-        {/* Dot nav */}
-        <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 6, zIndex: 20 }}>
-          {SLIDES.map((_, i) => (
-            <button key={i} onClick={() => manualSlide(i)}
-              style={{ width: i === slideIdx ? 22 : 8, height: 8, borderRadius: 99, background: i === slideIdx ? slide.color1 : 'rgba(255,255,255,0.45)', border: 'none', cursor: 'pointer', transition: 'all 0.35s', padding: 0 }} />
-          ))}
-        </div>
-
-        {/* Arrows */}
-        <button className="hk-arrow left"  onClick={() => manualSlide((slideIdx - 1 + SLIDES.length) % SLIDES.length)}>‹</button>
-        <button className="hk-arrow right" onClick={() => manualSlide((slideIdx + 1) % SLIDES.length)}>›</button>
+      </HeroBannerAd>
       </div>
 
       {/* ════════════ MAIN CONTENT ════════════ */}
       <div style={{ maxWidth: 1500, margin: '0 auto', padding: '12px 12px 60px' }}>
-
-        {/* ── Flash sale countdown ── */}
-        <div style={{ background: '#fff', borderRadius: 4, padding: '12px 20px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap', border: '1px solid #ddd' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            <span style={{ fontSize: '1.2rem' }}>⚡</span>
-            <span style={{ fontWeight: 800, fontSize: '1rem', color: '#c40000' }}>Flash Sale</span>
-            <span style={{ fontSize: '0.8rem', color: '#666', fontWeight: 500 }}>Ends in</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span className="hk-digit">{pad(countdown.h)}</span>
-            <span style={{ fontWeight: 800, color: '#c40000', fontSize: '1.2rem' }}>:</span>
-            <span className="hk-digit">{pad(countdown.m)}</span>
-            <span style={{ fontWeight: 800, color: '#c40000', fontSize: '1.2rem' }}>:</span>
-            <span className="hk-digit">{pad(countdown.s)}</span>
-          </div>
-          <div style={{ flex: 1, display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 2, alignItems: 'center' }}>
-            {!isGuest && [
-              { icon: '♡',  label: 'Wishlist',  val: wishlistCount,    link: '/wishlist',  c: '#c7511f' },
-              { icon: '🎯', label: 'Deals',     val: campaigns.length, link: '/campaigns', c: '#c40000' },
-            ].map(s => (
-              <div key={s.label} onClick={() => navigate(s.link)}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f7f7f7', border: '1px solid #ddd', borderRadius: 3, padding: '6px 14px', cursor: 'pointer', flexShrink: 0, transition: 'all 0.15s' }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = s.c}
-                onMouseLeave={e => e.currentTarget.style.borderColor = '#ddd'}>
-                <span style={{ fontSize: '1rem' }}>{s.icon}</span>
-                <div>
-                  <div style={{ fontWeight: 800, fontSize: '0.88rem', color: s.c, lineHeight: 1 }}>{s.val}</div>
-                  <div style={{ fontSize: '0.65rem', color: '#888', lineHeight: 1.3 }}>{s.label}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <button onClick={() => guardedNav('/products')} style={{ background: 'linear-gradient(180deg,#f7dfa5,#f0c14b)', border: '1px solid #a88734', borderRadius: 3, padding: '7px 18px', fontWeight: 700, fontSize: '0.82rem', color: '#111', flexShrink: 0, cursor: 'pointer' }}>See All Deals →</button>
-        </div>
 
         {/* ── 4-column deal grid ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 12 }}>
@@ -707,6 +1017,42 @@ export default function Home({ isGuest = false }) {
           ))}
         </div>
 
+        {/* ── Scroll Banner Ad — Flipkart-style 2.5 cards, above Hold Deals ── */}
+        <ScrollBannerAd>
+          <div style={{ background: '#fff', borderRadius: 4, padding: '12px 20px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap', border: '1px solid #ddd' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <span style={{ fontSize: '1.2rem' }}>⚡</span>
+              <span style={{ fontWeight: 800, fontSize: '1rem', color: '#c40000' }}>Flash Sale</span>
+              <span style={{ fontSize: '0.8rem', color: '#666', fontWeight: 500 }}>Ends in</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span className="hk-digit">{pad(countdown.h)}</span>
+              <span style={{ fontWeight: 800, color: '#c40000', fontSize: '1.2rem' }}>:</span>
+              <span className="hk-digit">{pad(countdown.m)}</span>
+              <span style={{ fontWeight: 800, color: '#c40000', fontSize: '1.2rem' }}>:</span>
+              <span className="hk-digit">{pad(countdown.s)}</span>
+            </div>
+            <div style={{ flex: 1, display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 2, alignItems: 'center' }}>
+              {!isGuest && [
+                { icon: '♡',  label: 'Wishlist',  val: wishlistCount,    link: '/wishlist',  c: '#c7511f' },
+                { icon: '🎯', label: 'Deals',     val: campaigns.length, link: '/campaigns', c: '#c40000' },
+              ].map(s => (
+                <div key={s.label} onClick={() => navigate(s.link)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f7f7f7', border: '1px solid #ddd', borderRadius: 3, padding: '6px 14px', cursor: 'pointer', flexShrink: 0, transition: 'all 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = s.c}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = '#ddd'}>
+                  <span style={{ fontSize: '1rem' }}>{s.icon}</span>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: '0.88rem', color: s.c, lineHeight: 1 }}>{s.val}</div>
+                    <div style={{ fontSize: '0.65rem', color: '#888', lineHeight: 1.3 }}>{s.label}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => guardedNav('/products')} style={{ background: 'linear-gradient(180deg,#f7dfa5,#f0c14b)', border: '1px solid #a88734', borderRadius: 3, padding: '7px 18px', fontWeight: 700, fontSize: '0.82rem', color: '#111', flexShrink: 0, cursor: 'pointer' }}>See All Deals →</button>
+          </div>
+        </ScrollBannerAd>
+
         {/* ── Hold Deals ── */}
         {campaigns.length > 0 && (
           <div style={{ marginBottom: 12 }}>
@@ -717,26 +1063,16 @@ export default function Home({ isGuest = false }) {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 12 }}>
                 {campaigns.filter(c => !c.campaignStatus || c.campaignStatus === 'ACTIVE').map((c) => {
-                  /* getMyCampaigns always returns campaign_id explicitly.
-                     listCampaigns returns c.id as the PK.
-                     Both cases: campaign_id is always the correct column. */
-                  // Strip any ":N" mysql2 duplicate-column suffix before parsing
                   const rawCampaignId = String(c.campaign_id || c.id || '').split(':')[0];
                   const campaignId    = rawCampaignId ? parseInt(rawCampaignId, 10) || null : null;
                   const currentHold  = c.current_hold || 0;
                   const target       = c.target || 0;
                   const retailPrice  = Number(c.retail_price) || 0;
                   const holdPrice    = Number(c.hold_price)   || 0;
-                  // currentHold = number of members joined = current live discount %
-                  // target = max members = max discount %
-                  const discountPct  = currentHold; // e.g. 2 joined → 2% off now
-                  const displayPrice = discountPct > 0
-                    ? Math.round(retailPrice * (1 - discountPct / 100))
-                    : retailPrice;
-                  const maxDiscountPct = target; // e.g. 10 target → 10% off at best
-                  const bestGroupPrice = target > 0
-                    ? Math.round(retailPrice * (1 - maxDiscountPct / 100))
-                    : holdPrice;
+                  const discountPct  = currentHold;
+                  const displayPrice = discountPct > 0 ? Math.round(retailPrice * (1 - discountPct / 100)) : retailPrice;
+                  const maxDiscountPct = target;
+                  const bestGroupPrice = target > 0 ? Math.round(retailPrice * (1 - maxDiscountPct / 100)) : holdPrice;
                   const pct          = target > 0 ? Math.min(100, Math.round((currentHold / target) * 100)) : 0;
                   const FALLBACK    = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'%3E%3Crect width='400' height='300' fill='%23f0f4f8'/%3E%3Crect x='140' y='90' width='120' height='90' rx='10' fill='%23d1d9e6'/%3E%3Ccircle cx='200' cy='115' r='18' fill='%23a0aec0'/%3E%3Cpath d='M155 175 Q200 130 245 175Z' fill='%23a0aec0'/%3E%3Ctext x='200' y='225' text-anchor='middle' font-family='sans-serif' font-size='14' fill='%2394a3b8'%3ENo Image%3C/text%3E%3C/svg%3E";
                   const _rawImg     = c.image_url;
@@ -748,11 +1084,7 @@ export default function Home({ isGuest = false }) {
                     return _rawImg;
                   })();
                   const imgSrc      = _firstImg
-                    ? (_firstImg.startsWith('http')
-                        ? _firstImg
-                        : _firstImg.startsWith('/uploads')
-                          ? _firstImg.replace('/uploads', '/seller-uploads')
-                          : `/seller-uploads${_firstImg.startsWith('/') ? '' : '/'}${_firstImg}`)
+                    ? (_firstImg.startsWith('http') ? _firstImg : _firstImg.startsWith('/uploads') ? _firstImg.replace('/uploads', '/seller-uploads') : `/seller-uploads${_firstImg.startsWith('/') ? '' : '/'}${_firstImg}`)
                     : FALLBACK;
                   const detailPath  = campaignId ? `/campaigns/${campaignId}` : '/campaigns';
 
@@ -760,24 +1092,17 @@ export default function Home({ isGuest = false }) {
                     <div
                       key={campaignId ?? c.product_id}
                       onClick={() => guardedNav(detailPath)}
-                      style={{
-                        background: '#fff', borderRadius: 8, border: '1px solid #e3e6e6',
-                        overflow: 'hidden', cursor: 'pointer', display: 'flex', flexDirection: 'column',
-                        position: 'relative', transition: 'box-shadow 0.2s, border-color 0.2s',
-                      }}
+                      style={{ background: '#fff', borderRadius: 8, border: '1px solid #e3e6e6', overflow: 'hidden', cursor: 'pointer', display: 'flex', flexDirection: 'column', position: 'relative', transition: 'box-shadow 0.2s, border-color 0.2s' }}
                       onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.14)'; e.currentTarget.style.borderColor = '#c9cdd2'; }}
                       onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#e3e6e6'; }}
                     >
-                      {/* Wishlist heart top-right */}
                       <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, width: 34, height: 34, borderRadius: '50%', background: 'rgba(255,255,255,0.9)', border: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', color: '#9ca3af', boxShadow: '0 1px 4px rgba(0,0,0,0.12)' }}>
                         ♡
                       </div>
-                      {/* Product image */}
                       <div style={{ background: '#f9fafb', overflow: 'hidden' }}>
                         <img src={imgSrc} alt={c.product_name} onError={e => { e.target.src = FALLBACK; }}
                           style={{ width: '100%', height: 160, objectFit: 'contain', display: 'block' }} />
                       </div>
-                      {/* Card body */}
                       <div style={{ padding: '8px 10px 10px', flex: 1, display: 'flex', flexDirection: 'column' }}>
                         <p style={{ fontSize: '0.68rem', color: '#6b7280', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                           {c.category || 'Hold Deal'}
@@ -785,7 +1110,6 @@ export default function Home({ isGuest = false }) {
                         <p style={{ fontWeight: 600, fontSize: '0.88rem', color: '#0f1111', marginBottom: 4, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', minHeight: '2.3em' }}>
                           {c.product_name}
                         </p>
-                        {/* Progress bar */}
                         <div style={{ marginBottom: 5 }}>
                           <div style={{ height: 4, background: '#e5e7eb', borderRadius: 99, overflow: 'hidden', marginBottom: 3 }}>
                             <div style={{ height: '100%', width: `${pct}%`, borderRadius: 99, background: pct >= 100 ? '#16a34a' : '#2a5298', transition: 'width 0.4s ease' }} />
@@ -801,7 +1125,6 @@ export default function Home({ isGuest = false }) {
                             <span style={{ background: '#dc2626', color: '#fff', borderRadius: 3, padding: '1px 4px' }}>{maxDiscountPct}% off</span>
                           </div>
                         </div>
-                        {/* Price */}
                         <div style={{ marginBottom: 8, marginTop: 'auto' }}>
                           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
                             <span style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0f1111' }}>₹{displayPrice.toLocaleString('en-IN')}</span>
@@ -809,7 +1132,6 @@ export default function Home({ isGuest = false }) {
                           </div>
                           <p style={{ fontSize: '0.65rem', color: '#6b7280', marginTop: 1 }}>Inclusive of all taxes</p>
                         </div>
-                        {/* View Deal button */}
                         <button
                           onClick={e => { e.stopPropagation(); guardedNav(detailPath); }}
                           style={{ width: '100%', padding: '7px 0', background: '#f0c14b', border: '1px solid #a88734', borderRadius: 4, fontWeight: 700, fontSize: '0.82rem', color: '#111', cursor: 'pointer' }}
@@ -826,7 +1148,7 @@ export default function Home({ isGuest = false }) {
         )}
 
         {/* ── Brand marquee ── */}
-        <div style={{ background: '#f4f6f8', borderBottom: '1px solid #ddd', borderTop: '1px solid #ddd', overflow: 'hidden', padding: '10px 0', marginBottom: 12, borderRadius: 4 }}>
+        <div style={{ background: '#f4f6f8', borderBottom: '1px solid #ddd', borderTop: '1px solid #ddd', overflow: 'hidden', padding: '10px 0', marginBottom: 12, borderRadius: 4, display: 'none' }}>
           <div className="hk-brands-track">
             {[...BRANDS, ...BRANDS].map((b, i) => (
               <div key={i} className="hk-brand-item">
@@ -837,38 +1159,52 @@ export default function Home({ isGuest = false }) {
           </div>
         </div>
 
-        {/* ── App promo banner ── */}
-        <div style={{ borderRadius: 8, overflow: 'hidden', marginBottom: 12, display: 'flex', minHeight: 200, background: 'linear-gradient(135deg, #7b1fa2, #ab47bc)' }}>
-          <div style={{ background: '#FF9800', minWidth: 200, padding: '28px 28px 28px 24px', display: 'flex', flexDirection: 'column', justifyContent: 'center', position: 'relative', flexShrink: 0 }}>
-            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#5D3A00', marginBottom: 4, letterSpacing: 0.3 }}>Up to</div>
-            <div style={{ fontSize: '2.8rem', fontWeight: 900, color: '#4A148C', lineHeight: 1, marginBottom: 4, textShadow: '0 2px 0 rgba(255,255,255,0.3)' }}>35% OFF</div>
-            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#3E2700', marginBottom: 2 }}>on first order</div>
-            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#5D3A00', marginBottom: 16 }}>*Only on App</div>
-            <button onClick={() => guardedNav('/products')}
-              style={{ background: '#fff', border: 'none', borderRadius: 6, padding: '9px 18px', fontWeight: 800, fontSize: '0.85rem', color: '#333', cursor: 'pointer', alignSelf: 'flex-start', boxShadow: '0 2px 8px rgba(0,0,0,0.2)', letterSpacing: 0.3 }}>
-              Order Now
-            </button>
-            <div style={{ position: 'absolute', left: 8, bottom: 10, fontSize: '0.55rem', color: 'rgba(0,0,0,0.4)', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>T&amp;C Apply*</div>
-          </div>
-          <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 0, padding: '18px 20px', alignItems: 'center' }}>
-            {[
-              { label: 'Trending Now',     img: 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?w=300&q=80' },
-              { label: 'Budget Buys',      img: 'https://images.unsplash.com/photo-1487222477894-8943e31ef7b2?w=300&q=80' },
-              { label: 'Top Rated Picks',  img: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=300&q=80' },
-              { label: 'Daily Essentials', img: 'https://images.unsplash.com/photo-1607631568010-a87245c0daf8?w=300&q=80' },
-            ].map((cat, idx) => (
-              <div key={idx} onClick={() => guardedNav('/products')}
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '0 8px' }}>
-                <div style={{ width: '100%', maxWidth: 150, aspectRatio: '3/4', borderRadius: 16, overflow: 'hidden', border: '3px solid rgba(255,255,255,0.55)', position: 'relative', boxShadow: '0 6px 20px rgba(0,0,0,0.35)', background: '#ddd' }}>
-                  <img src={cat.img} alt={cat.label} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={e => { e.target.style.display = 'none'; }} />
+        {/* ── Based on your cart ── */}
+        <BasedOnCartCarousel featured={featured} cartItems={cartItems} loading={loading} guardedNav={guardedNav} />
+
+        {/* ── Product Spotlight Ad — falls back to App promo banner if no active ads ── */}
+        <ProductSpotlightAd>
+          <div style={{ borderRadius: 8, overflow: 'hidden', marginBottom: 12, display: 'flex', minHeight: 200, background: 'linear-gradient(135deg, #7b1fa2, #ab47bc)' }}>
+            <div style={{ background: '#FF9800', minWidth: 200, padding: '28px 28px 28px 24px', display: 'flex', flexDirection: 'column', justifyContent: 'center', position: 'relative', flexShrink: 0 }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#5D3A00', marginBottom: 4, letterSpacing: 0.3 }}>Up to</div>
+              <div style={{ fontSize: '2.8rem', fontWeight: 900, color: '#4A148C', lineHeight: 1, marginBottom: 4, textShadow: '0 2px 0 rgba(255,255,255,0.3)' }}>35% OFF</div>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#3E2700', marginBottom: 2 }}>on first order</div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#5D3A00', marginBottom: 16 }}>*Only on App</div>
+              <button onClick={() => guardedNav('/products')}
+                style={{ background: '#fff', border: 'none', borderRadius: 6, padding: '9px 18px', fontWeight: 800, fontSize: '0.85rem', color: '#333', cursor: 'pointer', alignSelf: 'flex-start', boxShadow: '0 2px 8px rgba(0,0,0,0.2)', letterSpacing: 0.3 }}>
+                Order Now
+              </button>
+              <div style={{ position: 'absolute', left: 8, bottom: 10, fontSize: '0.55rem', color: 'rgba(0,0,0,0.4)', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>T&amp;C Apply*</div>
+            </div>
+            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 0, padding: '18px 20px', alignItems: 'center' }}>
+              {[
+                { label: 'Trending Now',     img: 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?w=300&q=80' },
+                { label: 'Budget Buys',      img: 'https://images.unsplash.com/photo-1487222477894-8943e31ef7b2?w=300&q=80' },
+                { label: 'Top Rated Picks',  img: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=300&q=80' },
+                { label: 'Daily Essentials', img: 'https://images.unsplash.com/photo-1607631568010-a87245c0daf8?w=300&q=80' },
+              ].map((cat, idx) => (
+                <div key={idx} onClick={() => guardedNav('/products')}
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '0 8px' }}>
+                  <div style={{ width: '100%', maxWidth: 150, aspectRatio: '3/4', borderRadius: 16, overflow: 'hidden', border: '3px solid rgba(255,255,255,0.55)', position: 'relative', boxShadow: '0 6px 20px rgba(0,0,0,0.35)', background: '#ddd' }}>
+                    <img src={cat.img} alt={cat.label} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={e => { e.target.style.display = 'none'; }} />
+                  </div>
+                  <div style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)', borderRadius: 20, padding: '5px 14px', color: '#fff', fontWeight: 700, fontSize: '0.78rem', textAlign: 'center', whiteSpace: 'nowrap', border: '1px solid rgba(255,255,255,0.25)', letterSpacing: 0.2 }}>
+                    {cat.label}
+                  </div>
                 </div>
-                <div style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)', borderRadius: 20, padding: '5px 14px', color: '#fff', fontWeight: 700, fontSize: '0.78rem', textAlign: 'center', whiteSpace: 'nowrap', border: '1px solid rgba(255,255,255,0.25)', letterSpacing: 0.2 }}>
-                  {cat.label}
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        </ProductSpotlightAd>
+
+        {/* ── Inspired by your browsing history ── */}
+        <BrowsingHistoryCarousel featured={featured} loading={loading} guardedNav={guardedNav} joinedProductIds={joinedProductIds} />
+
+        {/* ── Explore more / Keep shopping for ── */}
+        <ShopMoreGrid featured={featured} categories={categories} loading={loading} guardedNav={guardedNav} />
+
+        {/* ── Suggested For You ── */}
+        <SuggestedForYou featured={featured} loading={loading} guardedNav={guardedNav} />
 
         {/* ── Featured products ── */}
         <div style={{ background: '#fff', borderRadius: 4, border: '1px solid #ddd', padding: '16px' }}>
@@ -891,16 +1227,24 @@ export default function Home({ isGuest = false }) {
           ) : (
             <>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
-                {featured.map(p => (
-                  <div key={p.productId} className="hk-prod-wrap">
-                    <ProductCard product={p} alreadyJoined={joinedProductIds.has(Number(p.productId))} />
-                  </div>
+                {featured.map((p, i) => (
+                  <>
+                    {i === 4 && (
+                      <div key="__sidebar_ad__" style={{ borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9f9f9', minHeight: 250 }}>
+                        <div style={{ width: 300, height: 250, flexShrink: 0, overflow: 'hidden' }}>
+                          <SidebarBoxAd style={{ marginTop: 0, marginLeft: 0, marginRight: 0 }} />
+                        </div>
+                      </div>
+                    )}
+                    <div key={p.productId} className="hk-prod-wrap">
+                      <ProductCard product={p} alreadyJoined={joinedProductIds.has(Number(p.productId))} />
+                    </div>
+                  </>
                 ))}
                 {featuredLoading && [...Array(5)].map((_, i) => (
                   <div key={`skel-${i}`} className="hk-skel" style={{ height: 280 }} />
                 ))}
               </div>
-              {/* Sentinel — always mounted so the observer never needs to reconnect */}
               <div ref={featuredSentinelRef} style={{ height: 1, marginTop: 8 }} />
               {!featuredHasMore && featured.length > 10 && (
                 <p style={{ textAlign: 'center', fontSize: '0.78rem', color: '#888', marginTop: 12 }}>
@@ -931,6 +1275,10 @@ export default function Home({ isGuest = false }) {
         </div>
 
       </div>
+
+      {/* ════════════ POPUP AD ════════════ */}
+      <PopupAd />
+
     </div>
   );
 }

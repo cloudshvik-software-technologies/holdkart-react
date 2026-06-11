@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import ProductCard from '../components/ProductCard.jsx';
 import JoinDealModal from '../components/JoinDealModal.jsx';
+import AdBanner from '../components/AdBanner.jsx';
 import { productService, cartService, wishlistService, campaignService } from '../services/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import toast from 'react-hot-toast';
@@ -565,6 +566,21 @@ export default function Products() {
     filters.rating   && { key: 'rating',   label: `${filters.rating}+ Stars`, icon: '⭐' },
   ].filter(Boolean);
 
+  const gridRef = useRef(null);
+  const [gridCols, setGridCols] = useState(5);
+
+  useEffect(() => {
+    function measure() {
+      if (!gridRef.current) return;
+      const w = gridRef.current.offsetWidth;
+      const cols = Math.max(1, Math.floor((w + 12) / (195 + 12)));
+      setGridCols(cols);
+    }
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
+
   return (
     <>
       <style>{`
@@ -614,6 +630,7 @@ export default function Products() {
         .hk-overlay.open { display: block; }
         .hk-drawer.open  { display: block; }
 
+        .hk-sidebar-sticky { display: block; }
         @media (max-width: 900px) {
           .hk-sidebar-sticky      { display: none !important; }
           .hk-mobile-filter-btn   { display: flex !important; }
@@ -703,7 +720,7 @@ export default function Products() {
 
             {/* Desktop sidebar */}
             <aside className="hk-sidebar-sticky"
-              style={{ width: 240, flexShrink: 0, background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', padding: 16, position: 'sticky', top: 14, maxHeight: 'calc(100vh - 28px)', overflowY: 'auto' }}>
+              style={{ width: 240, flexShrink: 0, background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', padding: 16, position: 'sticky', top: 120, maxHeight: 'calc(100vh - 134px)', overflowY: 'auto' }}>
               <SidebarContent
                 categories={categories} filters={filters} setFilters={setFilters}
                 minCustom={minCustom} maxCustom={maxCustom}
@@ -711,6 +728,7 @@ export default function Products() {
                 applyPriceRange={applyPriceRange} clearAll={clearAll}
                 activeFilterCount={activeFilters.length}
               />
+              {/* ── Sidebar Box Ad removed — now shown on Home page ── */}
             </aside>
 
             {/* Mobile drawer */}
@@ -752,13 +770,19 @@ export default function Products() {
                 </div>
 
               ) : view === 'grid' ? (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(195px,1fr))', gap: 12 }}>
-                  {products.map(p => (
-                    <div key={p.productId} className="hk-product-item"
-                      style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-                      <ProductCard product={p} alreadyJoined={joinedProductIds.has(p.productId)} />
-                    </div>
-                  ))}
+                <div ref={gridRef} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(195px,1fr))', gap: 12 }}>
+                  {products.flatMap((p, i) => {
+                    const card = (
+                      <div key={p.productId} className="hk-product-item"
+                        style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                        <ProductCard product={p} alreadyJoined={joinedProductIds.has(p.productId)} />
+                      </div>
+                    );
+                    if (i === gridCols - 2) {
+                      return [card];
+                    }
+                    return [card];
+                  })}
                 </div>
 
               ) : (
