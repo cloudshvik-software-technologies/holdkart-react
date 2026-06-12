@@ -761,6 +761,11 @@ export default function ProductDetail() {
           setRecentlyViewed(updated.filter(x => String(x.productId) !== String(p.productId)));
         } catch { /* localStorage unavailable */ }
 
+        // Track view server-side for personalised recommendations (logged-in only)
+        if (isAuthenticated) {
+          productService.trackProductView?.(p.productId);
+        }
+
         // You May Also Like — try categories one by one until we collect 10 products
         try {
           const allCats = ['Electronics', 'Fashion', 'Beauty', 'Books', 'Health', 'Grocery', 'Sports', 'Toys', 'Automotive'];

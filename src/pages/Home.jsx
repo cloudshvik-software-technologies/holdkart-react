@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ProductCard from '../components/ProductCard.jsx';
 import { productService, wishlistService, campaignService, cartService } from '../services/index.js';
+// personalised + guest section helpers (new methods on productService)
 import { useAuth } from '../context/AuthContext.jsx';
 import { HeroBannerAd, ScrollBannerAd, ProductSpotlightAd, PopupAd, SidebarBoxAd } from '../components/AdBanner.jsx';
 
@@ -125,7 +126,7 @@ const DEAL_SECTIONS_STATIC = [
 
 /* ─── COMPONENT ─────────────────────────────────────────────────── */
 /* ─── SUGGESTED FOR YOU CAROUSEL ────────────────────────────────── */
-function SuggestedForYou({ featured, loading, guardedNav }) {
+function SuggestedForYou({ items: itemsProp, loading, guardedNav, title = 'Suggested For You' }) {
   const trackRef = useRef(null);
   const [canRight, setCanRight] = useState(true);
 
@@ -142,11 +143,10 @@ function SuggestedForYou({ featured, loading, guardedNav }) {
     setTimeout(updateArrows, 400);
   };
 
-  if (loading || !featured || featured.length === 0) return null;
+  if (loading || !itemsProp || itemsProp.length === 0) return null;
 
-  // Use all featured products so the row is fully populated with no empty space
-  const items = featured;
-  const catName = featured[0]?.category || featured[0]?.categoryName || 'Products';
+  const items = itemsProp;
+  const catName = items[0]?.category || items[0]?.categoryName || 'Products';
 
   const resolveImg = (p) => {
     const raw = p.imageUrl || p.image_url || p.image;
@@ -161,7 +161,7 @@ function SuggestedForYou({ featured, loading, guardedNav }) {
     <div style={{ background: '#fff', borderRadius: 4, border: '1px solid #ddd', padding: '16px 20px', marginBottom: 12, position: 'relative' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2 style={{ fontWeight: 800, fontSize: '1.15rem', color: '#0f1111', margin: 0 }}>Suggested For You</h2>
+        <h2 style={{ fontWeight: 800, fontSize: '1.15rem', color: '#0f1111', margin: 0 }}>{title}</h2>
         <button
           onClick={() => guardedNav(`/products`)}
           style={{ width: 38, height: 38, borderRadius: '50%', background: '#0f1111', border: 'none', color: '#fff', fontSize: '1.1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
@@ -221,26 +221,64 @@ function SuggestedForYou({ featured, loading, guardedNav }) {
 }
 
 /* ─── SHOP MORE GRID ─────────────────────────────────────────────── */
-function ShopMoreGrid({ featured, categories, loading, guardedNav }) {
-  if (loading || !featured || featured.length === 0) return null;
-
-  // Group featured products by category, pick top 4 categories
-  const catMap = {};
-  for (const p of featured) {
-    const cat = p.category || p.categoryName || 'More';
-    if (!catMap[cat]) catMap[cat] = [];
-    catMap[cat].push(p);
-  }
+function ShopMoreGrid({ items: itemsProp, allProducts, categories, loading, guardedNav }) {
+  // allProducts = full featured list used for padding; itemsProp = browsing-based priority list
+  const pool = (allProducts && allProducts.length > 0) ? allProducts : (itemsProp || []);
+  if (loading || pool.length === 0) return null;
 
   const SECTION_TITLES = [
     'Explore more', 'Keep shopping for', 'Up to 50% off | Top picks', 'Continue shopping for',
   ];
 
-  const entries = Object.entries(catMap).slice(0, 4);
-  // Pad with static fallback sections if fewer than 4 categories
-  while (entries.length < 4) {
-    entries.push([`Deals`, featured.slice(entries.length * 2, entries.length * 2 + 4)]);
+  // Build category map from full pool so we have the widest variety
+  const catMap = {};
+  for (const p of pool) {
+    const cat = p.category || p.categoryName || 'More';
+    if (!catMap[cat]) catMap[cat] = [];
+    catMap[cat].push(p);
   }
+
+  // Priority: categories the user actually browsed come first
+  const browsedCats = new Set();
+  for (const p of (itemsProp || [])) {
+    browsedCats.add(p.category || p.categoryName || 'More');
+  }
+
+  const allCats = Object.keys(catMap);
+  const orderedCats = [
+    ...allCats.filter(c => browsedCats.has(c)),
+    ...allCats.filter(c => !browsedCats.has(c)),
+  ];
+
+  // Pick 4 unique categories; each card shows different products
+  const usedProductIds = new Set();
+  const entries = [];
+  for (const cat of orderedCats) {
+    if (entries.length >= 4) break;
+    // Skip products already used in a previous card
+    const freshItems = catMap[cat].filter(p => !usedProductIds.has(p.productId));
+    if (freshItems.length === 0) continue;
+    freshItems.slice(0, 4).forEach(p => usedProductIds.add(p.productId));
+    entries.push([cat, freshItems]);
+  }
+
+  // If still fewer than 4, fill with remaining unused products across any category
+  if (entries.length < 4) {
+    const remaining = pool.filter(p => !usedProductIds.has(p.productId));
+    const extraCatMap = {};
+    for (const p of remaining) {
+      const cat = p.category || p.categoryName || 'More';
+      if (!extraCatMap[cat]) extraCatMap[cat] = [];
+      extraCatMap[cat].push(p);
+    }
+    for (const [cat, items] of Object.entries(extraCatMap)) {
+      if (entries.length >= 4) break;
+      items.slice(0, 4).forEach(p => usedProductIds.add(p.productId));
+      entries.push([cat, items]);
+    }
+  }
+
+  if (entries.length === 0) return null;
 
   const resolveImg = (p) => {
     const raw = p.imageUrl || p.image_url || p.image;
@@ -251,11 +289,59 @@ function ShopMoreGrid({ featured, categories, loading, guardedNav }) {
       : `/seller-uploads${raw.startsWith('/') ? '' : '/'}${raw}`;
   };
 
+  // Pre-compute all 4 cards' thumbnail arrays before rendering,
+  // using a single globally-claimed set so no product ever appears twice across cards.
+  // Heroes are NOT pre-claimed — they can still appear as thumbnails in other cards.
+  const globalClaimedIds = new Set();
+
+  const cardData = entries.map(([cat, items]) => {
+    const hero = items && items[0];
+    if (!hero) return { cat, hero: null, thumbs: [] };
+
+    // Start thumbs from the card's own items (up to 4)
+    let thumbs = items.slice(0, 4);
+    thumbs.forEach(p => globalClaimedIds.add(p.productId));
+
+    if (thumbs.length < 4) {
+      // Pass 1: same category from full pool, not yet claimed globally
+      for (const p of pool) {
+        if (thumbs.length >= 4) break;
+        if (
+          (p.category || p.categoryName || 'More') === cat &&
+          !globalClaimedIds.has(p.productId)
+        ) {
+          thumbs = [...thumbs, p];
+          globalClaimedIds.add(p.productId);
+        }
+      }
+      // Pass 2: any category, not yet claimed
+      for (const p of pool) {
+        if (thumbs.length >= 4) break;
+        if (!globalClaimedIds.has(p.productId)) {
+          thumbs = [...thumbs, p];
+          globalClaimedIds.add(p.productId);
+        }
+      }
+      // Pass 3: absolute last resort — allow repeats from pool start
+      if (thumbs.length < 4) {
+        const thumbIds = new Set(thumbs.map(p => p.productId));
+        for (const p of pool) {
+          if (thumbs.length >= 4) break;
+          if (!thumbIds.has(p.productId)) {
+            thumbs = [...thumbs, p];
+            thumbIds.add(p.productId);
+          }
+        }
+      }
+    }
+
+    return { cat, hero, thumbs };
+  });
+
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 12 }}>
-      {entries.map(([cat, items], si) => {
-        const hero = items[0];
-        const thumbs = items.slice(0, 4);
+      {cardData.map(({ cat, hero, thumbs }, si) => {
+        if (!hero) return null;
         const heroImg = resolveImg(hero);
         const price = Number(hero.price || hero.retailPrice || hero.retail_price) || 0;
         const mrp   = Number(hero.mrp || hero.originalPrice || price) || price;
@@ -331,7 +417,7 @@ function ShopMoreGrid({ featured, categories, loading, guardedNav }) {
 }
 
 /* ─── BROWSING HISTORY CAROUSEL ─────────────────────────────────── */
-function BrowsingHistoryCarousel({ featured, loading, guardedNav, joinedProductIds }) {
+function BrowsingHistoryCarousel({ items: itemsProp, loading, guardedNav, joinedProductIds, title = 'Inspired by your browsing history' }) {
   const trackRef = useRef(null);
   const [canLeft,  setCanLeft]  = useState(false);
   const [canRight, setCanRight] = useState(true);
@@ -351,16 +437,16 @@ function BrowsingHistoryCarousel({ featured, loading, guardedNav, joinedProductI
     setTimeout(updateArrows, 400);
   };
 
-  if (loading || !featured || featured.length === 0) return null;
+  if (loading || !itemsProp || itemsProp.length === 0) return null;
 
   // Show up to 14 items
-  const items = featured.slice(0, 14);
+  const items = itemsProp.slice(0, 14);
 
   return (
     <div style={{ background: '#fff', borderRadius: 4, border: '1px solid #ddd', padding: '16px', marginBottom: 12, position: 'relative' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#0f1111' }}>Inspired by your browsing history</h2>
-        <span style={{ fontSize: '0.78rem', color: '#565959' }}>Page 1 of {Math.ceil(featured.length / 7)}</span>
+        <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#0f1111' }}>{title}</h2>
+        <span style={{ fontSize: '0.78rem', color: '#565959' }}>Page 1 of {Math.ceil(itemsProp.length / 7)}</span>
       </div>
 
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -457,7 +543,7 @@ function BrowsingHistoryCarousel({ featured, loading, guardedNav, joinedProductI
 }
 
 /* ─── BASED ON YOUR CART CAROUSEL ───────────────────────────────── */
-function BasedOnCartCarousel({ featured, cartItems, loading, guardedNav }) {
+function BasedOnCartCarousel({ items: itemsProp, loading, guardedNav, title = 'Based on your cart' }) {
   const trackRef = useRef(null);
   const [canLeft,  setCanLeft]  = useState(false);
   const [canRight, setCanRight] = useState(true);
@@ -476,7 +562,6 @@ function BasedOnCartCarousel({ featured, cartItems, loading, guardedNav }) {
     setTimeout(updateArrows, 400);
   };
 
-  if (loading || !featured || featured.length === 0) return null;
 
   const resolveImg = (p) => {
     const raw = p.imageUrl || p.image_url || p.image;
@@ -487,37 +572,12 @@ function BasedOnCartCarousel({ featured, cartItems, loading, guardedNav }) {
       : `/seller-uploads${raw.startsWith('/') ? '' : '/'}${raw}`;
   };
 
-  // Build a set of categories from cart items
-  const cartCategories = new Set(
-    (cartItems || []).map(ci => ci.category || ci.categoryName || '').filter(Boolean)
-  );
-  const cartProductIds = new Set(
-    (cartItems || []).map(ci => Number(ci.productId || ci.product_id))
-  );
-
-  // Filter featured: prefer products whose category matches cart, exclude items already in cart
-  let items = [];
-  if (cartCategories.size > 0) {
-    items = featured.filter(p =>
-      cartCategories.has(p.category || p.categoryName || '') &&
-      !cartProductIds.has(Number(p.productId))
-    );
-  }
-  // If cart is empty or no category match, fall back to all featured products
-  if (items.length < 4) {
-    const extra = featured.filter(p => !cartProductIds.has(Number(p.productId)));
-    const seen = new Set(items.map(p => p.productId));
-    for (const p of extra) {
-      if (!seen.has(p.productId)) { items.push(p); seen.add(p.productId); }
-    }
-  }
-
-  if (items.length === 0) return null;
+  const items = (itemsProp && itemsProp.length > 0) ? itemsProp : [];
 
   return (
     <div style={{ background: '#fff', borderRadius: 4, border: '1px solid #ddd', padding: '16px 20px', marginBottom: 12, position: 'relative' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#0f1111', margin: 0 }}>Based on your cart</h2>
+        <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#0f1111', margin: 0 }}>{title}</h2>
         <button
           onClick={() => guardedNav('/products')}
           style={{ background: 'none', border: 'none', color: '#007185', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', padding: 0 }}
@@ -536,26 +596,31 @@ function BasedOnCartCarousel({ featured, cartItems, loading, guardedNav }) {
           onScroll={updateArrows}
           style={{ display: 'flex', gap: 0, overflowX: 'auto', scrollBehavior: 'smooth', scrollbarWidth: 'none', msOverflowStyle: 'none', padding: '2px 0' }}
         >
-          {items.map((p) => {
-            const imgSrc = resolveImg(p);
-            return (
-              <div
-                key={p.productId}
-                onClick={() => guardedNav(`/product/${p.productId}`)}
-                style={{ flexShrink: 0, width: 220, height: 220, cursor: 'pointer', overflow: 'hidden', position: 'relative' }}
-              >
-                {imgSrc
-                  ? <img src={imgSrc} alt={p.name || p.productName}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'transform 0.2s' }}
-                      onError={e => { e.target.style.display = 'none'; }}
-                      onMouseEnter={e => e.target.style.transform = 'scale(1.04)'}
-                      onMouseLeave={e => e.target.style.transform = 'scale(1)'}
-                    />
-                  : <div style={{ width: '100%', height: '100%', background: '#f7f7f7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2.5rem', color: '#ccc' }}>📦</div>
-                }
-              </div>
-            );
-          })}
+          {loading
+            ? [...Array(6)].map((_, i) => (
+                <div key={i} className="hk-skel" style={{ flexShrink: 0, width: 220, height: 220, marginRight: 0 }} />
+              ))
+            : items.map((p) => {
+                const imgSrc = resolveImg(p);
+                return (
+                  <div
+                    key={p.productId}
+                    onClick={() => guardedNav(`/product/${p.productId}`)}
+                    style={{ flexShrink: 0, width: 220, height: 220, cursor: 'pointer', overflow: 'hidden', position: 'relative' }}
+                  >
+                    {imgSrc
+                      ? <img src={imgSrc} alt={p.name || p.productName}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'transform 0.2s' }}
+                          onError={e => { e.target.style.display = 'none'; }}
+                          onMouseEnter={e => e.target.style.transform = 'scale(1.04)'}
+                          onMouseLeave={e => e.target.style.transform = 'scale(1)'}
+                        />
+                      : <div style={{ width: '100%', height: '100%', background: '#f7f7f7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2.5rem', color: '#ccc' }}>📦</div>
+                    }
+                  </div>
+                );
+              })
+          }
         </div>
 
         {canRight && (
@@ -597,6 +662,18 @@ export default function Home({ isGuest = false }) {
   const [countdown, setCountdown]         = useState({ h: 2, m: 34, s: 59 });
   const timerRef = useRef(null);
   const slide = SLIDES[slideIdx];
+
+  // ── Personalised section data (logged-in) ────────────────────────────────────
+  const [personalizedCart,      setPersonalizedCart]      = useState([]);
+  const [personalizedBrowsing,  setPersonalizedBrowsing]  = useState([]);
+  const [personalizedSuggested, setPersonalizedSuggested] = useState([]);
+  const [personalizedLoading,   setPersonalizedLoading]   = useState(true);
+
+  // ── Guest section data (logged-out) ──────────────────────────────────────────
+  const [guestDeals,     setGuestDeals]     = useState([]);
+  const [guestTrending,  setGuestTrending]  = useState([]);
+  const [guestTopRated,  setGuestTopRated]  = useState([]);
+  const [guestLoading,   setGuestLoading]   = useState(true);
 
   // ── Fetch all ad slots on mount ───────────────────────────────────────────────
   useEffect(() => {
@@ -739,6 +816,52 @@ export default function Home({ isGuest = false }) {
         }
       } catch {} finally { setLoading(false); }
     })();
+  }, [isGuest]);
+
+  // ── Fetch personalised section data (after main data loads) ──────────────────
+  useEffect(() => {
+    if (isGuest) {
+      // Not logged in: fetch public guest sections
+      setGuestLoading(true);
+      Promise.all([
+        productService.getGuestSection
+          ? productService.getGuestSection('deals',     14).catch(() => [])
+          : Promise.resolve([]),
+        productService.getGuestSection
+          ? productService.getGuestSection('trending',  14).catch(() => [])
+          : Promise.resolve([]),
+        productService.getGuestSection
+          ? productService.getGuestSection('top_rated', 14).catch(() => [])
+          : Promise.resolve([]),
+      ]).then(([deals, trending, topRated]) => {
+        setGuestDeals(    Array.isArray(deals)    ? deals    : []);
+        setGuestTrending( Array.isArray(trending) ? trending : []);
+        setGuestTopRated( Array.isArray(topRated) ? topRated : []);
+      }).catch(() => {}).finally(() => setGuestLoading(false));
+    } else {
+      // Logged in: fetch personalised sections + trending as fallback
+      setPersonalizedLoading(true);
+      Promise.all([
+        productService.getPersonalizedCart
+          ? productService.getPersonalizedCart(14).catch(() => [])
+          : Promise.resolve([]),
+        productService.getPersonalizedBrowsing
+          ? productService.getPersonalizedBrowsing(14).catch(() => [])
+          : Promise.resolve([]),
+        productService.getPersonalizedSuggested
+          ? productService.getPersonalizedSuggested(14).catch(() => [])
+          : Promise.resolve([]),
+        // Always fetch trending so new users see "Trending Now" until they build history
+        productService.getGuestSection
+          ? productService.getGuestSection('trending', 14).catch(() => [])
+          : Promise.resolve([]),
+      ]).then(([cart, browsing, suggested, trending]) => {
+        setPersonalizedCart(      Array.isArray(cart)     ? cart     : []);
+        setPersonalizedBrowsing(  Array.isArray(browsing) ? browsing : []);
+        setPersonalizedSuggested( Array.isArray(suggested)? suggested: []);
+        setGuestTrending(         Array.isArray(trending) ? trending : []);
+      }).catch(() => {}).finally(() => setPersonalizedLoading(false));
+    }
   }, [isGuest]);
 
   useEffect(() => {
@@ -1159,8 +1282,17 @@ export default function Home({ isGuest = false }) {
           </div>
         </div>
 
-        {/* ── Based on your cart ── */}
-        <BasedOnCartCarousel featured={featured} cartItems={cartItems} loading={loading} guardedNav={guardedNav} />
+        {/* ── Based on your cart (logged in) / Today's Deals (guest or new user) ── */}
+        <BasedOnCartCarousel
+          items={
+            !isGuest && personalizedCart.length > 0 ? personalizedCart
+            : guestDeals.length > 0 ? guestDeals
+            : featured
+          }
+          loading={isGuest ? guestLoading : (personalizedLoading && personalizedCart.length === 0 && featured.length === 0)}
+          guardedNav={guardedNav}
+          title={!isGuest && personalizedCart.length > 0 ? 'Based on your cart' : "Today's Deals"}
+        />
 
         {/* ── Product Spotlight Ad — falls back to App promo banner if no active ads ── */}
         <ProductSpotlightAd>
@@ -1197,14 +1329,65 @@ export default function Home({ isGuest = false }) {
           </div>
         </ProductSpotlightAd>
 
-        {/* ── Inspired by your browsing history ── */}
-        <BrowsingHistoryCarousel featured={featured} loading={loading} guardedNav={guardedNav} joinedProductIds={joinedProductIds} />
+        {/* ── Based on your browsing history (logged in) / Trending Now (guest or new user) ── */}
+        {isGuest
+          ? <BrowsingHistoryCarousel
+              items={guestTrending}
+              loading={guestLoading}
+              guardedNav={guardedNav}
+              joinedProductIds={joinedProductIds}
+              title="Trending Now"
+            />
+          : personalizedBrowsing.length > 0
+            ? <BrowsingHistoryCarousel
+                items={personalizedBrowsing}
+                loading={personalizedLoading}
+                guardedNav={guardedNav}
+                joinedProductIds={joinedProductIds}
+                title="Based on your browsing history"
+              />
+            : <BrowsingHistoryCarousel
+                items={guestTrending}
+                loading={personalizedLoading}
+                guardedNav={guardedNav}
+                joinedProductIds={joinedProductIds}
+                title="Trending Now"
+              />
+        }
 
-        {/* ── Explore more / Keep shopping for ── */}
-        <ShopMoreGrid featured={featured} categories={categories} loading={loading} guardedNav={guardedNav} />
+        {/* ── Explore more / Keep shopping for (logged in) / Top Offers (guest) ── */}
+        {isGuest
+          ? <ShopMoreGrid
+              items={guestTopRated}
+              allProducts={featured}
+              categories={categories}
+              loading={guestLoading}
+              guardedNav={guardedNav}
+            />
+          : <ShopMoreGrid
+              items={personalizedBrowsing}
+              allProducts={featured}
+              categories={categories}
+              loading={personalizedLoading}
+              guardedNav={guardedNav}
+            />
+        }
 
-        {/* ── Suggested For You ── */}
-        <SuggestedForYou featured={featured} loading={loading} guardedNav={guardedNav} />
+        {/* ── Suggested For You (logged in only) / Most Popular (guest) ── */}
+        {isGuest
+          ? <SuggestedForYou
+              items={guestTopRated.length > 0 ? guestTopRated : guestDeals}
+              loading={guestLoading}
+              guardedNav={guardedNav}
+              title="Most Popular"
+            />
+          : <SuggestedForYou
+              items={personalizedSuggested}
+              loading={personalizedLoading}
+              guardedNav={guardedNav}
+              title="Suggested For You"
+            />
+        }
 
         {/* ── Featured products ── */}
         <div style={{ background: '#fff', borderRadius: 4, border: '1px solid #ddd', padding: '16px' }}>
@@ -1228,18 +1411,18 @@ export default function Home({ isGuest = false }) {
             <>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
                 {featured.map((p, i) => (
-                  <>
+                  <React.Fragment key={p.productId}>
                     {i === 4 && (
-                      <div key="__sidebar_ad__" style={{ borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9f9f9', minHeight: 250 }}>
+                      <div style={{ borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9f9f9', minHeight: 250 }}>
                         <div style={{ width: 300, height: 250, flexShrink: 0, overflow: 'hidden' }}>
                           <SidebarBoxAd style={{ marginTop: 0, marginLeft: 0, marginRight: 0 }} />
                         </div>
                       </div>
                     )}
-                    <div key={p.productId} className="hk-prod-wrap">
+                    <div className="hk-prod-wrap">
                       <ProductCard product={p} alreadyJoined={joinedProductIds.has(Number(p.productId))} />
                     </div>
-                  </>
+                  </React.Fragment>
                 ))}
                 {featuredLoading && [...Array(5)].map((_, i) => (
                   <div key={`skel-${i}`} className="hk-skel" style={{ height: 280 }} />

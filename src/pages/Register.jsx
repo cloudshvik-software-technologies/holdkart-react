@@ -3,11 +3,25 @@ import { Link, useNavigate } from 'react-router-dom';
 import { authService } from '../services/index.js';
 import toast from 'react-hot-toast';
 
+const EyeOpen = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+  </svg>
+);
+const EyeOff = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+    <line x1="1" y1="1" x2="23" y2="23"/>
+  </svg>
+);
+
 export default function Register() {
   const navigate = useNavigate();
   const [form, setForm] = useState({ name: '', email: '', mobile: '', password: '', confirm: '' });
   const [loading, setLoading] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
+  const [focused, setFocused] = useState(null);
   const set = (k) => (e) => setForm(p => ({ ...p, [k]: e.target.value }));
 
   const handleSubmit = async (e) => {
@@ -26,144 +40,422 @@ export default function Register() {
     }
   };
 
-  const s = {
-    page:       { minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#fff', padding: '20px 16px 30px', fontFamily: '-apple-system, "Segoe UI", Roboto, Arial, sans-serif' },
-    logoWrap:   { marginBottom: 16 },
-    logo:       { fontSize: '2rem', fontWeight: 800, color: '#1f2937', letterSpacing: '-0.5px' },
-    logoAccent: { color: '#2a5298' },
-    card:       { width: '100%', maxWidth: 380, border: '1px solid #e3e6e6', borderRadius: 8, padding: '16px 28px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' },
-    title:      { fontSize: '1.7rem', fontWeight: 500, color: '#1f2937', marginBottom: 8 },
-    labelStyle: { display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: 4, color: '#0f1111' },
-    optionalSpan: { color: '#9ca3af', fontWeight: 400 },
-    inputStyle: { width: '100%', padding: '6px 10px', border: '1px solid #a6a6a6', borderRadius: 4, outline: 'none', fontSize: '0.95rem', color: '#1f2937', boxSizing: 'border-box' },
-    passBox:    { position: 'relative' },
-    passToggle: { position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#2a5298', fontSize: '0.8rem', fontWeight: 600 },
-    fieldGap:   { marginBottom: 8 },
-    hint:       { fontSize: '0.72rem', color: '#6b7280', marginTop: 2 },
-    errorHint:  { color: '#ef4444', fontSize: '0.75rem', marginTop: 4 },
-    submitBtn:  { width: '100%', background: loading ? '#f0d9a8' : '#f6c343', color: '#0f1111', padding: '8px', borderRadius: 8, fontWeight: 500, fontSize: '0.95rem', cursor: loading ? 'not-allowed' : 'pointer', border: '1px solid #d8a92e', marginTop: 6 },
-    smallText:  { fontSize: '0.78rem', color: '#555', lineHeight: 1.6, marginTop: 8 },
-    link:       { color: '#2a5298', textDecoration: 'none' },
-    divider:    { display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0 10px', width: '100%', maxWidth: 380 },
-    dividerLine:{ flex: 1, height: 1, background: '#e3e6e6' },
-    dividerText:{ fontSize: '0.78rem', color: '#767676' },
-    signinBtn:  { display: 'inline-block', width: '100%', maxWidth: 380, padding: '8px', borderRadius: 8, border: '1px solid #a6a6a6', background: '#f3f3f3', color: '#0f1111', fontSize: '0.9rem', fontWeight: 500, textAlign: 'center', textDecoration: 'none', boxSizing: 'border-box' },
-  };
+  const passwordMismatch = form.confirm && form.confirm !== form.password;
+
+  const inp = (field, hasError = false) => ({
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '10px 14px',
+    fontSize: '0.875rem',
+    color: '#1a1a2e',
+    background: '#fff',
+    border: `1.5px solid ${hasError ? '#ef4444' : focused === field ? '#3b5bdb' : '#dde1e7'}`,
+    borderRadius: '8px',
+    outline: 'none',
+    boxShadow: hasError
+      ? '0 0 0 3px rgba(239,68,68,0.08)'
+      : focused === field ? '0 0 0 3px rgba(59,91,219,0.08)' : 'none',
+    transition: 'border-color 0.18s, box-shadow 0.18s',
+    fontFamily: 'inherit',
+  });
+
+
 
   return (
-    <div style={s.page}>
-      <div style={s.logoWrap}>
-        <span style={s.logo}>Hold<span style={s.logoAccent}>Kart</span></span>
-      </div>
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', sans-serif; }
 
-      <div style={s.card}>
-        <h1 style={s.title}>Create account</h1>
+        .rp-root {
+          min-height: 100vh;
+          display: flex;
+          background: #f7f8fc;
+        }
 
-        <form onSubmit={handleSubmit}>
-          <div style={s.fieldGap}>
-            <label style={s.labelStyle}>Your name</label>
-            <input
-              type="text"
-              placeholder="First and last name"
-              required
-              value={form.name}
-              onChange={set('name')}
-              style={s.inputStyle}
-              onFocus={e => { e.target.style.borderColor = '#2a5298'; e.target.style.boxShadow = '0 0 0 3px rgba(42,82,152,0.15)'; }}
-              onBlur={e => { e.target.style.borderColor = '#a6a6a6'; e.target.style.boxShadow = 'none'; }}
-            />
+        /* Left brand panel */
+        .rp-brand {
+          flex: 0 0 38%;
+          background: #ffffff;
+          border-right: 1px solid #e8ebf0;
+          padding: 56px 48px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+        }
+
+        .rp-logo-text {
+          font-size: 1.45rem;
+          font-weight: 700;
+          color: #1a1a2e;
+          letter-spacing: -0.5px;
+        }
+        .rp-logo-text span { color: #3b5bdb; }
+        .rp-logo-sub {
+          font-size: 0.7rem;
+          color: #9da3ae;
+          letter-spacing: 1.8px;
+          text-transform: uppercase;
+          font-weight: 500;
+          margin-top: 2px;
+        }
+
+        .rp-brand-body {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          padding: 48px 0 32px;
+        }
+
+        .rp-steps-label {
+          font-size: 0.68rem;
+          font-weight: 600;
+          color: #c4c9d4;
+          letter-spacing: 2px;
+          text-transform: uppercase;
+          margin-bottom: 28px;
+        }
+
+        .rp-steps {
+          display: flex;
+          flex-direction: column;
+          gap: 0;
+        }
+
+        .rp-step {
+          display: flex;
+          gap: 16px;
+          position: relative;
+        }
+        .rp-step:not(:last-child) {
+          padding-bottom: 24px;
+        }
+        .rp-step-left {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          flex-shrink: 0;
+        }
+        .rp-step-num {
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          border: 1.5px solid #dde1e7;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 0.68rem;
+          font-weight: 700;
+          color: #9da3ae;
+          background: #fff;
+          flex-shrink: 0;
+          z-index: 1;
+        }
+        .rp-step-line {
+          flex: 1;
+          width: 1px;
+          background: #e8ebf0;
+          margin-top: 4px;
+        }
+        .rp-step-body {
+          padding-top: 3px;
+          padding-bottom: 2px;
+        }
+        .rp-step-body h4 {
+          font-size: 0.82rem;
+          font-weight: 600;
+          color: #374151;
+          margin-bottom: 2px;
+        }
+        .rp-step-body p {
+          font-size: 0.76rem;
+          color: #9da3ae;
+          line-height: 1.5;
+        }
+
+        .rp-brand-footer {
+          font-size: 0.72rem;
+          color: #c4c9d4;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .rp-live-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: #22c55e;
+          flex-shrink: 0;
+        }
+
+        /* Right form panel */
+        .rp-form-side {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 40px 24px;
+          background: #f7f8fc;
+          overflow-y: auto;
+        }
+        .rp-form-card {
+          width: 100%;
+          max-width: 440px;
+          padding: 8px 0;
+        }
+        .rp-form-header {
+          margin-bottom: 28px;
+        }
+        .rp-form-title {
+          font-size: 1.3rem;
+          font-weight: 700;
+          color: #1a1a2e;
+          margin-bottom: 5px;
+          letter-spacing: -0.2px;
+        }
+        .rp-form-sub {
+          font-size: 0.84rem;
+          color: #9da3ae;
+        }
+
+        .rp-row { display: flex; gap: 14px; }
+        .rp-row .rp-field { flex: 1; }
+
+        .rp-field { margin-bottom: 16px; }
+        .rp-label {
+          display: block;
+          font-size: 0.78rem;
+          font-weight: 600;
+          color: #374151;
+          margin-bottom: 7px;
+          letter-spacing: 0.1px;
+        }
+        .rp-optional {
+          color: #c4c9d4;
+          font-weight: 400;
+          font-size: 0.72rem;
+          margin-left: 3px;
+        }
+        .rp-pass-wrap { position: relative; }
+        .rp-eye-btn {
+          position: absolute;
+          right: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+          background: none;
+          border: none;
+          cursor: pointer;
+          color: #c4c9d4;
+          display: flex;
+          align-items: center;
+          padding: 2px;
+          transition: color 0.15s;
+        }
+        .rp-eye-btn:hover { color: #3b5bdb; }
+
+        .rp-error {
+          font-size: 0.74rem;
+          color: #ef4444;
+          margin-top: 5px;
+          font-weight: 500;
+        }
+
+
+
+        .rp-submit {
+          width: 100%;
+          padding: 12px;
+          background: #3b5bdb;
+          color: #fff;
+          border: none;
+          border-radius: 8px;
+          font-size: 0.9rem;
+          font-weight: 600;
+          cursor: pointer;
+          letter-spacing: 0.1px;
+          margin-top: 6px;
+          transition: background 0.18s, opacity 0.18s;
+          font-family: inherit;
+        }
+        .rp-submit:hover:not(:disabled) { background: #3451c7; }
+        .rp-submit:disabled { opacity: 0.55; cursor: not-allowed; }
+
+        .rp-divider {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin: 22px 0 18px;
+        }
+        .rp-div-line { flex: 1; height: 1px; background: #e8ebf0; }
+        .rp-div-text { font-size: 0.74rem; color: #c4c9d4; white-space: nowrap; font-weight: 500; }
+
+        .rp-signin-btn {
+          display: block;
+          width: 100%;
+          padding: 11px;
+          border: 1.5px solid #dde1e7;
+          border-radius: 8px;
+          background: #fff;
+          color: #374151;
+          font-size: 0.875rem;
+          font-weight: 600;
+          text-align: center;
+          text-decoration: none;
+          transition: border-color 0.18s, color 0.18s;
+          font-family: inherit;
+        }
+        .rp-signin-btn:hover {
+          border-color: #3b5bdb;
+          color: #3b5bdb;
+        }
+
+        .rp-legal {
+          font-size: 0.71rem;
+          color: #c4c9d4;
+          line-height: 1.7;
+          margin-top: 18px;
+          text-align: center;
+        }
+        .rp-legal a {
+          color: #9da3ae;
+          text-decoration: none;
+        }
+        .rp-legal a:hover { text-decoration: underline; }
+
+        @media (max-width: 760px) {
+          .rp-brand { display: none; }
+          .rp-form-side { padding: 32px 20px; background: #fff; }
+          .rp-row { flex-direction: column; gap: 0; }
+        }
+      `}</style>
+
+      <div className="rp-root">
+
+        {/* Left brand panel */}
+        <div className="rp-brand">
+          <div>
+            <div className="rp-logo-text">Hold<span>Kart</span></div>
+            <div className="rp-logo-sub">Commerce Platform</div>
           </div>
 
-          <div style={s.fieldGap}>
-            <label style={s.labelStyle}>Email address</label>
-            <input
-              type="email"
-              placeholder="you@example.com"
-              required
-              value={form.email}
-              onChange={set('email')}
-              style={s.inputStyle}
-              onFocus={e => { e.target.style.borderColor = '#2a5298'; e.target.style.boxShadow = '0 0 0 3px rgba(42,82,152,0.15)'; }}
-              onBlur={e => { e.target.style.borderColor = '#a6a6a6'; e.target.style.boxShadow = 'none'; }}
-            />
-          </div>
-
-          <div style={s.fieldGap}>
-            <label style={s.labelStyle}>Mobile number <span style={s.optionalSpan}>(optional)</span></label>
-            <input
-              type="tel"
-              placeholder="+91 XXXXXXXXXX"
-              value={form.mobile}
-              onChange={set('mobile')}
-              style={s.inputStyle}
-              onFocus={e => { e.target.style.borderColor = '#2a5298'; e.target.style.boxShadow = '0 0 0 3px rgba(42,82,152,0.15)'; }}
-              onBlur={e => { e.target.style.borderColor = '#a6a6a6'; e.target.style.boxShadow = 'none'; }}
-            />
-          </div>
-
-          <div style={s.fieldGap}>
-            <label style={s.labelStyle}>Password</label>
-            <div style={s.passBox}>
-              <input
-                type={showPwd ? 'text' : 'password'}
-                placeholder="At least 6 characters"
-                required
-                value={form.password}
-                onChange={set('password')}
-                style={{ ...s.inputStyle, paddingRight: 56 }}
-                onFocus={e => { e.target.style.borderColor = '#2a5298'; e.target.style.boxShadow = '0 0 0 3px rgba(42,82,152,0.15)'; }}
-                onBlur={e => { e.target.style.borderColor = '#a6a6a6'; e.target.style.boxShadow = 'none'; }}
-              />
-              <button type="button" style={s.passToggle} onClick={() => setShowPwd(s2 => !s2)}>
-                {showPwd ? 'Hide' : 'Show'}
-              </button>
+          <div className="rp-brand-body">
+            <p className="rp-steps-label">How it works</p>
+            <div className="rp-steps">
+              {[
+                { title: 'Create your account', desc: 'Quick sign-up, takes under a minute.' },
+                { title: 'Join a hold campaign', desc: 'Browse deals and add your hold with a deposit.' },
+                { title: 'Target met — price locks', desc: 'Once enough buyers join, the deal activates.' },
+                { title: 'Complete checkout', desc: 'Pay the balance and get your order shipped.' },
+              ].map((s, i, arr) => (
+                <div className="rp-step" key={i}>
+                  <div className="rp-step-left">
+                    <div className="rp-step-num">{i + 1}</div>
+                    {i < arr.length - 1 && <div className="rp-step-line" />}
+                  </div>
+                  <div className="rp-step-body">
+                    <h4>{s.title}</h4>
+                    <p>{s.desc}</p>
+                  </div>
+                </div>
+              ))}
             </div>
-            <p style={s.hint}>Passwords must be at least 6 characters.</p>
           </div>
 
-          <div style={s.fieldGap}>
-            <label style={s.labelStyle}>Re-enter password</label>
-            <input
-              type={showPwd ? 'text' : 'password'}
-              required
-              value={form.confirm}
-              onChange={set('confirm')}
-              style={{
-                ...s.inputStyle,
-                borderColor: form.confirm && form.confirm !== form.password ? '#ef4444' : '#a6a6a6',
-              }}
-              onFocus={e => { e.target.style.borderColor = '#2a5298'; e.target.style.boxShadow = '0 0 0 3px rgba(42,82,152,0.15)'; }}
-              onBlur={e => {
-                e.target.style.boxShadow = 'none';
-                e.target.style.borderColor = (form.confirm && form.confirm !== form.password) ? '#ef4444' : '#a6a6a6';
-              }}
-            />
-            {form.confirm && form.confirm !== form.password && (
-              <p style={s.errorHint}>Passwords don't match</p>
-            )}
+          <div className="rp-brand-footer">
+            <span className="rp-live-dot" />
+            Platform is live and operational
           </div>
+        </div>
 
-          <button type="submit" style={s.submitBtn} disabled={loading}>
-            {loading ? 'Creating account…' : 'Verify email'}
-          </button>
-        </form>
+        {/* Right form panel */}
+        <div className="rp-form-side">
+          <div className="rp-form-card">
+            <div className="rp-form-header">
+              <h1 className="rp-form-title">Create your account</h1>
+              <p className="rp-form-sub">Join HoldKart and start saving with group deals</p>
+            </div>
 
-        <p style={s.smallText}>
-          By creating an account, you agree to HoldKart's{' '}
-          <Link to="/terms" style={s.link}>Conditions of Use</Link> and{' '}
-          <Link to="/privacy" style={s.link}>Privacy Notice</Link>.
-        </p>
+            <form onSubmit={handleSubmit}>
+              <div className="rp-row">
+                <div className="rp-field">
+                  <label className="rp-label">Full Name</label>
+                  <input
+                    type="text" required placeholder="First and last name"
+                    value={form.name} onChange={set('name')}
+                    style={inp('name')}
+                    onFocus={() => setFocused('name')} onBlur={() => setFocused(null)}
+                  />
+                </div>
+                <div className="rp-field">
+                  <label className="rp-label">Mobile <span className="rp-optional">(optional)</span></label>
+                  <input
+                    type="tel" placeholder="+91 XXXXXXXXXX"
+                    value={form.mobile} onChange={set('mobile')}
+                    style={inp('mobile')}
+                    onFocus={() => setFocused('mobile')} onBlur={() => setFocused(null)}
+                  />
+                </div>
+              </div>
+
+              <div className="rp-field">
+                <label className="rp-label">Email Address</label>
+                <input
+                  type="email" required placeholder="you@example.com"
+                  value={form.email} onChange={set('email')}
+                  style={inp('email')}
+                  onFocus={() => setFocused('email')} onBlur={() => setFocused(null)}
+                />
+              </div>
+
+              <div className="rp-field">
+                <label className="rp-label">Password</label>
+                <div className="rp-pass-wrap">
+                  <input
+                    type={showPwd ? 'text' : 'password'} required placeholder="At least 6 characters"
+                    value={form.password} onChange={set('password')}
+                    style={{ ...inp('password'), paddingRight: 42 }}
+                    onFocus={() => setFocused('password')} onBlur={() => setFocused(null)}
+                  />
+                  <button type="button" className="rp-eye-btn" onClick={() => setShowPwd(s => !s)}>
+                    {showPwd ? <EyeOff /> : <EyeOpen />}
+                  </button>
+                </div>
+                {/* <p style={{ fontSize: '0.74rem', color: '#9da3ae', marginTop: 6 }}>Must be at least 6 characters.</p> */}
+              </div>
+
+              <div className="rp-field">
+                <label className="rp-label">Confirm Password</label>
+                <input
+                  type={showPwd ? 'text' : 'password'} required placeholder="Repeat your password"
+                  value={form.confirm} onChange={set('confirm')}
+                  style={inp('confirm', passwordMismatch)}
+                  onFocus={() => setFocused('confirm')} onBlur={() => setFocused(null)}
+                />
+                {passwordMismatch && <p className="rp-error">Passwords don't match</p>}
+              </div>
+
+              <button type="submit" className="rp-submit" disabled={loading}>
+                {loading ? 'Creating account…' : 'Create Account'}
+              </button>
+            </form>
+
+            <div className="rp-divider">
+              <div className="rp-div-line" />
+              <span className="rp-div-text">Already a customer?</span>
+              <div className="rp-div-line" />
+            </div>
+            <Link to="/login" className="rp-signin-btn">Sign in to your account</Link>
+            <p className="rp-legal">
+              By creating an account you agree to our{' '}
+              <Link to="/terms">Terms of Use</Link> and{' '}
+              <Link to="/privacy">Privacy Policy</Link>.
+            </p>
+          </div>
+        </div>
+
       </div>
-
-      <div style={s.divider}>
-        <div style={s.dividerLine} />
-        <span style={s.dividerText}>Already a customer?</span>
-        <div style={s.dividerLine} />
-      </div>
-
-      <Link to="/login" style={s.signinBtn}>
-        Sign in to your account
-      </Link>
-    </div>
+    </>
   );
 }
