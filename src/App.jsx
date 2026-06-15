@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import SessionGuard from './components/SessionGuard.jsx';
+import LoginNudge   from './components/LoginNudge.jsx';
 import Header from './components/Header.jsx';
 import Footer from './components/Footer.jsx';
 
@@ -52,6 +53,7 @@ function PublicLayout() {
       <Header />
       <Outlet />
       <Footer />
+      <LoginNudge />
     </>
   );
 }
