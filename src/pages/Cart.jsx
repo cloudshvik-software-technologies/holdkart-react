@@ -19,7 +19,6 @@ export default function Cart() {
   const navigate = useNavigate();
   const [cart, setCart]     = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showFeeTooltip, setShowFeeTooltip] = useState(false);
   const [dealRemoveItem, setDealRemoveItem] = useState(null); // item pending deal-removal confirmation
 
   const fetchCart = async () => {
@@ -53,16 +52,12 @@ export default function Cart() {
   const totalSavings = subtotalMRP - subtotalEff;
   const itemCount    = cart.reduce((s, i) => s + i.quantity, 0);
 
-  /* ── fees (always collected) ── */
-  const deliveryCharge = 79;
-  const platformFee    = 10;
-
   /* ── prepaid deposit deduction ──
      depositPaid = actual money the customer paid upfront when joining the deal
      (stored at join time per slot in campaign_hold.deposit_amount, summed on completion).
-     At checkout they owe: holdPrice × qty - depositPaid + fees. */
+     Delivery charge & platform fee are calculated at checkout. */
   const totalPrepaid = cart.reduce((s, i) => s + (i.depositPaid || 0), 0);
-  const amountDue = Math.max(0, subtotalEff - totalPrepaid + deliveryCharge + platformFee);
+  const amountDue = Math.max(0, subtotalEff - totalPrepaid);
 
   /* ── styles ── */
   const page = {
@@ -323,39 +318,12 @@ export default function Cart() {
                 </div>
               )}
 
-              {/* Delivery + Platform fee */}
-              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 10, marginBottom: 10 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#374151', marginBottom: 6 }}>
-                  <span>Delivery Charge</span>
-                  <span style={{ fontWeight: 600 }}>₹{deliveryCharge}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#374151', marginBottom: 4 }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    Platform Fee
-                    <span
-                      style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
-                      onMouseEnter={() => setShowFeeTooltip(true)}
-                      onMouseLeave={() => setShowFeeTooltip(false)}
-                    >
-                      <span style={{ width: 14, height: 14, borderRadius: '50%', background: '#6b7280', color: '#fff', fontSize: '0.65rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'default', userSelect: 'none' }}>i</span>
-                      {showFeeTooltip && (
-                        <div style={{ position: 'absolute', bottom: '120%', left: '50%', transform: 'translateX(-50%)', width: 220, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px 14px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 999, pointerEvents: 'none' }}>
-                          <p style={{ fontWeight: 700, fontSize: '0.82rem', color: '#0f1111', marginBottom: 6 }}>Platform Fee</p>
-                          <p style={{ fontSize: '0.78rem', color: '#6b7280', lineHeight: 1.5 }}>A non-refundable fee charged to help keep the platform running smoothly and support app improvements.</p>
-                          <div style={{ position: 'absolute', bottom: -6, left: '50%', transform: 'translateX(-50%)', width: 10, height: 10, background: '#fff', border: '1px solid #e5e7eb', borderTop: 'none', borderLeft: 'none', rotate: '45deg' }} />
-                        </div>
-                      )}
-                    </span>
-                  </span>
-                  <span style={{ fontWeight: 600 }}>₹{platformFee}</span>
-                </div>
-              </div>
 
               <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, marginBottom: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1rem', color: '#0f1111', marginBottom: totalPrepaid > 0 ? 6 : 0 }}>
                   <span>Order Total</span>
                   <span style={{ textDecoration: totalPrepaid > 0 ? 'line-through' : 'none', color: totalPrepaid > 0 ? '#9ca3af' : '#0f1111', fontWeight: totalPrepaid > 0 ? 400 : 700, fontSize: totalPrepaid > 0 ? '0.9rem' : '1rem' }}>
-                    ₹{(subtotalEff + deliveryCharge + platformFee).toLocaleString('en-IN')}
+                    ₹{subtotalEff.toLocaleString('en-IN')}
                   </span>
                 </div>
                 {totalPrepaid > 0 && (
