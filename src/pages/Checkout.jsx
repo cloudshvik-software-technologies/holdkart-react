@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { cartService, orderService, paymentService, profileService } from '../services/index.js';
+import { getAvailableCouriers } from '../services/shipping.service.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import toast from 'react-hot-toast';
 
@@ -132,6 +133,11 @@ export default function Checkout() {
   const [loading, setLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
   const [showFeeTooltip, setShowFeeTooltip] = useState(false);
+
+  // courier selection: { [cartId]: { list, loading, error, selected } }
+  const [courierMap, setCourierMap] = useState({});
+  // tracks which item's courier dropdown is open
+  const [courierOpen, setCourierOpen] = useState({});
   const [address, setAddress] = useState({
     address: '', city: '', state: '', pincode: '', paymentMethod: 'COD',
   });
@@ -171,6 +177,48 @@ export default function Checkout() {
     toast.success('Address filled from profile');
   };
 
+  /* Fetch courier options for every cart item when pincode is complete */
+  const fetchCouriersForAll = async (pincode, cartItems, paymentMethod) => {
+    if (!/^\d{6}$/.test(pincode) || cartItems.length === 0) return;
+    const cod = paymentMethod === 'COD' ? 1 : 0;
+
+    const updates = {};
+    cartItems.forEach(item => {
+      updates[item.cartId] = { list: [], loading: true, error: null, selected: null };
+    });
+    setCourierMap(updates);
+
+    await Promise.all(cartItems.map(async (item) => {
+      try {
+        const res = await getAvailableCouriers(item.productId, pincode, 0.5, cod);
+        const list = res?.couriers || [];
+        setCourierMap(prev => ({
+          ...prev,
+          [item.cartId]: {
+            list,
+            loading: false,
+            error: list.length === 0 ? 'No couriers available for this pincode' : null,
+            selected: null,
+          },
+        }));
+      } catch (err) {
+        const msg = err?.response?.data?.message || err?.message || 'Failed to fetch couriers';
+        setCourierMap(prev => ({
+          ...prev,
+          [item.cartId]: { list: [], loading: false, error: msg, selected: null },
+        }));
+      }
+    }));
+  };
+
+  /* Re-fetch whenever pincode becomes valid or payment method changes */
+  useEffect(() => {
+    if (cart.length > 0) {
+      fetchCouriersForAll(address.pincode, cart, address.paymentMethod);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address.pincode, address.paymentMethod, cart.length]);
+
   const set = (field, val) => setAddress(prev => ({ ...prev, [field]: val }));
 
   /* use effectivePrice (group-deal discounted) when available, else retailPrice */
@@ -183,16 +231,22 @@ export default function Checkout() {
      Never derive from current cart quantity — that may differ from slots joined.      */
   const totalPrepaid = cart.reduce((s, i) => s + (i.depositPaid || 0), 0);
 
-  const deliveryCharge    = 79;  // Delivery charge (Flipkart-style, based on order size)
+  /* Delivery charge = sum of each item's selected courier rate × quantity */
+  const deliveryCharge = Math.round(cart.reduce((sum, item) => {
+    const entry = courierMap[item.cartId];
+    return sum + (entry?.selected?.rate ?? 0) * (item.quantity ?? 1);
+  }, 0) * 100) / 100;
+  // null when pincode not entered yet (no couriers fetched)
+  const effectiveDeliveryCharge = Object.keys(courierMap).length > 0 ? deliveryCharge : null;
   const platformFee       = 10;  // Platform fee (same as cart)
-  const totalFees         = deliveryCharge + platformFee;
+  const totalFees         = (effectiveDeliveryCharge ?? 0) + platformFee;
   const total = Math.max(0, subtotalEff - totalPrepaid + totalFees);
   const itemCount    = cart.reduce((s, i) => s + i.quantity, 0);
 
   /* ── COD ── */
   const placeCOD = async () => {
     const items = cart.map(i => ({ productId: i.productId, quantity: i.quantity }));
-    await orderService.placeOrder({ items, ...address, deliveryCharge, platformFee });
+    await orderService.placeOrder({ items, ...address, deliveryCharge: effectiveDeliveryCharge, platformFee });
     toast.success('Order placed successfully!');
     navigate('/orders');
   };
@@ -237,7 +291,7 @@ export default function Checkout() {
         try {
           await paymentService.verifyPayment({ orderId: cfOrder.orderId });
           const items = cart.map(i => ({ productId: i.productId, quantity: i.quantity }));
-          await orderService.placeOrder({ items, ...address, paymentId: cfOrder.orderId, deliveryCharge, platformFee });
+          await orderService.placeOrder({ items, ...address, paymentId: cfOrder.orderId, deliveryCharge: effectiveDeliveryCharge, platformFee });
                 toast.success('Payment successful! Order placed.');
           navigate('/orders');
           resolve();
@@ -255,6 +309,10 @@ export default function Checkout() {
       toast.error('Please fill all address fields'); return;
     }
     if (!/^\d{6}$/.test(address.pincode)) { toast.error('Enter a valid 6-digit pincode'); return; }
+    if (Object.keys(courierMap).length > 0) {
+      const unselected = cart.some(i => courierMap[i.cartId] && !courierMap[i.cartId].loading && !courierMap[i.cartId].selected);
+      if (unselected) { toast.error('Please select a courier for each item'); return; }
+    }
     setPlacing(true);
     try {
       if (address.paymentMethod === 'Online') { await placeOnline(); }
@@ -466,9 +524,15 @@ export default function Checkout() {
                 </div>
               </div>
 
-              {/* ── Step 3: Review Items ── */}
+              {/* ── Step 3: Review Items + Courier Selection ── */}
               <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '20px 24px', marginBottom: 16 }}>
                 <SectionHeader num="3" title={`Review Items (${itemCount})`} done={false} />
+
+                {!addrDone && (
+                  <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 4, padding: '10px 14px', fontSize: '0.8rem', color: '#92400e', marginBottom: 14 }}>
+                    ⓘ Enter your delivery pincode above to see available couriers for each item.
+                  </div>
+                )}
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                   {cart.map((item, idx) => {
@@ -476,44 +540,180 @@ export default function Checkout() {
                     const lineAmt  = price * item.quantity;
                     const mrpAmt   = item.retailPrice * item.quantity;
                     const saved    = mrpAmt - lineAmt;
+                    const courier  = courierMap[item.cartId];
+
                     return (
                       <div key={item.cartId}
                         style={{
-                          display: 'grid', gridTemplateColumns: '64px 1fr auto',
-                          gap: 14, padding: '14px 0',
+                          padding: '16px 0',
                           borderBottom: idx < cart.length - 1 ? '1px solid #f3f4f6' : 'none',
-                          alignItems: 'center',
                         }}
                       >
-                        <div style={{ border: '1px solid #e5e7eb', borderRadius: 4, overflow: 'hidden', background: '#f9fafb' }}>
-                          <img
-                            src={resolveImg(item.imageUrl)}
-                            alt={item.name}
-                            onError={e => { e.target.src = FALLBACK_IMG; }}
-                            style={{ width: '100%', height: 64, objectFit: 'contain', display: 'block' }}
-                          />
-                        </div>
-                        <div style={{ minWidth: 0 }}>
-                          <p style={{ fontSize: '0.88rem', fontWeight: 500, color: '#0f1111', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {item.name}
-                          </p>
-                          <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0 0 4px' }}>Qty: {item.quantity}</p>
-                          {item.hasGroupDeal && item.discountPct > 0 && (
-                            <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#eef2ff', color: '#1e3c72', border: '1px solid #c7d8f8', borderRadius: 3, padding: '1px 6px' }}>
-                              🤝 {item.discountPct}% group deal
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          <p style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f1111', margin: '0 0 2px' }}>
-                            ₹{lineAmt.toLocaleString('en-IN')}
-                          </p>
-                          {saved > 0 && (
-                            <p style={{ fontSize: '0.72rem', color: '#007600', margin: 0, fontWeight: 600 }}>
-                              Save ₹{saved.toLocaleString('en-IN')}
+                        {/* Product row */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: 14, alignItems: 'center' }}>
+                          <div style={{ border: '1px solid #e5e7eb', borderRadius: 4, overflow: 'hidden', background: '#f9fafb' }}>
+                            <img
+                              src={resolveImg(item.imageUrl)}
+                              alt={item.name}
+                              onError={e => { e.target.src = FALLBACK_IMG; }}
+                              style={{ width: '100%', height: 64, objectFit: 'contain', display: 'block' }}
+                            />
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <p style={{ fontSize: '0.88rem', fontWeight: 500, color: '#0f1111', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {item.name}
                             </p>
-                          )}
+                            <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0 0 4px' }}>Qty: {item.quantity}</p>
+                            {item.hasGroupDeal && item.discountPct > 0 && (
+                              <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#eef2ff', color: '#1e3c72', border: '1px solid #c7d8f8', borderRadius: 3, padding: '1px 6px' }}>
+                                🤝 {item.discountPct}% group deal
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                            <p style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f1111', margin: '0 0 2px' }}>
+                              ₹{lineAmt.toLocaleString('en-IN')}
+                            </p>
+                            {saved > 0 && (
+                              <p style={{ fontSize: '0.72rem', color: '#007600', margin: 0, fontWeight: 600 }}>
+                                Save ₹{saved.toLocaleString('en-IN')}
+                              </p>
+                            )}
+                          </div>
                         </div>
+
+                        {/* ── Courier selector for this item ── */}
+                        {addrDone && (
+                          <div style={{ marginTop: 12, marginLeft: 78 }}>
+                            {courier?.loading && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: '#6b7280' }}>
+                                <div style={{ width: 14, height: 14, border: '2px solid #e5e7eb', borderTopColor: '#2a5298', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+                                Fetching couriers…
+                              </div>
+                            )}
+
+                            {courier?.error && !courier.loading && (
+                              <div style={{ fontSize: '0.78rem', color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, padding: '6px 10px' }}>
+                                ⚠ {courier.error}
+                              </div>
+                            )}
+
+                            {!courier?.loading && !courier?.error && courier?.list?.length > 0 && (() => {
+                              const isOpen = !!courierOpen[item.cartId];
+                              const sel = courier.selected;
+                              return (
+                                <div style={{ position: 'relative' }}>
+                                  <p style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151', margin: '0 0 6px' }}>
+                                    Select Courier
+                                  </p>
+
+                                  {/* ── Trigger: shows selected courier card ── */}
+                                  <div
+                                    onClick={() => setCourierOpen(prev => ({ ...prev, [item.cartId]: !prev[item.cartId] }))}
+                                    style={{
+                                      display: 'flex', alignItems: 'center', gap: 10,
+                                      padding: '9px 12px',
+                                      border: `1.5px solid ${sel ? '#2a5298' : '#d1d5db'}`,
+                                      borderRadius: isOpen ? '4px 4px 0 0' : 4,
+                                      background: sel ? '#eef2ff' : '#f9fafb', cursor: 'pointer',
+                                    }}
+                                  >
+                                    {/* selected courier initials badge */}
+                                    {sel?.logo ? (
+                                      <img src={sel.logo} alt={sel.courierName} style={{ width: 28, height: 28, objectFit: 'contain', flexShrink: 0 }} onError={e => { e.target.style.display = 'none'; }} />
+                                    ) : (
+                                      <div style={{ width: 28, height: 28, borderRadius: 4, background: '#c7d2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, color: '#3730a3', flexShrink: 0 }}>
+                                        {sel?.courierName?.slice(0, 2).toUpperCase() || '—'}
+                                      </div>
+                                    )}
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <p style={{ fontSize: '0.82rem', fontWeight: 600, color: '#0f1111', margin: '0 0 1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {sel?.courierName || 'Select a courier'}
+                                      </p>
+                                      <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: 0 }}>
+                                        {sel ? <>Est. delivery: {sel.etaDays} days</> : 'Choose a courier for delivery'}
+                                      </p>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                                      <span style={{ fontSize: '0.88rem', fontWeight: 700, color: sel?.rate === 0 ? '#007600' : '#0f1111' }}>
+                                        {sel?.rate === 0 ? 'FREE' : sel ? `₹${sel.rate}` : ''}
+                                      </span>
+                                      <span style={{ fontSize: '0.7rem', color: '#6b7280', transform: isOpen ? 'rotate(180deg)' : 'none', display: 'inline-block', transition: 'transform 0.15s' }}>▼</span>
+                                    </div>
+                                  </div>
+
+                                  {/* ── Dropdown list ── */}
+                                  {isOpen && (
+                                    <div style={{
+                                      position: 'absolute', top: '100%', left: 0, right: 0,
+                                      border: '1.5px solid #2a5298', borderTop: 'none',
+                                      borderRadius: '0 0 4px 4px',
+                                      background: '#fff', zIndex: 50,
+                                      boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                                      maxHeight: 260, overflowY: 'auto',
+                                    }}>
+                                      {courier.list.map((c, ci) => {
+                                        const isSelected = sel?.courierId === c.courierId;
+                                        return (
+                                          <div
+                                            key={c.courierId}
+                                            onClick={() => {
+                                              setCourierMap(prev => ({ ...prev, [item.cartId]: { ...prev[item.cartId], selected: c } }));
+                                              setCourierOpen(prev => ({ ...prev, [item.cartId]: false }));
+                                            }}
+                                            style={{
+                                              display: 'flex', alignItems: 'center', gap: 10,
+                                              padding: '9px 12px',
+                                              borderTop: ci > 0 ? '1px solid #f3f4f6' : 'none',
+                                              background: isSelected ? '#eef2ff' : '#fff',
+                                              cursor: 'pointer',
+                                            }}
+                                            onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#f9fafb'; }}
+                                            onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = '#fff'; }}
+                                          >
+                                            {/* Radio dot */}
+                                            <div style={{
+                                              width: 15, height: 15, borderRadius: '50%',
+                                              border: `2px solid ${isSelected ? '#2a5298' : '#d1d5db'}`,
+                                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                              flexShrink: 0, background: '#fff',
+                                            }}>
+                                              {isSelected && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#2a5298' }} />}
+                                            </div>
+
+                                            {/* Logo / initials */}
+                                            {c.logo ? (
+                                              <img src={c.logo} alt={c.courierName} style={{ width: 28, height: 28, objectFit: 'contain', flexShrink: 0 }} onError={e => { e.target.style.display = 'none'; }} />
+                                            ) : (
+                                              <div style={{ width: 28, height: 28, borderRadius: 4, background: '#e0e7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, color: '#3730a3', flexShrink: 0 }}>
+                                                {c.courierName.slice(0, 2).toUpperCase()}
+                                              </div>
+                                            )}
+
+                                            {/* Name + ETA */}
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                              <p style={{ fontSize: '0.82rem', fontWeight: 600, color: '#0f1111', margin: '0 0 1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {c.courierName}
+                                              </p>
+                                              <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: 0 }}>
+                                                Est. delivery: {c.etaDays} days
+                                              </p>
+                                            </div>
+
+                                            {/* Rate */}
+                                            <span style={{ fontSize: '0.88rem', fontWeight: 700, color: c.rate === 0 ? '#007600' : '#0f1111', flexShrink: 0 }}>
+                                              {c.rate === 0 ? 'FREE' : `₹${c.rate}`}
+                                            </span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -604,11 +804,23 @@ export default function Checkout() {
                     </div>
                   )}
 
-                  {/* Delivery + Platform fee — same design as Cart page */}
-                  <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 10, marginBottom: 6 }}>
+                    <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 10, marginBottom: 6 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#374151', marginBottom: 6 }}>
-                      <span>Delivery Charge</span>
-                      <span style={{ fontWeight: 600 }}>₹{deliveryCharge}</span>
+                      <span>Delivery Charge
+                        {Object.keys(courierMap).length > 0 && (
+                          <span style={{ fontSize: '0.68rem', color: '#6b7280', marginLeft: 4 }}>
+                            ({cart.length} item{cart.length > 1 ? 's' : ''})
+                          </span>
+                        )}
+                      </span>
+                      <span style={{ fontWeight: 600 }}>
+                        {Object.keys(courierMap).length === 0
+                          ? <span style={{ color: '#6b7280', fontSize: '0.8rem' }}>Select courier</span>
+                          : effectiveDeliveryCharge === 0
+                            ? <span style={{ color: '#007600' }}>FREE</span>
+                            : `₹${effectiveDeliveryCharge}`
+                        }
+                      </span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#374151', marginBottom: 4 }}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -633,7 +845,7 @@ export default function Checkout() {
                   </div>
 
                   <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1.05rem', color: '#0f1111' }}>
-                    <span>{totalPrepaid > 0 ? 'Amount Due at Checkout' : 'Order Total'}</span>
+                    <span>{totalPrepaid > 0 ? 'Amount Due' : 'Order Total'}</span>
                     <span style={{ color: totalPrepaid > 0 ? '#2a5298' : '#0f1111' }}>₹{total.toLocaleString('en-IN')}</span>
                   </div>
                   <p style={{ fontSize: '0.68rem', color: '#6b7280', marginTop: 4 }}>Inclusive of all taxes</p>

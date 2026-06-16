@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { cartService, orderService, paymentService, profileService } from '../services/index.js';
+import { getAvailableCouriers } from '../services/shipping.service.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import toast from 'react-hot-toast';
 
@@ -119,6 +120,10 @@ export default function BuyNow() {
     address: '', city: '', state: '', pincode: '', paymentMethod: 'COD',
   });
 
+  // courier state — same shape as Checkout's courierMap but single-item keyed by 'item'
+  const [courier,     setCourier]     = useState({ list: [], loading: false, error: null, selected: null });
+  const [courierOpen, setCourierOpen] = useState(false);
+
   useEffect(() => {
     if (!isAuthenticated) { navigate('/login'); return; }
     if (!item)            { navigate('/cart');  return; }
@@ -140,6 +145,31 @@ export default function BuyNow() {
     })();
   }, [isAuthenticated, item]);
 
+  /* Fetch couriers whenever pincode is valid or payment method changes */
+  const fetchCouriers = async (pincode, paymentMethod) => {
+    if (!/^\d{6}$/.test(pincode) || !item) return;
+    const cod = paymentMethod === 'COD' ? 1 : 0;
+    setCourier({ list: [], loading: true, error: null, selected: null });
+    try {
+      const res  = await getAvailableCouriers(item.productId, pincode, 0.5, cod);
+      const list = res?.couriers || [];
+      setCourier({
+        list,
+        loading: false,
+        error: list.length === 0 ? 'No couriers available for this pincode' : null,
+        selected: null,
+      });
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || 'Failed to fetch couriers';
+      setCourier({ list: [], loading: false, error: msg, selected: null });
+    }
+  };
+
+  useEffect(() => {
+    if (item) fetchCouriers(address.pincode, address.paymentMethod);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address.pincode, address.paymentMethod]);
+
   const set = (field, val) => setAddress(prev => ({ ...prev, [field]: val }));
   const inp = (name) => ({
     ...inputStyle,
@@ -157,9 +187,10 @@ export default function BuyNow() {
   const mrpTotal       = mrp * qty;
   const savings        = mrpTotal - lineTotal;
   const depositPaid    = item?.depositPaid || 0;
-  const deliveryCharge = 79;  // same as Cart & Checkout
-  const platformFee    = 10;  // same as Cart & Checkout
-  const totalFees      = deliveryCharge + platformFee;
+  // use selected courier rate × quantity; null until courier is selected
+  const deliveryCharge = courier.selected ? Math.round(courier.selected.rate * qty * 100) / 100 : null;
+  const platformFee    = 10;
+  const totalFees      = (deliveryCharge ?? 0) + platformFee;
   const total          = Math.max(0, lineTotal - depositPaid + totalFees);
 
   const addrDone = !!(address.address && address.city && address.state && address.pincode);
@@ -226,6 +257,10 @@ export default function BuyNow() {
   const handlePlaceOrder = async () => {
     if (!addrDone) { toast.error('Please add a delivery address first'); setAddrExpanded(true); return; }
     if (!/^\d{6}$/.test(address.pincode)) { toast.error('Enter a valid 6-digit pincode'); setAddrExpanded(true); return; }
+    // require courier selection only when couriers have loaded
+    if (courier.list.length > 0 && !courier.selected) {
+      toast.error('Please select a delivery partner'); return;
+    }
     setPlacing(true);
     try {
       if (address.paymentMethod === 'Online') { await placeOnline(); }
@@ -250,7 +285,9 @@ export default function BuyNow() {
         <div style={{ marginBottom: 8 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', color: '#374151', marginBottom: 6 }}>
             <span>Delivery Charge</span>
-            <span style={{ fontWeight: 600 }}>₹{deliveryCharge}</span>
+            <span style={{ fontWeight: 600, color: deliveryCharge === 0 ? '#007600' : '#0f1111' }}>
+  {deliveryCharge === null ? <span style={{ color: '#6b7280', fontSize: '0.8rem' }}>Select courier</span> : deliveryCharge === 0 ? 'FREE' : `₹${deliveryCharge}`}
+</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', color: '#374151', marginBottom: 4 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -325,6 +362,7 @@ export default function BuyNow() {
       <style>{`
         select:focus { border-color: #2a5298 !important; box-shadow: 0 0 0 3px rgba(42,82,152,0.12) !important; outline: none; }
         textarea:focus { border-color: #2a5298 !important; box-shadow: 0 0 0 3px rgba(42,82,152,0.12) !important; outline: none; }
+        @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
 
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 16px' }}>
@@ -484,6 +522,145 @@ export default function BuyNow() {
                   )}
                 </div>
               </div>
+            </div>
+
+            {/* ── DELIVERY PARTNER ── */}
+            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '24px', marginBottom: 16 }}>
+              <h2 style={{ fontWeight: 700, fontSize: '1rem', color: '#0f1111', marginBottom: 14 }}>
+                Delivery Partner
+              </h2>
+
+              {!addrDone && (
+                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 4, padding: '10px 14px', fontSize: '0.8rem', color: '#92400e' }}>
+                  ⓘ Enter your delivery pincode above to see available couriers.
+                </div>
+              )}
+
+              {addrDone && courier.loading && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: '#6b7280' }}>
+                  <div style={{ width: 14, height: 14, border: '2px solid #e5e7eb', borderTopColor: '#2a5298', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+                  Fetching couriers…
+                </div>
+              )}
+
+              {addrDone && courier.error && !courier.loading && (
+                <div style={{ fontSize: '0.78rem', color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, padding: '6px 10px' }}>
+                  ⚠ {courier.error}
+                </div>
+              )}
+
+              {addrDone && !courier.loading && !courier.error && courier.list.length > 0 && (() => {
+                const sel = courier.selected;
+                return (
+                  <div style={{ position: 'relative' }}>
+                    <p style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151', margin: '0 0 6px' }}>
+                      Select Courier
+                    </p>
+
+                    {/* Trigger */}
+                    <div
+                      onClick={() => setCourierOpen(v => !v)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '9px 12px',
+                        border: `1.5px solid ${sel ? '#2a5298' : '#d1d5db'}`,
+                        borderRadius: courierOpen ? '4px 4px 0 0' : 4,
+                        background: sel ? '#eef2ff' : '#f9fafb', cursor: 'pointer',
+                      }}
+                    >
+                      {sel?.logo ? (
+                        <img src={sel.logo} alt={sel.courierName} style={{ width: 28, height: 28, objectFit: 'contain', flexShrink: 0 }} onError={e => { e.target.style.display = 'none'; }} />
+                      ) : (
+                        <div style={{ width: 28, height: 28, borderRadius: 4, background: '#c7d2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, color: '#3730a3', flexShrink: 0 }}>
+                          {sel?.courierName?.slice(0, 2).toUpperCase() || '—'}
+                        </div>
+                      )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: '0.82rem', fontWeight: 600, color: '#0f1111', margin: '0 0 1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {sel?.courierName || 'Select a courier'}
+                        </p>
+                        <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: 0 }}>
+                          {sel ? <>Est. delivery: {sel.etaDays} days</> : 'Choose a courier for delivery'}
+                        </p>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                        <span style={{ fontSize: '0.88rem', fontWeight: 700, color: sel?.rate === 0 ? '#007600' : '#0f1111' }}>
+                          {sel?.rate === 0 ? 'FREE' : sel ? `₹${sel.rate}` : ''}
+                        </span>
+                        <span style={{ fontSize: '0.7rem', color: '#6b7280', transform: courierOpen ? 'rotate(180deg)' : 'none', display: 'inline-block', transition: 'transform 0.15s' }}>▼</span>
+                      </div>
+                    </div>
+
+                    {/* Dropdown */}
+                    {courierOpen && (
+                      <div style={{
+                        position: 'absolute', top: '100%', left: 0, right: 0,
+                        border: '1.5px solid #2a5298', borderTop: 'none',
+                        borderRadius: '0 0 4px 4px',
+                        background: '#fff', zIndex: 50,
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                        maxHeight: 260, overflowY: 'auto',
+                      }}>
+                        {courier.list.map((c, ci) => {
+                          const isSelected = sel?.courierId === c.courierId;
+                          return (
+                            <div
+                              key={c.courierId}
+                              onClick={() => {
+                                setCourier(prev => ({ ...prev, selected: c }));
+                                setCourierOpen(false);
+                              }}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: 10,
+                                padding: '9px 12px',
+                                borderTop: ci > 0 ? '1px solid #f3f4f6' : 'none',
+                                background: isSelected ? '#eef2ff' : '#fff',
+                                cursor: 'pointer',
+                              }}
+                              onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#f9fafb'; }}
+                              onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = '#fff'; }}
+                            >
+                              {/* Radio dot */}
+                              <div style={{
+                                width: 15, height: 15, borderRadius: '50%',
+                                border: `2px solid ${isSelected ? '#2a5298' : '#d1d5db'}`,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                flexShrink: 0, background: '#fff',
+                              }}>
+                                {isSelected && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#2a5298' }} />}
+                              </div>
+
+                              {/* Logo / initials */}
+                              {c.logo ? (
+                                <img src={c.logo} alt={c.courierName} style={{ width: 28, height: 28, objectFit: 'contain', flexShrink: 0 }} onError={e => { e.target.style.display = 'none'; }} />
+                              ) : (
+                                <div style={{ width: 28, height: 28, borderRadius: 4, background: '#e0e7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, color: '#3730a3', flexShrink: 0 }}>
+                                  {c.courierName.slice(0, 2).toUpperCase()}
+                                </div>
+                              )}
+
+                              {/* Name + ETA */}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ fontSize: '0.82rem', fontWeight: 600, color: '#0f1111', margin: '0 0 1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {c.courierName}
+                                </p>
+                                <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: 0 }}>
+                                  Est. delivery: {c.etaDays} days
+                                </p>
+                              </div>
+
+                              {/* Rate */}
+                              <span style={{ fontSize: '0.88rem', fontWeight: 700, color: c.rate === 0 ? '#007600' : '#0f1111', flexShrink: 0 }}>
+                                {c.rate === 0 ? 'FREE' : `₹${c.rate}`}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* ── PAYMENT METHOD ── */}
