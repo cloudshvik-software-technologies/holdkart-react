@@ -44,6 +44,10 @@ export default function OrderDetail() {
   const [reviewLoading, setReviewLoading] = useState(false);
   const [deletingReview, setDeletingReview] = useState(false);
   const [writeReview, setWriteReview] = useState({ rating: 0, comment: '', submitting: false, hover: 0, images: [], previews: [] });
+  const [tracking, setTracking]         = useState(null);
+  const [trackingUrl, setTrackingUrl]   = useState(null);
+  const [labelUrl, setLabelUrl]         = useState(null);
+  const [trackLoading, setTrackLoading] = useState(false);
 
   const handleReviewImages = (e) => {
     const files = Array.from(e.target.files);
@@ -106,7 +110,20 @@ export default function OrderDetail() {
     if (!isAuthenticated) { navigate('/login'); return; }
     orderService.getOrder(id).then(ord => {
       setOrder(ord);
+      if (ord?.tracking_url) setTrackingUrl(ord.tracking_url);
+      if (ord?.label_url)    setLabelUrl(ord.label_url);
       if (ord?.order_status === 'Delivered') fetchMyReview(ord.id);
+      // Fetch live Shiprocket tracking if order has been submitted to Shiprocket
+      if (ord?.awb_code || ord?.shiprocket_order_id) {
+        setTrackLoading(true);
+        orderService.trackOrder(id)
+          .then(t => {
+            setTracking(t?.tracking || null);
+            setLabelUrl(t?.labelUrl || null);
+          })
+          .catch(() => { setTracking(null); })
+          .finally(() => setTrackLoading(false));
+      }
     }).catch(() => navigate('/orders')).finally(() => setLoading(false));
   }, [id, isAuthenticated]);
 
@@ -284,7 +301,42 @@ export default function OrderDetail() {
           margin-top: 16px; display: flex; align-items: center; gap: 6px;
         }
 
-        /* ── Right cards ── */
+        /* ── Shipment tracking ── */
+        .od-track-header {
+          display: flex; align-items: center; justify-content: space-between;
+          margin-bottom: 14px;
+        }
+        .od-track-title { font-weight: 700; font-size: 0.95rem; }
+        .od-track-badge {
+          font-size: 0.75rem; font-weight: 700; padding: 3px 10px;
+          border-radius: 20px; background: #dcfce7; color: #15803d;
+        }
+        .od-track-badge.pending { background: #fef9c3; color: #854d0e; }
+        .od-track-row {
+          display: flex; justify-content: space-between; align-items: center;
+          font-size: 0.83rem; color: var(--muted); margin-bottom: 6px;
+        }
+        .od-track-row span:last-child { color: var(--text); font-weight: 500; }
+        .od-track-activities { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 14px; }
+        .od-track-act-item {
+          display: flex; gap: 10px; align-items: flex-start; padding-bottom: 12px;
+          position: relative;
+        }
+        .od-track-act-item:last-child { padding-bottom: 0; }
+        .od-track-act-dot {
+          width: 10px; height: 10px; border-radius: 50%; background: #2a5298;
+          flex-shrink: 0; margin-top: 4px;
+        }
+        .od-track-act-dot.latest { background: #16a34a; width: 12px; height: 12px; }
+        .od-track-act-line {
+          position: absolute; left: 4px; top: 14px;
+          width: 2px; height: calc(100% - 10px); background: #e5e7eb;
+        }
+        .od-track-act-item:last-child .od-track-act-line { display: none; }
+        .od-track-act-desc { font-size: 0.83rem; color: var(--text); line-height: 1.45; }
+        .od-track-act-time { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+
+
         .od-right-card {
           background: #fff;
           border-radius: 10px;
@@ -520,6 +572,106 @@ export default function OrderDetail() {
               </div>
             )}
 
+            {/* ── Shipment Tracking — shown when Shiprocket order exists ── */}
+            {(order.awb_code || order.shiprocket_order_id) && (
+              <div className="od-card">
+                <div className="od-track-header">
+                  <div className="od-track-title">🚚 Shipment Tracking</div>
+                  {trackLoading && (
+                    <span style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>Loading…</span>
+                  )}
+                  {!trackLoading && tracking && (
+                    <span className={`od-track-badge ${tracking.currentStatus === 'Delivered' ? '' : 'pending'}`}>
+                      {tracking.currentStatus}
+                    </span>
+                  )}
+                </div>
+
+                {/* AWB + Courier info */}
+                {order.awb_code && (
+                  <div className="od-track-row">
+                    <span>AWB Number</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {order.awb_code}
+                      <span style={{ cursor: 'pointer', color: 'var(--blue)', fontSize: '0.85rem' }}
+                        onClick={() => navigator.clipboard?.writeText(order.awb_code)}>⧉</span>
+                    </span>
+                  </div>
+                )}
+                {tracking?.courierName && (
+                  <div className="od-track-row">
+                    <span>Courier</span>
+                    <span>{tracking.courierName}</span>
+                  </div>
+                )}
+                {tracking?.etd && (
+                  <div className="od-track-row">
+                    <span>Expected Delivery</span>
+                    <span>{fmtDate(tracking.etd)}</span>
+                  </div>
+                )}
+
+                {/* Waiting for AWB assignment */}
+                {!trackLoading && !order.awb_code && (
+                  <p style={{ fontSize: '0.82rem', color: 'var(--muted)', marginTop: 6 }}>
+                    Your order has been submitted to our logistics partner. Tracking details will appear once a courier is assigned.
+                  </p>
+                )}
+
+                {/* AWB exists but no tracking data yet */}
+                {!trackLoading && order.awb_code && !tracking && (
+                  <p style={{ fontSize: '0.82rem', color: 'var(--muted)', marginTop: 6 }}>
+                    Tracking details will appear once the courier picks up your order.
+                  </p>
+                )}
+
+                {/* Activity timeline */}
+                {!trackLoading && tracking?.activities?.length > 0 && (
+                  <div className="od-track-activities">
+                    {tracking.activities.slice(0, 5).map((act, i) => (
+                      <div key={i} className="od-track-act-item">
+                        <div className={`od-track-act-dot${i === 0 ? ' latest' : ''}`} />
+                        {i < Math.min(tracking.activities.length, 5) - 1 && (
+                          <div className="od-track-act-line" />
+                        )}
+                        <div>
+                          <div className="od-track-act-desc">
+                            {act.activity || act.sr_status || act.status || '—'}
+                          </div>
+                          {(act.date || act.updated_at) && (
+                            <div className="od-track-act-time">
+                              {new Date(act.date || act.updated_at).toLocaleString('en-IN', {
+                                day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+                              })}
+                              {act.location ? ` · ${act.location}` : ''}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Shipping Label download — in-app only, no external tracking link */}
+                {labelUrl && (
+                  <div style={{ marginTop: 14 }}>
+                    <a
+                      href={labelUrl}
+                      download
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        background: '#fff', color: '#2a5298', border: '1.5px solid #2a5298',
+                        borderRadius: 8, padding: '8px 16px', fontSize: '0.84rem', fontWeight: 600,
+                        textDecoration: 'none',
+                      }}
+                    >
+                      ⬇ Shipping Label
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Order number */}
             <div className="od-card" style={{ padding: '14px 20px' }}>
               <div className="od-order-num">
@@ -627,72 +779,91 @@ export default function OrderDetail() {
               <button className="od-modal-close" onClick={() => setShowUpdates(false)}>✕</button>
             </div>
             <div className="od-modal-body">
-              {/* Detailed timeline */}
-              {(() => {
-                const created = order.created_date || order.created_at;
-                const delivered = order.delivered_date || order.updated_at;
-                const createdFmt = d => new Date(d).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) + " '" + new Date(d).getFullYear().toString().slice(2);
-                const timeFmt = d => new Date(d).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false }) + (d ? '' : '');
+              {/* If real Shiprocket activities exist — show them */}
+              {tracking?.activities?.length > 0 ? (
+                tracking.activities.map((act, i) => {
+                  const rawDate = act.date || act.updated_at;
+                  const dateStr = rawDate
+                    ? new Date(rawDate).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: '2-digit' })
+                      + ' - '
+                      + new Date(rawDate).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false })
+                    : null;
+                  return (
+                    <div key={i} className="od-mtl-item">
+                      <div className="od-mtl-dot">
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: i === 0 ? '#16a34a' : '#fff', display: 'block' }} />
+                      </div>
+                      <div className="od-mtl-line" />
+                      <div className="od-mtl-header">
+                        {act.activity || act['sr-status-label'] || act.status || '—'}
+                        {dateStr && <span className="od-mtl-time"> {dateStr}</span>}
+                      </div>
+                      {act.location && (
+                        <div className="od-mtl-sub" style={{ color: 'var(--muted)' }}>📍 {act.location}</div>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                /* Fallback — DB status based timeline (shown before seller ships) */
+                (() => {
+                  const created   = order.created_date || order.created_at;
+                  const delivered = order.delivered_date || order.updated_at;
+                  const createdFmt = d => new Date(d).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) + " '" + new Date(d).getFullYear().toString().slice(2);
+                  const timeFmt   = d => new Date(d).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
 
-                const events = [];
-
-                events.push({
-                  stage: 'Order Confirmed',
-                  when: `${createdFmt(created)} - ${timeFmt(created)}`,
-                  subs: [
-                    { text: 'Your Order has been placed.', when: `${createdFmt(created)} - ${timeFmt(created)}` },
-                    { text: 'Seller has processed your order.', when: null },
-                    { text: 'Your item has been picked up by delivery partner.', when: null },
-                  ]
-                });
-
-                if (['Shipped', 'Delivered'].includes(order.order_status)) {
+                  const events = [];
                   events.push({
-                    stage: 'Shipped',
+                    stage: 'Order Confirmed',
                     when: `${createdFmt(created)} - ${timeFmt(created)}`,
                     subs: [
-                      { text: `${order.sellerName || 'Courier Partner'}`, when: null, bold: true },
-                      { text: 'Your item has been shipped.', when: `${createdFmt(created)} - ${timeFmt(created)}` },
-                      { text: 'Your item has been received in the hub nearest to you', when: null },
-                    ]
+                      { text: 'Your order has been placed.', when: `${createdFmt(created)} - ${timeFmt(created)}` },
+                    ],
                   });
-                }
 
-                if (order.order_status === 'Delivered') {
-                  events.push({
-                    stage: 'Out For Delivery',
-                    when: `${createdFmt(delivered)} - ${timeFmt(delivered)}`,
-                    subs: [
-                      { text: 'Your item is out for delivery', when: `${createdFmt(delivered)} - ${timeFmt(delivered)}` },
-                    ]
-                  });
-                  events.push({
-                    stage: 'Delivered',
-                    when: `${createdFmt(delivered)} - ${timeFmt(delivered)}`,
-                    subs: [
-                      { text: 'Your item has been delivered', when: `${createdFmt(delivered)} - ${timeFmt(delivered)}` },
-                    ]
-                  });
-                }
+                  if (['Shipped', 'Delivered'].includes(order.order_status)) {
+                    events.push({
+                      stage: 'Shipped',
+                      when: `${createdFmt(created)} - ${timeFmt(created)}`,
+                      subs: [
+                        { text: order.sellerName || 'Courier Partner', bold: true },
+                        { text: 'Your item has been shipped.', when: `${createdFmt(created)} - ${timeFmt(created)}` },
+                      ],
+                    });
+                  }
 
-                return events.map((ev, i) => (
-                  <div key={i} className="od-mtl-item">
-                    <div className="od-mtl-dot">
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff', display: 'block' }} />
-                    </div>
-                    <div className="od-mtl-line" />
-                    <div className="od-mtl-header">
-                      {ev.stage} <span className="od-mtl-time">{ev.when}</span>
-                    </div>
-                    {ev.subs.map((s, j) => (
-                      <div key={j}>
-                        <div className="od-mtl-sub" style={s.bold ? { fontWeight: 600 } : {}}>{s.text}</div>
-                        {s.when && <div className="od-mtl-subtime">{s.when}</div>}
+                  if (order.order_status === 'Delivered') {
+                    events.push({
+                      stage: 'Out For Delivery',
+                      when: `${createdFmt(delivered)} - ${timeFmt(delivered)}`,
+                      subs: [{ text: 'Your item is out for delivery.', when: `${createdFmt(delivered)} - ${timeFmt(delivered)}` }],
+                    });
+                    events.push({
+                      stage: 'Delivered',
+                      when: `${createdFmt(delivered)} - ${timeFmt(delivered)}`,
+                      subs: [{ text: 'Your item has been delivered.', when: `${createdFmt(delivered)} - ${timeFmt(delivered)}` }],
+                    });
+                  }
+
+                  return events.map((ev, i) => (
+                    <div key={i} className="od-mtl-item">
+                      <div className="od-mtl-dot">
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff', display: 'block' }} />
                       </div>
-                    ))}
-                  </div>
-                ));
-              })()}
+                      <div className="od-mtl-line" />
+                      <div className="od-mtl-header">
+                        {ev.stage} <span className="od-mtl-time">{ev.when}</span>
+                      </div>
+                      {ev.subs.map((s, j) => (
+                        <div key={j}>
+                          <div className="od-mtl-sub" style={s.bold ? { fontWeight: 600 } : {}}>{s.text}</div>
+                          {s.when && <div className="od-mtl-subtime">{s.when}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  ));
+                })()
+              )}
             </div>
           </div>
         </div>

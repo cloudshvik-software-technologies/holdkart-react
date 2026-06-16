@@ -240,13 +240,12 @@ export default function Campaigns() {
     { key: 'ALL',       label: 'All' },
     { key: 'ACTIVE',    label: 'Active' },
     { key: 'PAUSED',    label: 'Paused' },
-    { key: 'COMPLETED', label: 'Completed' },
     { key: 'CANCELLED', label: 'Cancelled' },
   ];
 
   const filtered = filter === 'ALL' ? mine : mine.filter(m => m.campaignStatus === filter);
-  const activeCount    = mine.filter(m => m.campaignStatus === 'ACTIVE').length;
-  const completedCount = mine.filter(m => m.campaignStatus === 'COMPLETED').length;
+  const activeCount     = mine.filter(m => m.campaignStatus === 'ACTIVE').length;
+  const cancelledCount  = mine.filter(m => m.campaignStatus === 'CANCELLED').length;
 
   /* ── Not signed in ── */
   if (!isAuthenticated) return (
@@ -285,9 +284,9 @@ export default function Campaigns() {
         {!loading && mine.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
             {[
-              { label: 'Total Joined', value: mine.length, icon: '🤝', color: '#2a5298' },
-              { label: 'Active Deals', value: activeCount, icon: '⚡', color: '#007600' },
-              { label: 'Completed',    value: completedCount, icon: '✅', color: '#1e40af' },
+              { label: 'Total Joined', value: mine.length,      icon: '', color: '#2a5298' },
+              { label: 'Active Deals', value: activeCount,       icon: '', color: '#007600' },
+              { label: 'Cancelled',    value: cancelledCount,    icon: '', color: '#991b1b' },
             ].map(s => (
               <div key={s.label} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
                 <span style={{ fontSize: '1.6rem' }}>{s.icon}</span>

@@ -159,6 +159,8 @@ export default function Checkout() {
 
   const fillFromProfile = () => {
     if (!profile) { toast.error('No profile data found'); return; }
+    const hasAddress = profile.address || profile.city || profile.state || profile.pincode;
+    if (!hasAddress) { toast.error('No saved address in your profile. Please enter your address manually.'); return; }
     setAddress(prev => ({
       ...prev,
       address: profile.address || '',
@@ -181,18 +183,16 @@ export default function Checkout() {
      Never derive from current cart quantity — that may differ from slots joined.      */
   const totalPrepaid = cart.reduce((s, i) => s + (i.depositPaid || 0), 0);
 
-  const deliveryCharge    = 0;   // free delivery
-  const paymentHandlingFee = 9;   // Payment Handling Fee
-  const protectPromiseFee  = 0;   // Protect Promise Fee
-  const platformFee        = 7;   // Platform fee
-  const totalFees          = paymentHandlingFee + platformFee + protectPromiseFee;
-  const total = Math.max(0, subtotalEff - totalPrepaid + deliveryCharge + totalFees);
+  const deliveryCharge    = 79;  // Delivery charge (Flipkart-style, based on order size)
+  const platformFee       = 10;  // Platform fee (same as cart)
+  const totalFees         = deliveryCharge + platformFee;
+  const total = Math.max(0, subtotalEff - totalPrepaid + totalFees);
   const itemCount    = cart.reduce((s, i) => s + i.quantity, 0);
 
   /* ── COD ── */
   const placeCOD = async () => {
     const items = cart.map(i => ({ productId: i.productId, quantity: i.quantity }));
-    await orderService.placeOrder({ items, ...address, deliveryCharge, platformFee, paymentHandlingFee, protectPromiseFee });
+    await orderService.placeOrder({ items, ...address, deliveryCharge, platformFee });
     toast.success('Order placed successfully!');
     navigate('/orders');
   };
@@ -237,8 +237,8 @@ export default function Checkout() {
         try {
           await paymentService.verifyPayment({ orderId: cfOrder.orderId });
           const items = cart.map(i => ({ productId: i.productId, quantity: i.quantity }));
-          await orderService.placeOrder({ items, ...address, paymentId: cfOrder.orderId, deliveryCharge, platformFee, paymentHandlingFee, protectPromiseFee });
-          toast.success('Payment successful! Order placed.');
+          await orderService.placeOrder({ items, ...address, paymentId: cfOrder.orderId, deliveryCharge, platformFee });
+                toast.success('Payment successful! Order placed.');
           navigate('/orders');
           resolve();
         } catch (err) { reject(err); }
@@ -604,29 +604,32 @@ export default function Checkout() {
                     </div>
                   )}
 
-                  {/* Total Fees — expandable */}
-                  <div style={{ marginBottom: 6 }}>
-                    <div
-                      style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#374151', cursor: 'pointer', userSelect: 'none' }}
-                      onClick={() => setShowFeeTooltip(v => !v)}
-                    >
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        Total fees <span style={{ fontSize: '0.75rem' }}>{showFeeTooltip ? '∧' : '∨'}</span>
-                      </span>
-                      <span style={{ fontWeight: 600 }}>₹{totalFees}</span>
+                  {/* Delivery + Platform fee — same design as Cart page */}
+                  <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 10, marginBottom: 6 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#374151', marginBottom: 6 }}>
+                      <span>Delivery Charge</span>
+                      <span style={{ fontWeight: 600 }}>₹{deliveryCharge}</span>
                     </div>
-                    {showFeeTooltip && (
-                      <div style={{ paddingLeft: 12, marginTop: 4 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#6b7280', marginBottom: 3 }}>
-                          <span style={{ borderBottom: '1px dotted #9ca3af' }}>Payment Handling Fee</span>
-                          <span>₹{paymentHandlingFee}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#6b7280' }}>
-                          <span style={{ borderBottom: '1px dotted #9ca3af' }}>Platform fee</span>
-                          <span>₹{platformFee}</span>
-                        </div>
-                      </div>
-                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#374151', marginBottom: 4 }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        Platform Fee
+                        <span
+                          style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
+                          onMouseEnter={() => setShowFeeTooltip(true)}
+                          onMouseLeave={() => setShowFeeTooltip(false)}
+                        >
+                          <span style={{ width: 14, height: 14, borderRadius: '50%', background: '#6b7280', color: '#fff', fontSize: '0.65rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'default', userSelect: 'none' }}>i</span>
+                          {showFeeTooltip && (
+                            <div style={{ position: 'absolute', bottom: '120%', left: '50%', transform: 'translateX(-50%)', width: 220, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px 14px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 999, pointerEvents: 'none' }}>
+                              <p style={{ fontWeight: 700, fontSize: '0.82rem', color: '#0f1111', marginBottom: 6 }}>Platform Fee</p>
+                              <p style={{ fontSize: '0.78rem', color: '#6b7280', lineHeight: 1.5 }}>A non-refundable fee charged to help keep the platform running smoothly and support app improvements.</p>
+                              <div style={{ position: 'absolute', bottom: -6, left: '50%', transform: 'translateX(-50%)', width: 10, height: 10, background: '#fff', border: '1px solid #e5e7eb', borderTop: 'none', borderLeft: 'none', rotate: '45deg' }} />
+                            </div>
+                          )}
+                        </span>
+                      </span>
+                      <span style={{ fontWeight: 600 }}>₹{platformFee}</span>
+                    </div>
                   </div>
 
                   <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1.05rem', color: '#0f1111' }}>

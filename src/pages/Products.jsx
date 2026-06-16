@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import ProductCard from '../components/ProductCard.jsx';
 import JoinDealModal from '../components/JoinDealModal.jsx';
+import AdBanner from '../components/AdBanner.jsx';
 import { productService, cartService, wishlistService, campaignService } from '../services/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import toast from 'react-hot-toast';
@@ -25,6 +26,28 @@ const PRICE_RANGES = [
 ];
 
 const STAR_OPTIONS = [4, 3, 2, 1];
+
+const FIXED_CATEGORIES = [
+  'Automotive',
+  'Bags',
+  'Beauty',
+  'Books',
+  'Dress',
+  'Electronics',
+  'Fashion',
+  'Food',
+  'Grocery',
+  'Health',
+  'Home & Kitchen',
+  'Other',
+  'Perfume',
+  'skincare',
+  'sports',
+  'Sports & Fitness',
+  'Top',
+  'Toys',
+  'Toys & Games',
+];
 
 /* ── Mini star row ── */
 function StarRow({ n }) {
@@ -86,7 +109,8 @@ function SidebarContent({ categories, filters, setFilters, minCustom, maxCustom,
           Category
         </div>
         {['', ...categories].map(c => (
-          <label key={c} onClick={() => setFilters(f => ({ ...f, category: c }))} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 4px', borderRadius: 6, cursor: 'pointer' }}
+          <button key={c} onClick={() => setFilters(f => ({ ...f, category: c }))}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 4px', borderRadius: 6, cursor: 'pointer', width: '100%', background: 'transparent', border: 'none', fontFamily: 'inherit', textAlign: 'left' }}
             onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
             <span style={{
@@ -103,7 +127,7 @@ function SidebarContent({ categories, filters, setFilters, minCustom, maxCustom,
             <span style={{ fontSize: '0.86rem', color: '#374151', fontWeight: filters.category === c ? 600 : 400 }}>
               {c === '' ? 'All Categories' : c}
             </span>
-          </label>
+          </button>
         ))}
       </div>
 
@@ -144,7 +168,8 @@ function SidebarContent({ categories, filters, setFilters, minCustom, maxCustom,
           Customer Rating
         </div>
         {['', ...STAR_OPTIONS.map(String)].map(n => (
-          <label key={n} onClick={() => setFilters(f => ({ ...f, rating: n }))} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 4px', borderRadius: 6, cursor: 'pointer' }}
+          <button key={n} onClick={() => setFilters(f => ({ ...f, rating: n }))}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 4px', borderRadius: 6, cursor: 'pointer', width: '100%', background: 'transparent', border: 'none', fontFamily: 'inherit', textAlign: 'left' }}
             onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
             <span style={{
@@ -163,7 +188,7 @@ function SidebarContent({ categories, filters, setFilters, minCustom, maxCustom,
             ) : (
               <StarRow n={Number(n)} />
             )}
-          </label>
+          </button>
         ))}
       </div>
 
@@ -399,6 +424,7 @@ export default function Products() {
   const [loading, setLoading]         = useState(true);
   const [page, setPage]               = useState(1);
   const [hasMore, setHasMore]         = useState(true);
+  const sentinelRef = useRef(null);
   const [view, setView]               = useState('grid');
   const [sort, setSort]               = useState('featured');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -419,7 +445,9 @@ export default function Products() {
   useEffect(() => {
     campaignService.getMyCampaigns().then(mine => {
       if (Array.isArray(mine)) {
-        setJoinedProductIds(new Set(mine.map(m => Number(m.product_id))));
+        // Only ACTIVE or PAUSED campaigns count as "joined" — exclude CANCELLED
+        const active = mine.filter(m => m.campaignStatus === 'ACTIVE' || m.campaignStatus === 'PAUSED');
+        setJoinedProductIds(new Set(active.map(m => Number(m.product_id))));
       }
     }).catch(() => {});
   }, []);
@@ -478,8 +506,14 @@ export default function Products() {
 
   useEffect(() => {
     productService.getCategories()
-      .then(c => setCategories(Array.isArray(c) ? c : []))
-      .catch(() => {});
+      .then(c => {
+        const apiCats = Array.isArray(c) ? c : [];
+        // Merge API categories with the fixed list, deduplicate (case-insensitive)
+        const lowerFixed = FIXED_CATEGORIES.map(x => x.toLowerCase());
+        const extra = apiCats.filter(cat => !lowerFixed.includes(cat.toLowerCase()));
+        setCategories([...FIXED_CATEGORIES, ...extra]);
+      })
+      .catch(() => setCategories(FIXED_CATEGORIES));
   }, []);
 
   useEffect(() => {
@@ -508,11 +542,22 @@ export default function Products() {
     else setFilters(f => ({ ...f, [key]: '' }));
   };
 
-  const loadMore = () => {
+  const loadMore = useCallback(() => {
     const next = page + 1;
     setPage(next);
     fetchProducts(next, false);
-  };
+  }, [page, fetchProducts]);
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => { if (entries[0].isIntersecting && hasMore && !loading) loadMore(); },
+      { rootMargin: '200px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loading, loadMore]);
 
   const activeFilters = [
     filters.search   && { key: 'search',   label: `"${filters.search}"`,  icon: '🔍' },
@@ -520,6 +565,21 @@ export default function Products() {
     (filters.minPrice || filters.maxPrice) && { key: 'price', label: `₹${filters.minPrice||'0'} – ₹${filters.maxPrice||'∞'}`, icon: '₹' },
     filters.rating   && { key: 'rating',   label: `${filters.rating}+ Stars`, icon: '⭐' },
   ].filter(Boolean);
+
+  const gridRef = useRef(null);
+  const [gridCols, setGridCols] = useState(5);
+
+  useEffect(() => {
+    function measure() {
+      if (!gridRef.current) return;
+      const w = gridRef.current.offsetWidth;
+      const cols = Math.max(1, Math.floor((w + 12) / (195 + 12)));
+      setGridCols(cols);
+    }
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
 
   return (
     <>
@@ -570,6 +630,7 @@ export default function Products() {
         .hk-overlay.open { display: block; }
         .hk-drawer.open  { display: block; }
 
+        .hk-sidebar-sticky { display: block; }
         @media (max-width: 900px) {
           .hk-sidebar-sticky      { display: none !important; }
           .hk-mobile-filter-btn   { display: flex !important; }
@@ -659,7 +720,7 @@ export default function Products() {
 
             {/* Desktop sidebar */}
             <aside className="hk-sidebar-sticky"
-              style={{ width: 240, flexShrink: 0, background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', padding: 16, position: 'sticky', top: 14, maxHeight: 'calc(100vh - 28px)', overflowY: 'auto' }}>
+              style={{ width: 240, flexShrink: 0, background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', padding: 16, position: 'sticky', top: 120, maxHeight: 'calc(100vh - 134px)', overflowY: 'auto' }}>
               <SidebarContent
                 categories={categories} filters={filters} setFilters={setFilters}
                 minCustom={minCustom} maxCustom={maxCustom}
@@ -667,6 +728,7 @@ export default function Products() {
                 applyPriceRange={applyPriceRange} clearAll={clearAll}
                 activeFilterCount={activeFilters.length}
               />
+              {/* ── Sidebar Box Ad removed — now shown on Home page ── */}
             </aside>
 
             {/* Mobile drawer */}
@@ -708,13 +770,19 @@ export default function Products() {
                 </div>
 
               ) : view === 'grid' ? (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(195px,1fr))', gap: 12 }}>
-                  {products.map(p => (
-                    <div key={p.productId} className="hk-product-item"
-                      style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-                      <ProductCard product={p} alreadyJoined={joinedProductIds.has(p.productId)} />
-                    </div>
-                  ))}
+                <div ref={gridRef} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(195px,1fr))', gap: 12 }}>
+                  {products.flatMap((p, i) => {
+                    const card = (
+                      <div key={p.productId} className="hk-product-item"
+                        style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                        <ProductCard product={p} alreadyJoined={joinedProductIds.has(p.productId)} />
+                      </div>
+                    );
+                    if (i === gridCols - 2) {
+                      return [card];
+                    }
+                    return [card];
+                  })}
                 </div>
 
               ) : (
@@ -723,20 +791,17 @@ export default function Products() {
                 </div>
               )}
 
-              {/* Load more */}
+              {/* Infinite scroll sentinel */}
               {products.length > 0 && (
-                <div style={{ marginTop: 28, display: 'flex', justifyContent: 'center' }}>
-                  {hasMore ? (
-                    <button onClick={loadMore} disabled={loading}
-                      style={{ padding: '11px 40px', background: loading ? '#e5e7eb' : 'linear-gradient(135deg,#2a5298,#1e3c72)', color: loading ? '#9ca3af' : '#fff', border: 'none', borderRadius: 8, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', fontSize: '0.9rem', fontFamily: 'inherit', boxShadow: loading ? 'none' : '0 4px 14px rgba(42,82,152,0.3)' }}>
-                      {loading ? (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ width: 16, height: 16, border: '2px solid #9ca3af', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'hk-spin 0.7s linear infinite' }} />
-                          Loading…
-                        </span>
-                      ) : '↓ Load More Products'}
-                    </button>
-                  ) : (
+                <div style={{ marginTop: 28, textAlign: 'center' }}>
+                  <div ref={sentinelRef} style={{ height: 1 }} />
+                  {loading && page > 1 && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: '#9ca3af', fontSize: '0.88rem' }}>
+                      <span style={{ width: 16, height: 16, border: '2px solid #9ca3af', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'hk-spin 0.7s linear infinite' }} />
+                      Loading…
+                    </span>
+                  )}
+                  {!hasMore && (
                     <p style={{ color: '#9ca3af', fontSize: '0.85rem', padding: '12px 0' }}>
                       ✓ Showing all {products.length} products
                     </p>

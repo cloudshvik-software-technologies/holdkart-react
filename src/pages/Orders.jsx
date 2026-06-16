@@ -642,6 +642,10 @@ export default function Orders() {
       const data = await orderService.listOrders();
       const list = Array.isArray(data) ? data : [];
       setOrders(list);
+      // Trigger delivery email for delivered orders by calling getOrder
+      list
+        .filter(o => o.order_status === 'Delivered')
+        .forEach(o => orderService.getOrder(o.id).catch(() => {}));
     } catch {
       setOrders([]);
     } finally {

@@ -73,7 +73,14 @@ export default function Header() {
     if (searchQuery.trim()) navigate('/products?search=' + encodeURIComponent(searchQuery.trim()));
   };
 
-  const isActive = (path) => location.pathname + location.search === path || location.pathname === path.split('?')[0];
+  const isActive = (path) => {
+    const fullCurrent = location.pathname + location.search;
+    // Exact full match (including query string)
+    if (fullCurrent === path) return true;
+    // For the plain /products (All button) — only active when no category filter
+    if (path === '/products' && location.pathname === '/products' && !location.search) return true;
+    return false;
+  };
 
   return (
     <>

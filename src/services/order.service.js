@@ -4,3 +4,4 @@ import api from './api.js';
   export const getOrder    = (id)   => api.get(`/api/customer/orders/${id}`);
   export const cancelOrder = (data) => api.put('/api/customer/orders/cancel', data);
   export const returnOrder = (data) => api.put('/api/customer/orders/return', data);
+  export const trackOrder  = (id)   => api.get(`/api/customer/orders/track/${id}`);

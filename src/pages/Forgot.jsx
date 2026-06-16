@@ -25,7 +25,7 @@ import { useState } from 'react';
             <p style={{ color: 'var(--muted)', fontSize: '0.9rem', marginBottom: 24 }}>Enter your email and we'll send you a reset link.</p>
             {sent ? (
               <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>📧</div>
+                <div style={{ fontSize: '2.5rem', marginBottom: 12 }}></div>
                 <p style={{ fontWeight: 600, marginBottom: 6 }}>Check your inbox</p>
                 <p style={{ color: 'var(--muted)', fontSize: '0.88rem' }}>A reset link has been sent to <strong>{email}</strong></p>
                 <Link to="/login" className="btn-primary" style={{ display: 'inline-flex', marginTop: 20 }}>Back to Login</Link>
