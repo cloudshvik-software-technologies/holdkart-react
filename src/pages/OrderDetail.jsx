@@ -131,11 +131,17 @@ export default function OrderDetail() {
   if (!order) return null;
 
   const timeline = buildTimeline(order);
-  const total = Number(order.order_amount) || 0;
   const isCOD = (order.payment_method || '').toUpperCase().includes('COD') || (order.payment_method || '').toUpperCase().includes('CASH');
-  const handlingFee = 0;
-  const promiseFee = 0;
-  const basePrice = total;
+
+  // What the customer actually paid for this product — deal-locked price minus
+  // deposit (if it was a deal) — plus shipping and any other applicable fees.
+  // Platform fee is intentionally excluded from this page.
+  const prodAmt    = Number(order.order_amount) || 0;
+  const shipFee    = Number(order.delivery_charge) || 0;
+  const phFee      = Number(order.payment_handling_fee) || 0;
+  const ppFee      = Number(order.protect_promise_fee)  || 0;
+  const otherFees  = phFee + ppFee;
+  const grandTotal = prodAmt + shipFee + otherFees;
 
   const breadcrumb = [
     { label: 'Home', path: '/home' },
@@ -162,15 +168,33 @@ export default function OrderDetail() {
         .od-breadcrumb .sep { color: #d1d5db; }
         .od-breadcrumb .cur { color: var(--text); font-weight: 500; }
 
-        .od-grid {
-          display: grid;
-          grid-template-columns: 1fr 320px;
-          gap: 20px;
-          align-items: start;
+        .od-single {
+          width: 100%;
+        }
+
+        /* ── Order summary section (Ship to / Payment / Order Summary) ── */
+        .od-summary-top {
+          display: flex; align-items: center; justify-content: space-between;
+          flex-wrap: wrap; gap: 8px; margin-bottom: 10px;
+        }
+        .od-summary-meta { font-size: 0.85rem; color: var(--muted); }
+        .od-summary-meta b { color: var(--text); font-weight: 600; }
+        .od-summary-meta .sep { margin: 0 8px; color: #d1d5db; }
+        .od-summary-invoice {
+          background: none; border: none; color: var(--blue); font-weight: 600;
+          font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; gap: 4px;
+        }
+        .od-summary-card {
+          background: #fff; border-radius: 10px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+          padding: 20px; margin-bottom: 16px;
+          display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 24px;
         }
         @media (max-width: 760px) {
-          .od-grid { grid-template-columns: 1fr; }
+          .od-summary-card { grid-template-columns: 1fr; gap: 16px; }
         }
+        .od-summary-title { font-weight: 700; font-size: 0.88rem; margin-bottom: 8px; }
+        .od-summary-val { font-size: 0.85rem; color: var(--text); line-height: 1.6; }
 
         /* ── Left cards ── */
         .od-card {
@@ -449,11 +473,9 @@ export default function OrderDetail() {
           ))}
         </div>
 
-        <div className="od-grid">
-          {/* ─── LEFT ─── */}
-          <div>
-            {/* Product + status card */}
-            <div className="od-card">
+        <div className="od-single">
+          {/* Product image + info card */}
+          <div className="od-card">
               <div className="od-prod-row">
                 {order.product_image
                   ? <img src={order.product_image} alt={order.product_name} className="od-prod-img" />
@@ -463,10 +485,49 @@ export default function OrderDetail() {
                   <div className="od-prod-name">{order.product_name}</div>
                   {order.variant && <div className="od-prod-variant">{order.variant}</div>}
                   {order.sellerName && <div className="od-prod-seller">Seller: {order.sellerName}</div>}
-                  <div className="od-prod-price">₹{Number(order.order_amount).toLocaleString('en-IN')}</div>
+                  <div className="od-prod-price">₹{grandTotal.toLocaleString('en-IN')}</div>
                 </div>
               </div>
+          </div>
 
+          {/* Order summary — Ship to / Payment method / Order Summary */}
+          <div className="od-summary-top">
+            <div className="od-summary-meta">
+              Order placed {fmtDate(order.created_date || order.created_at)}
+              <span className="sep">|</span>
+              Order number <b>{order.sub_order_number || order.order_number}</b>
+            </div>
+            <button className="od-summary-invoice" onClick={() => navigate(`/invoice/${id}`)}>
+              Invoice ⌄
+            </button>
+          </div>
+
+          <div className="od-summary-card">
+            <div>
+              <div className="od-summary-title">Ship to</div>
+              <div className="od-summary-val">
+                {order.customer_name}<br />
+                {[order.address, order.city, order.state, order.pincode].filter(Boolean).join(', ')}
+              </div>
+            </div>
+            <div>
+              <div className="od-summary-title">Payment method</div>
+              <div className="od-summary-val">{isCOD ? 'Pay on Delivery' : (order.payment_method || 'Online')}</div>
+            </div>
+            <div>
+              <div className="od-summary-title">Order Summary</div>
+              <div className="od-price-row"><span>Item(s) Subtotal:</span><span>₹{prodAmt.toLocaleString('en-IN')}</span></div>
+              <div className="od-price-row"><span>Shipping:</span><span>₹{shipFee.toLocaleString('en-IN')}</span></div>
+              {otherFees > 0 && (
+                <div className="od-price-row"><span>Fees:</span><span>₹{otherFees.toLocaleString('en-IN')}</span></div>
+              )}
+              <div className="od-price-row"><span>Total:</span><span>₹{grandTotal.toLocaleString('en-IN')}</span></div>
+              <div className="od-price-total"><span>Grand Total:</span><span>₹{grandTotal.toLocaleString('en-IN')}</span></div>
+            </div>
+          </div>
+
+          {/* Tracking + status card */}
+          <div className="od-card">
               {/* Timeline */}
               <div className="od-timeline">
                 {timeline.map((step, i) => (
@@ -679,94 +740,12 @@ export default function OrderDetail() {
                 <span style={{ cursor: 'pointer', color: 'var(--blue)', fontSize: '0.85rem' }}
                   onClick={() => navigator.clipboard?.writeText(order.order_number)}>⧉</span>
               </div>
+              {order.sub_order_number && (
+                <div className="od-order-num" style={{ fontSize: '0.8rem', fontWeight: 400, marginTop: 4 }}>
+                  Order ID #{order.sub_order_number}
+                </div>
+              )}
             </div>
-          </div>
-
-          {/* ─── RIGHT ─── */}
-          <div>
-            {/* Delivery details */}
-            <div className="od-right-card">
-              <div className="od-right-title">Delivery details</div>
-              <div className="od-delivery-row">
-                <div className="od-delivery-icon">🏠</div>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span className="od-delivery-label">Home</span>
-                  </div>
-                  <div className="od-delivery-val">
-                    {[order.address, order.city, order.state, order.pincode].filter(Boolean).join(', ')}
-                  </div>
-                </div>
-              </div>
-              <div className="od-person-row">
-                <div className="od-delivery-icon">👤</div>
-                <div className="od-delivery-val">
-                  {order.customer_name}
-                  {order.customer_phone && ` ${order.customer_phone}`}
-                </div>
-              </div>
-            </div>
-
-            {/* Price details */}
-            {(() => {
-              const prodAmt   = Number(order.order_amount) || 0;
-              const phFee     = Number(order.payment_handling_fee) || 0;
-              const pfFee     = Number(order.platform_fee)         || 0;
-              const ppFee     = Number(order.protect_promise_fee)  || 0;
-              const totalFees = phFee + pfFee + ppFee;
-              const grandTotal = prodAmt + totalFees;
-              return (
-                <div className="od-right-card">
-                  <div className="od-right-title">Price details</div>
-
-                  <div className="od-price-row">
-                    <span>Listing price</span>
-                    <span className="val-strike">₹{prodAmt.toLocaleString('en-IN')}</span>
-                  </div>
-                  <div className="od-price-row">
-                    <span>Selling price</span>
-                    <span>₹{prodAmt.toLocaleString('en-IN')}</span>
-                  </div>
-
-                  {/* Total fees — only show if any fee exists */}
-                  {totalFees > 0 && (
-                    <>
-                      <div className="od-price-row" style={{ cursor: 'pointer', userSelect: 'none' }}
-                        onClick={() => setFeesOpen(f => !f)}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          Total fees <span style={{ fontSize: '0.8rem' }}>{feesOpen ? '∧' : '∨'}</span>
-                        </span>
-                        <span>₹{totalFees}</span>
-                      </div>
-                      {feesOpen && (
-                        <div className="od-fees-sub">
-                          {phFee > 0 && <div className="od-price-row"><span style={{ borderBottom: '1px dotted #9ca3af' }}>Payment Handling Fee</span><span>₹{phFee}</span></div>}
-                          {pfFee > 0 && <div className="od-price-row"><span style={{ borderBottom: '1px dotted #9ca3af' }}>Platform fee</span><span>₹{pfFee}</span></div>}
-                          {ppFee > 0 && <div className="od-price-row"><span style={{ borderBottom: '1px dotted #9ca3af' }}>Protect Promise Fee</span><span>₹{ppFee}</span></div>}
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  <div className="od-price-total">
-                    <span>Total amount</span>
-                    <span>₹{grandTotal.toLocaleString('en-IN')}</span>
-                  </div>
-
-                  <div className="od-paid-by">
-                    <span>Paid By</span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
-                      {isCOD ? '💵' : '💳'} {isCOD ? 'Cash On Delivery' : (order.payment_method || 'Online')}
-                    </span>
-                  </div>
-
-                  <button className="od-dl-btn" onClick={() => navigate(`/invoice/${id}`)}>
-                    ⬇ Download Invoice
-                  </button>
-                </div>
-              );
-            })()}
-          </div>
         </div>
       </div>
 

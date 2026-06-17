@@ -90,12 +90,22 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
   const [resolution, setResolution] = useState(''); // 'Refund' | 'Replace'
 
   const isReturn        = mode === 'return';
+  const isDelivered     = order.order_status === 'Delivered';
+  const isPreShipment   = ['Pending', 'Confirmed'].includes(order.order_status);
+  const approverLabel   = isPreShipment ? 'Holdkart' : 'the seller';
+  const isOnline        = (order.payment_method || '').toLowerCase() === 'online';
+  // COD orders: no money collected, so no refund card — show cancellation request instead
+  const isCOD           = !isOnline;
+  // Replacement card: delivered orders only
+  const showReplacement = isDelivered;
+  // COD + not delivered = single "Request Cancellation" card, no resolution choices
+  const isCODCancelOnly = isCOD && !isDelivered;
+
+  const hasReplacement  = !!(order.has_replacement || order.resolution_type === 'Replace');
   const reasons         = isReturn ? RETURN_REASONS : CANCEL_REASONS;
   const modalTitle      = isReturn ? 'Return / Replace Item' : 'Cancel Order';
   const reasonLabel     = isReturn ? 'Why do you want to return this item?' : 'Why do you want to cancel this item?';
-  const doneTitle       = isReturn ? '🔄 Return Request Submitted!' : '✅ Request Submitted!';
-  const isOnline        = (order.payment_method || '').toLowerCase() === 'online';
-  const hasReplacement  = !!(order.has_replacement || order.resolution_type === 'Replace');
+  const doneTitle       = isReturn ? '🔄 Refund Request Submitted!' : '✅ Request Submitted!';
   const selectedReason  = reason === 'Other reason' ? custom.trim() : reason;
   const canProceed      = reason && (reason !== 'Other reason' || custom.trim().length > 0);
 
@@ -149,7 +159,14 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
         <div className="cm-footer">
           <button className="cm-btn-outline" onClick={onClose}>Keep Order</button>
           <button className="cm-btn-primary" disabled={!canProceed}
-            onClick={() => setStep('resolution')}>
+            onClick={() => {
+              if (isCODCancelOnly) {
+                setResolution('Refund');
+                setStep('confirm');
+              } else {
+                setStep('resolution');
+              }
+            }}>
             Continue
           </button>
         </div>
@@ -168,59 +185,66 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
 
         <div style={{ padding: '20px 20px 8px' }}>
           <p style={{ fontSize: '0.88rem', color: '#565959', marginBottom: 16 }}>
-            Your cancellation request will be sent to the seller for approval.
-            Please choose how you'd like to proceed once approved:
+            {isPreShipment
+              ? isOnline
+                ? "Your order will be cancelled immediately and a refund will be initiated to your original payment method."
+                : "Your order will be cancelled immediately. No charges apply."
+              : "Your request will be sent to the seller for approval. Please choose how you'd like to proceed once approved:"}
           </p>
 
-          {/* Refund option */}
-          <label className={`cm-res-card ${resolution === 'Refund' ? 'selected' : ''}`}>
-            <input type="radio" name="resolution" value="Refund"
-              checked={resolution === 'Refund'} onChange={() => setResolution('Refund')}
-              className="cm-radio" />
-            <div className="cm-res-icon">💳</div>
-            <div className="cm-res-body">
-              <div className="cm-res-title">Request a Refund</div>
-              {isOnline ? (
-                <div className="cm-res-sub">
-                  ₹{(order.order_amount || 0).toLocaleString('en-IN')} will be refunded to your original payment method within <strong>5–7 business days</strong> after seller approval.
-                </div>
-              ) : (
-                <div className="cm-res-sub">
-                  No payment was collected (COD). Your order will be cancelled after seller approval.
-                </div>
-              )}
-            </div>
-          </label>
-
-          {/* Replace option — hidden if already used once */}
-          {!hasReplacement ? (
-            <label className={`cm-res-card ${resolution === 'Replace' ? 'selected' : ''}`}>
-              <input type="radio" name="resolution" value="Replace"
-                checked={resolution === 'Replace'} onChange={() => setResolution('Replace')}
+          {/* Refund option — online payments only */}
+          {isOnline && (
+            <label className={`cm-res-card ${resolution === 'Refund' ? 'selected' : ''}`}>
+              <input type="radio" name="resolution" value="Refund"
+                checked={resolution === 'Refund'} onChange={() => setResolution('Refund')}
                 className="cm-radio" />
-              <div className="cm-res-icon">🔄</div>
+              <div className="cm-res-icon">💳</div>
               <div className="cm-res-body">
-                <div className="cm-res-title">Request a Replacement</div>
+                <div className="cm-res-title">Request a Refund</div>
                 <div className="cm-res-sub">
-                  The seller will send a replacement item once they approve your request. No additional charge.
+                  ₹{(order.order_amount || 0).toLocaleString('en-IN')} will be refunded to your original payment method within <strong>5–7 business days</strong> after {approverLabel} approves.
                 </div>
               </div>
             </label>
-          ) : (
-            <div className="cm-res-card" style={{ opacity: 0.5, cursor: 'not-allowed', pointerEvents: 'none' }}>
-              <div className="cm-res-icon">🔄</div>
-              <div className="cm-res-body">
-                <div className="cm-res-title">Request a Replacement</div>
-                <div className="cm-res-sub" style={{ color: '#c40000' }}>
-                  A replacement has already been used for this product. Only one replacement is allowed per order.
+          )}
+
+          {/* Replace option — delivered orders only (both COD and online) */}
+          {showReplacement && (
+            !hasReplacement ? (
+              <label className={`cm-res-card ${resolution === 'Replace' ? 'selected' : ''}`}>
+                <input type="radio" name="resolution" value="Replace"
+                  checked={resolution === 'Replace'} onChange={() => setResolution('Replace')}
+                  className="cm-radio" />
+                <div className="cm-res-icon">🔄</div>
+                <div className="cm-res-body">
+                  <div className="cm-res-title">Request a Replacement</div>
+                  <div className="cm-res-sub">
+                    The seller will send a replacement item once they approve your request. No additional charge.
+                  </div>
+                </div>
+              </label>
+            ) : (
+              <div className="cm-res-card" style={{ opacity: 0.5, cursor: 'not-allowed', pointerEvents: 'none' }}>
+                <div className="cm-res-icon">🔄</div>
+                <div className="cm-res-body">
+                  <div className="cm-res-title">Request a Replacement</div>
+                  <div className="cm-res-sub" style={{ color: '#c40000' }}>
+                    A replacement has already been used for this product. Only one replacement is allowed per order.
+                  </div>
                 </div>
               </div>
-            </div>
+            )
           )}
 
           <div className="cm-seller-notice">
             <span>ℹ️</span>
-            <span>Your request will be reviewed by the seller. You'll be notified once they respond.</span>
+            <span>
+              {isPreShipment
+                ? isOnline
+                  ? "Refund will be processed immediately upon cancellation."
+                  : "Your order will be cancelled right away."
+                : "Your request will be reviewed by the seller. You'll be notified once they respond."}
+            </span>
           </div>
         </div>
 
@@ -247,30 +271,47 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
         <div className="cm-confirm-body">
           <div className="cm-confirm-icon">⚠️</div>
           <p className="cm-confirm-text">
-            Submit cancellation + <strong>{resolution}</strong> request for <strong>{order.product_name}</strong>?
+            {isCODCancelOnly
+              ? <>Cancel order for <strong>{order.product_name}</strong>?</>
+              : <>Submit {isReturn ? 'return' : 'cancellation'} + <strong>{resolution}</strong> request for <strong>{order.product_name}</strong>?</>}
           </p>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
             <div className="cm-reason-chip">
               <span className="cm-reason-chip-label">Reason:</span> {selectedReason}
             </div>
-            <div className={`cm-reason-chip ${resolution === 'Replace' ? 'replace' : 'refund'}`}>
-              <span className="cm-reason-chip-label">Resolution:</span> {resolution}
-            </div>
+            {!isCODCancelOnly && (
+              <div className={`cm-reason-chip ${resolution === 'Replace' ? 'replace' : 'refund'}`}>
+                <span className="cm-reason-chip-label">Resolution:</span> {resolution}
+              </div>
+            )}
           </div>
 
           <div className="cm-seller-notice" style={{ textAlign: 'left' }}>
             <span>ℹ️</span>
             <div>
-              <strong>Pending seller approval</strong>
-              <div style={{ fontSize: '0.8rem', marginTop: 2 }}>
-                Your order status will change to <em>"Cancellation Requested"</em>. The seller will review and approve or reject within 24–48 hours.
-              </div>
+              {isPreShipment ? (
+                <>
+                  <strong>{isOnline ? 'Order will be cancelled & refund initiated immediately' : 'Order will be cancelled immediately'}</strong>
+                  <div style={{ fontSize: '0.8rem', marginTop: 2 }}>
+                    {isOnline
+                      ? `Your order will be cancelled and ₹${(order.order_amount || 0).toLocaleString('en-IN')} will be refunded to your original payment method within 5–7 business days.`
+                      : 'Your order will be cancelled right away. No charges apply.'}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <strong>Pending seller approval</strong>
+                  <div style={{ fontSize: '0.8rem', marginTop: 2 }}>
+                    Your order status will change to <em>"{isReturn ? 'Return Requested' : 'Cancellation Requested'}"</em>. The seller will review and approve or reject within 24–48 hours.
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
 
         <div className="cm-footer">
-          <button className="cm-btn-outline" onClick={() => setStep('resolution')}>Back</button>
+          <button className="cm-btn-outline" onClick={() => isCODCancelOnly ? setStep('reason') : setStep('resolution')}>Back</button>
           <button className="cm-btn-danger" onClick={handleConfirm} disabled={submitting}>
             {submitting ? 'Submitting…' : 'Submit Request'}
           </button>
@@ -287,12 +328,22 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
           <div className="cm-done-icon">{isReturn ? '🔄' : '✅'}</div>
           <h2 className="cm-done-title" style={{ color: isReturn ? '#007185' : '#007600' }}>{doneTitle}</h2>
           <p className="cm-done-sub">
-            Your <strong>{resolution} request</strong> for order <strong>#{orderNum}</strong> has been sent to the seller.
+            {isCODCancelOnly
+              ? <>Your order <strong>#{orderNum}</strong> has been <strong>cancelled successfully</strong>.</>
+              : isPreShipment && isOnline
+                ? <>Your order <strong>#{orderNum}</strong> has been cancelled and a <strong>refund of ₹{(order.order_amount || 0).toLocaleString('en-IN')}</strong> has been initiated.</>
+                : <>Your <strong>{resolution} request</strong> for order <strong>#{orderNum}</strong> has been sent to {isPreShipment ? 'Holdkart' : 'the seller'}.</>}
           </p>
           <div className="cm-seller-notice" style={{ marginTop: 16, textAlign: 'left' }}>
             <span>🔔</span>
             <div style={{ fontSize: '0.83rem', color: '#565959' }}>
-              You'll receive a notification once the seller approves or rejects your request. This usually takes <strong>24–48 hours</strong>.
+              {isCODCancelOnly
+                ? 'Your order has been cancelled. No charges apply.'
+                : isPreShipment && isOnline
+                  ? 'Your refund will reflect in your original payment method within 5–7 business days.'
+                  : isPreShipment
+                    ? 'Your order has been cancelled. No charges apply.'
+                    : <>You'll receive a notification once the seller approves or rejects your request. This usually takes <strong>24–48 hours</strong>.</>}
             </div>
           </div>
         </div>
@@ -470,13 +521,18 @@ function OrderCard({ order, onCancelClick, onReturnClick, onReviewClick }) {
   const style    = STATUS_DOT[status] || STATUS_DOT.Pending;
   const orderId  = order.id || order._id || '';
   const orderNum = order.order_number || String(orderId).slice(-8).toUpperCase();
+  const subOrderNum = order.sub_order_number || null;
   const productId = order.product_id || '';
+  // What the customer actually paid for this product = item price (deal-locked
+  // price minus deposit, if it was a deal) + shipping for this item.
+  const itemTotal = (Number(order.order_amount) || 0) + (Number(order.delivery_charge) || 0);
 
   const isDelivered     = status === 'Delivered';
   const isCancelled     = status === 'Cancelled' || status === 'Returned';
   const isRequested     = status === 'Cancellation Requested';
   const isReturnRequested = status === 'Return Requested';
-  const canCancel       = ['Pending', 'Confirmed'].includes(status);
+  // Can cancel before shipment OR once shipped (refund only, seller approves when shipped)
+  const canCancel       = ['Pending', 'Confirmed', 'Shipped'].includes(status);
 
   return (
     <div className="amz-card">
@@ -488,7 +544,7 @@ function OrderCard({ order, onCancelClick, onReturnClick, onReviewClick }) {
           </div>
           <div className="amz-head-col">
             <span className="amz-head-label">TOTAL</span>
-            <span className="amz-head-value">₹{(order.order_amount || 0).toLocaleString('en-IN')}</span>
+            <span className="amz-head-value">₹{itemTotal.toLocaleString('en-IN')}</span>
           </div>
           <div className="amz-head-col">
             <span className="amz-head-label">PAYMENT</span>
@@ -496,7 +552,7 @@ function OrderCard({ order, onCancelClick, onReturnClick, onReviewClick }) {
           </div>
         </div>
         <div className="amz-card-head-right">
-          <span className="amz-head-label">ORDER # {orderNum}</span>
+          <span className="amz-head-label">ORDER ID: {subOrderNum || orderNum}</span>
           <div style={{ display: 'flex', gap: 12, marginTop: 3 }}>
             <button className="amz-link" onClick={() => navigate(`/order/${orderId}`)}>View order details</button>
             <span className="amz-head-divider">|</span>
@@ -709,6 +765,23 @@ export default function Orders() {
       });
   }, [orders, period, tab, search]);
 
+  // Group line-item orders that were placed together (same order_number) so
+  // they render under one shared "Order ID" header, like a checkout group.
+  const groupedOrders = useMemo(() => {
+    const groups = [];
+    const indexByKey = new Map();
+    filtered.forEach(o => {
+      const key = o.order_number || `single-${o.id || o._id}`;
+      if (!indexByKey.has(key)) {
+        indexByKey.set(key, groups.length);
+        groups.push({ orderNumber: o.order_number || key, items: [o] });
+      } else {
+        groups[indexByKey.get(key)].items.push(o);
+      }
+    });
+    return groups;
+  }, [filtered]);
+
   return (
     <div style={{ background: '#f0f2f2', minHeight: '100vh', fontFamily: "'Amazon Ember','Segoe UI',Arial,sans-serif", paddingTop: 100 }}>
       <style>{`
@@ -767,6 +840,10 @@ export default function Orders() {
         .amz-step-label.done { color: #007600; }
         .amz-step-label.active { color: #0f1111; font-weight: 700; }
         .amz-empty { background: #fff; border: 1px solid #d5d9d9; border-radius: 8px; padding: 60px 24px; text-align: center; }
+        .amz-group { margin-bottom: 24px; background: #fafbfb; border: 1px solid #e7e9e9; border-radius: 10px; padding: 14px 14px 14px; }
+        .amz-group .amz-card:last-child { margin-bottom: 0; }
+        .amz-group-header { font-size: 0.9rem; color: #565959; margin-bottom: 10px; }
+        .amz-group-header b { color: #0f1111; font-weight: 600; }
         .amz-skel { background: linear-gradient(90deg,#e8e8e8 25%,#f5f5f5 50%,#e8e8e8 75%); background-size: 400% 100%; animation: skelAnim 1.4s ease-in-out infinite; border-radius: 4px; }
         @keyframes skelAnim { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
 
@@ -930,8 +1007,13 @@ export default function Orders() {
             </div>
           </div>
         ) : (
-          filtered.map(order => (
-            <OrderCard key={order.id || order._id} order={order} onCancelClick={handleCancelClick} onReturnClick={handleReturnClick} onReviewClick={handleReviewClick} />
+          groupedOrders.map(group => (
+            <div key={group.orderNumber} className="amz-group">
+              <div className="amz-group-header">Order ID : <b>{group.orderNumber}</b></div>
+              {group.items.map(order => (
+                <OrderCard key={order.id || order._id} order={order} onCancelClick={handleCancelClick} onReturnClick={handleReturnClick} onReviewClick={handleReviewClick} />
+              ))}
+            </div>
           ))
         )}
       </div>

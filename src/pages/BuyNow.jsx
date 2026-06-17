@@ -120,9 +120,8 @@ export default function BuyNow() {
     address: '', city: '', state: '', pincode: '', paymentMethod: 'COD',
   });
 
-  // courier state — same shape as Checkout's courierMap but single-item keyed by 'item'
-  const [courier,     setCourier]     = useState({ list: [], loading: false, error: null, selected: null });
-  const [courierOpen, setCourierOpen] = useState(false);
+  // courier state — same shape as Checkout's per-item courier entry
+  const [courier, setCourier] = useState({ list: [], loading: false, error: null, selected: null });
 
   useEffect(() => {
     if (!isAuthenticated) { navigate('/login'); return; }
@@ -259,7 +258,7 @@ export default function BuyNow() {
     if (!/^\d{6}$/.test(address.pincode)) { toast.error('Enter a valid 6-digit pincode'); setAddrExpanded(true); return; }
     // require courier selection only when couriers have loaded
     if (courier.list.length > 0 && !courier.selected) {
-      toast.error('Please select a delivery partner'); return;
+      toast.error('Please select a courier'); return;
     }
     setPlacing(true);
     try {
@@ -372,7 +371,7 @@ export default function BuyNow() {
           <div>
 
             {/* ── ADDRESS BAR ── */}
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, marginBottom: 16, overflow: 'hidden' }}>
+            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, marginBottom: 12, overflow: 'hidden' }}>
 
               {/* Collapsed row — always visible */}
               <div style={{ padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -387,7 +386,7 @@ export default function BuyNow() {
                       {addrDone ? '✓' : '!'}
                     </span>
                     <span style={{ fontWeight: 700, fontSize: '0.88rem', color: addrDone ? '#007600' : '#2a5298' }}>
-                      Address
+                      Delivery Address
                     </span>
                   </div>
                   {addrDone && !addrExpanded && (
@@ -402,8 +401,9 @@ export default function BuyNow() {
                   )}
                 </div>
                 <button
+                  type="button"
                   onClick={() => setAddrExpanded(v => !v)}
-                  style={{ background: 'none', border: '1px solid #2a5298', borderRadius: 4, color: '#2a5298', fontSize: '0.78rem', fontWeight: 600, padding: '4px 12px', cursor: 'pointer', flexShrink: 0 }}
+                  style={{ background: 'none', border: '1px solid #2a5298', borderRadius: 4, color: '#2a5298', fontSize: '0.78rem', fontWeight: 600, padding: '4px 12px', cursor: 'pointer', flexShrink: 0, fontFamily: 'inherit' }}
                 >
                   {addrExpanded ? 'Cancel' : 'Change'}
                 </button>
@@ -412,7 +412,7 @@ export default function BuyNow() {
               {/* Expanded form */}
               {addrExpanded && (
                 <div style={{ borderTop: '1px solid #f3f4f6', padding: '20px 24px' }}>
-                  <form id="bn-addr-form" onSubmit={handleAddressSave}>
+                  <form onSubmit={handleAddressSave}>
                     <Field label="Street Address, Area, Landmark" required>
                       <textarea
                         rows={2} required
@@ -475,197 +475,152 @@ export default function BuyNow() {
               )}
             </div>
 
-            {/* ── ORDER SUMMARY ── */}
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '24px', marginBottom: 16 }}>
-              <h2 style={{ fontWeight: 700, fontSize: '1rem', color: '#0f1111', marginBottom: 18 }}>
+            {/* ── ORDER SUMMARY (item + inline courier card grid) ── */}
+            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '20px 24px', marginBottom: 16 }}>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#0f1111', margin: '0 0 18px' }}>
                 Order Summary
               </h2>
-              <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr auto', gap: 16, alignItems: 'flex-start' }}>
+
+              {!addrDone && (
+                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 4, padding: '10px 14px', fontSize: '0.8rem', color: '#92400e', marginBottom: 14 }}>
+                  ⓘ Add your delivery address above to see available couriers.
+                </div>
+              )}
+
+              {/* Product row */}
+              <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: 14, alignItems: 'center' }}>
                 <div style={{ border: '1px solid #e5e7eb', borderRadius: 4, overflow: 'hidden', background: '#f9fafb' }}>
                   <img
                     src={resolveImg(item.imageUrl)} alt={item.name}
                     onError={e => { e.target.src = FALLBACK_IMG; }}
-                    style={{ width: '100%', height: 80, objectFit: 'contain', display: 'block' }}
+                    style={{ width: '100%', height: 64, objectFit: 'contain', display: 'block' }}
                   />
                 </div>
                 <div style={{ minWidth: 0 }}>
-                  <p style={{ fontSize: '0.92rem', fontWeight: 500, color: '#0f1111', margin: '0 0 4px', lineHeight: 1.4 }}>
+                  <p style={{ fontSize: '0.88rem', fontWeight: 500, color: '#0f1111', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {item.name}
                   </p>
-                  {item.category && (
-                    <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0 0 6px' }}>{item.category}</p>
-                  )}
-                  <p style={{ fontSize: '0.75rem', color: '#374151', margin: '0 0 4px' }}>Qty: {qty}</p>
+                  <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0 0 4px' }}>Qty: {qty}</p>
                   {item.hasGroupDeal ? (
-                    <span style={{ fontSize: '0.72rem', fontWeight: 700, background: '#f0fdf4', color: '#15803d', border: '1px solid #86efac', borderRadius: 3, padding: '2px 7px' }}>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#eef2ff', color: '#1e3c72', border: '1px solid #c7d8f8', borderRadius: 3, padding: '1px 6px' }}>
                       🤝 Group Deal Price
                     </span>
                   ) : (
-                    <span style={{ fontSize: '0.72rem', color: '#6b7280', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 3, padding: '2px 7px' }}>
+                    <span style={{ fontSize: '0.68rem', color: '#6b7280', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 3, padding: '1px 6px' }}>
                       Regular Price
                     </span>
                   )}
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  {savings > 0 && (
-                    <p style={{ fontSize: '0.78rem', color: '#9ca3af', textDecoration: 'line-through', margin: '0 0 2px' }}>
-                      ₹{mrpTotal.toLocaleString('en-IN')}
-                    </p>
-                  )}
-                  <p style={{ fontWeight: 700, fontSize: '1rem', color: '#0f1111', margin: 0 }}>
+                  <p style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f1111', margin: '0 0 2px' }}>
                     ₹{lineTotal.toLocaleString('en-IN')}
                   </p>
                   {savings > 0 && (
-                    <p style={{ fontSize: '0.72rem', color: '#007600', fontWeight: 600, margin: '2px 0 0' }}>
+                    <p style={{ fontSize: '0.72rem', color: '#007600', margin: 0, fontWeight: 600 }}>
                       Save ₹{savings.toLocaleString('en-IN')}
                     </p>
                   )}
                 </div>
               </div>
-            </div>
 
-            {/* ── DELIVERY PARTNER ── */}
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '24px', marginBottom: 16 }}>
-              <h2 style={{ fontWeight: 700, fontSize: '1rem', color: '#0f1111', marginBottom: 14 }}>
-                Delivery Partner
-              </h2>
-
-              {!addrDone && (
-                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 4, padding: '10px 14px', fontSize: '0.8rem', color: '#92400e' }}>
-                  ⓘ Enter your delivery pincode above to see available couriers.
-                </div>
-              )}
-
-              {addrDone && courier.loading && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: '#6b7280' }}>
-                  <div style={{ width: 14, height: 14, border: '2px solid #e5e7eb', borderTopColor: '#2a5298', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
-                  Fetching couriers…
-                </div>
-              )}
-
-              {addrDone && courier.error && !courier.loading && (
-                <div style={{ fontSize: '0.78rem', color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, padding: '6px 10px' }}>
-                  ⚠ {courier.error}
-                </div>
-              )}
-
-              {addrDone && !courier.loading && !courier.error && courier.list.length > 0 && (() => {
-                const sel = courier.selected;
-                return (
-                  <div style={{ position: 'relative' }}>
-                    <p style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151', margin: '0 0 6px' }}>
-                      Select Courier
-                    </p>
-
-                    {/* Trigger */}
-                    <div
-                      onClick={() => setCourierOpen(v => !v)}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 10,
-                        padding: '9px 12px',
-                        border: `1.5px solid ${sel ? '#2a5298' : '#d1d5db'}`,
-                        borderRadius: courierOpen ? '4px 4px 0 0' : 4,
-                        background: sel ? '#eef2ff' : '#f9fafb', cursor: 'pointer',
-                      }}
-                    >
-                      {sel?.logo ? (
-                        <img src={sel.logo} alt={sel.courierName} style={{ width: 28, height: 28, objectFit: 'contain', flexShrink: 0 }} onError={e => { e.target.style.display = 'none'; }} />
-                      ) : (
-                        <div style={{ width: 28, height: 28, borderRadius: 4, background: '#c7d2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, color: '#3730a3', flexShrink: 0 }}>
-                          {sel?.courierName?.slice(0, 2).toUpperCase() || '—'}
-                        </div>
-                      )}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: '0.82rem', fontWeight: 600, color: '#0f1111', margin: '0 0 1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {sel?.courierName || 'Select a courier'}
-                        </p>
-                        <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: 0 }}>
-                          {sel ? <>Est. delivery: {sel.etaDays} days</> : 'Choose a courier for delivery'}
-                        </p>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                        <span style={{ fontSize: '0.88rem', fontWeight: 700, color: sel?.rate === 0 ? '#007600' : '#0f1111' }}>
-                          {sel?.rate === 0 ? 'FREE' : sel ? `₹${sel.rate}` : ''}
-                        </span>
-                        <span style={{ fontSize: '0.7rem', color: '#6b7280', transform: courierOpen ? 'rotate(180deg)' : 'none', display: 'inline-block', transition: 'transform 0.15s' }}>▼</span>
-                      </div>
+              {/* ── Courier selector — inline cards, 3 per row, same as Checkout ── */}
+              {addrDone && (
+                <div style={{ marginTop: 14, marginLeft: 78 }}>
+                  {courier.loading && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: '#6b7280' }}>
+                      <div style={{ width: 14, height: 14, border: '2px solid #e5e7eb', borderTopColor: '#2a5298', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+                      Fetching couriers…
                     </div>
+                  )}
 
-                    {/* Dropdown */}
-                    {courierOpen && (
-                      <div style={{
-                        position: 'absolute', top: '100%', left: 0, right: 0,
-                        border: '1.5px solid #2a5298', borderTop: 'none',
-                        borderRadius: '0 0 4px 4px',
-                        background: '#fff', zIndex: 50,
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                        maxHeight: 260, overflowY: 'auto',
-                      }}>
-                        {courier.list.map((c, ci) => {
-                          const isSelected = sel?.courierId === c.courierId;
-                          return (
-                            <div
-                              key={c.courierId}
-                              onClick={() => {
-                                setCourier(prev => ({ ...prev, selected: c }));
-                                setCourierOpen(false);
-                              }}
-                              style={{
-                                display: 'flex', alignItems: 'center', gap: 10,
-                                padding: '9px 12px',
-                                borderTop: ci > 0 ? '1px solid #f3f4f6' : 'none',
-                                background: isSelected ? '#eef2ff' : '#fff',
-                                cursor: 'pointer',
-                              }}
-                              onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#f9fafb'; }}
-                              onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = '#fff'; }}
-                            >
-                              {/* Radio dot */}
-                              <div style={{
-                                width: 15, height: 15, borderRadius: '50%',
-                                border: `2px solid ${isSelected ? '#2a5298' : '#d1d5db'}`,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                flexShrink: 0, background: '#fff',
-                              }}>
-                                {isSelected && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#2a5298' }} />}
-                              </div>
+                  {courier.error && !courier.loading && (
+                    <div style={{ fontSize: '0.78rem', color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, padding: '6px 10px' }}>
+                      ⚠ {courier.error}
+                    </div>
+                  )}
 
-                              {/* Logo / initials */}
-                              {c.logo ? (
-                                <img src={c.logo} alt={c.courierName} style={{ width: 28, height: 28, objectFit: 'contain', flexShrink: 0 }} onError={e => { e.target.style.display = 'none'; }} />
-                              ) : (
-                                <div style={{ width: 28, height: 28, borderRadius: 4, background: '#e0e7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, color: '#3730a3', flexShrink: 0 }}>
-                                  {c.courierName.slice(0, 2).toUpperCase()}
+                  {!courier.loading && !courier.error && courier.list.length > 0 && (() => {
+                    const sel = courier.selected;
+                    return (
+                      <div>
+                        <p style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151', margin: '0 0 8px' }}>
+                          Select Courier
+                        </p>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+                          {courier.list.map((c) => {
+                            const isSelected = sel?.courierId === c.courierId;
+                            return (
+                              <div
+                                key={c.courierId}
+                                onClick={() => setCourier(prev => ({ ...prev, selected: c }))}
+                                style={{
+                                  position: 'relative',
+                                  display: 'flex', alignItems: 'center', gap: 9,
+                                  padding: '10px 10px',
+                                  border: `1.5px solid ${isSelected ? '#2a5298' : '#e5e7eb'}`,
+                                  borderRadius: 12,
+                                  background: isSelected ? '#eef2ff' : '#fff',
+                                  cursor: 'pointer',
+                                  boxShadow: isSelected ? '0 1px 6px rgba(42,82,152,0.18)' : '0 1px 2px rgba(0,0,0,0.04)',
+                                  transition: 'border-color 0.15s, box-shadow 0.15s, background 0.15s',
+                                }}
+                                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.borderColor = '#c7d2fe'; }}
+                                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                              >
+                                {/* Selected checkmark */}
+                                {isSelected && (
+                                  <div style={{
+                                    position: 'absolute', top: -7, right: -7,
+                                    width: 17, height: 17, borderRadius: '50%',
+                                    background: '#2a5298', color: '#fff',
+                                    fontSize: '0.6rem', fontWeight: 700,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                                  }}>
+                                    ✓
+                                  </div>
+                                )}
+
+                                {/* Icon badge */}
+                                <div style={{
+                                  width: 36, height: 36, borderRadius: 9, flexShrink: 0,
+                                  background: isSelected ? '#dbe4fb' : '#f1f4f9',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  fontSize: '1.05rem', overflow: 'hidden',
+                                }}>
+                                  {c.logo
+                                    ? <img src={c.logo} alt={c.courierName} style={{ width: 22, height: 22, objectFit: 'contain' }} onError={e => { e.target.style.display = 'none'; }} />
+                                    : '🚚'
+                                  }
                                 </div>
-                              )}
 
-                              {/* Name + ETA */}
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <p style={{ fontSize: '0.82rem', fontWeight: 600, color: '#0f1111', margin: '0 0 1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {c.courierName}
-                                </p>
-                                <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: 0 }}>
-                                  Est. delivery: {c.etaDays} days
-                                </p>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <p style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0f1111', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {c.courierName}
+                                  </p>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.72rem', color: '#6b7280', whiteSpace: 'nowrap' }}>
+                                    <span style={{ color: c.rate === 0 ? '#007600' : '#0f1111', fontWeight: 700 }}>
+                                      {c.rate === 0 ? 'FREE' : `₹${c.rate}`}
+                                    </span>
+                                    <span style={{ color: '#d1d5db' }}>•</span>
+                                    <span>{c.etaDays} day{c.etaDays > 1 ? 's' : ''}</span>
+                                  </div>
+                                </div>
                               </div>
-
-                              {/* Rate */}
-                              <span style={{ fontSize: '0.88rem', fontWeight: 700, color: c.rate === 0 ? '#007600' : '#0f1111', flexShrink: 0 }}>
-                                {c.rate === 0 ? 'FREE' : `₹${c.rate}`}
-                              </span>
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
+                        </div>
                       </div>
-                    )}
-                  </div>
-                );
-              })()}
+                    );
+                  })()}
+                </div>
+              )}
             </div>
 
             {/* ── PAYMENT METHOD ── */}
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '24px', marginBottom: 16 }}>
-              <h2 style={{ fontWeight: 700, fontSize: '1rem', color: '#0f1111', marginBottom: 18 }}>
+            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '20px 24px', marginBottom: 16 }}>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#0f1111', margin: '0 0 18px' }}>
                 Payment Method
               </h2>
 
@@ -704,6 +659,7 @@ export default function BuyNow() {
 
               {/* Place Order CTA */}
               <button
+                type="button"
                 onClick={handlePlaceOrder}
                 disabled={placing}
                 style={{

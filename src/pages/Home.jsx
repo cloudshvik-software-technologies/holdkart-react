@@ -201,7 +201,7 @@ function SuggestedForYou({ items: itemsProp, loading, guardedNav, title = 'Sugge
                 </div>
                 {upiPrice > 0 && price > 0 && (
                   <div style={{ fontSize: '0.72rem', color: '#2874f0', fontWeight: 600 }}>
-                    ₹{upiPrice.toLocaleString('en-IN')} <span style={{ fontWeight: 400 }}>with UPI offer + more</span>
+                    ₹{upiPrice.toLocaleString('en-IN')} <span style={{ fontWeight: 400 }}>with deal + more</span>
                   </div>
                 )}
               </div>
