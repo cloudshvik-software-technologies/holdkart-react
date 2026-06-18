@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { cartService, orderService, paymentService, profileService } from '../services/index.js';
 import { getAvailableCouriers } from '../services/shipping.service.js';
@@ -120,6 +120,10 @@ export default function Checkout() {
 
   // courier selection: { [cartId]: { list, loading, error, selected } }
   const [courierMap, setCourierMap] = useState({});
+  // Guards against a slower, older fetch resolving after a newer one and
+  // clobbering its (possibly restored) selections — only the latest call's
+  // results are ever applied to state.
+  const courierFetchSeqRef = useRef(0);
   const [address, setAddress] = useState({
     address: '', city: '', state: '', pincode: '', paymentMethod: 'COD',
   });
@@ -158,26 +162,44 @@ export default function Checkout() {
     if (!/^\d{6}$/.test(pincode) || cartItems.length === 0) return;
     const cod = paymentMethod === 'COD' ? 1 : 0;
 
+    // Mark this as the latest fetch — any earlier in-flight fetch that resolves
+    // after this point will see its sequence number is stale and skip applying its result.
+    const seq = ++courierFetchSeqRef.current;
+
+    // Remember what's currently selected so we can restore it after the refetch
+    // (e.g. switching payment method re-fetches couriers, but the user's pick shouldn't be lost)
+    const prevSelections = {};
+    cartItems.forEach(item => {
+      prevSelections[item.cartId] = courierMap[item.cartId]?.selected || null;
+    });
+
     const updates = {};
     cartItems.forEach(item => {
-      updates[item.cartId] = { list: [], loading: true, error: null, selected: null };
+      updates[item.cartId] = { list: [], loading: true, error: null, selected: prevSelections[item.cartId] };
     });
-    setCourierMap(updates);
+    if (seq === courierFetchSeqRef.current) setCourierMap(updates);
 
     await Promise.all(cartItems.map(async (item) => {
       try {
         const res = await getAvailableCouriers(item.productId, pincode, 0.5, cod);
+        if (seq !== courierFetchSeqRef.current) return; // a newer fetch has since started — ignore this stale result
         const list = res?.couriers || [];
+        const prevSelected = prevSelections[item.cartId];
+        // Keep the same courier selected if it's still in the refreshed list (matched by id)
+        const restored = prevSelected
+          ? list.find(c => c.courierId === prevSelected.courierId) || null
+          : null;
         setCourierMap(prev => ({
           ...prev,
           [item.cartId]: {
             list,
             loading: false,
             error: list.length === 0 ? 'No couriers available for this pincode' : null,
-            selected: null,
+            selected: restored,
           },
         }));
       } catch (err) {
+        if (seq !== courierFetchSeqRef.current) return; // stale — a newer fetch is in charge now
         const msg = err?.response?.data?.message || err?.message || 'Failed to fetch couriers';
         setCourierMap(prev => ({
           ...prev,
@@ -220,9 +242,36 @@ export default function Checkout() {
   const total = Math.max(0, subtotalEff - totalPrepaid + totalFees);
   const itemCount    = cart.reduce((s, i) => s + i.quantity, 0);
 
+  /* ── Payment method availability (seller-controlled per product) ── */
+  const codDisabledItems    = cart.filter(i => i.shipCod === false);
+  const onlineDisabledItems = cart.filter(i => i.shipOnline === false);
+  const codAllowed    = codDisabledItems.length === 0;
+  const onlineAllowed = onlineDisabledItems.length === 0;
+
+  /* If the currently selected method becomes unavailable (e.g. cart contents
+     change), fall back to whichever method is still allowed. */
+  useEffect(() => {
+    if (cart.length === 0) return;
+    if (address.paymentMethod === 'COD' && !codAllowed && onlineAllowed) {
+      set('paymentMethod', 'Online');
+    } else if (address.paymentMethod === 'Online' && !onlineAllowed && codAllowed) {
+      set('paymentMethod', 'COD');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart, codAllowed, onlineAllowed]);
+
   /* ── COD ── */
   const placeCOD = async () => {
-    const items = cart.map(i => ({ productId: i.productId, quantity: i.quantity, deliveryCharge: itemDeliveryCharge(i) }));
+    // BUG FIX: include the courier the customer actually selected for each
+    // item (previously only the calculated delivery charge was sent, so the
+    // seller never knew which courier the customer chose at checkout).
+    const items = cart.map(i => ({
+      productId: i.productId,
+      quantity: i.quantity,
+      deliveryCharge: itemDeliveryCharge(i),
+      courierId:   courierMap[i.cartId]?.selected?.courierId   ?? null,
+      courierName: courierMap[i.cartId]?.selected?.courierName ?? null,
+    }));
     await orderService.placeOrder({ items, ...address, deliveryCharge: effectiveDeliveryCharge, platformFee });
     toast.success('Order placed successfully!');
     navigate('/orders');
@@ -267,7 +316,14 @@ export default function Checkout() {
         // Payment attempted — verify with server
         try {
           await paymentService.verifyPayment({ orderId: cfOrder.orderId });
-          const items = cart.map(i => ({ productId: i.productId, quantity: i.quantity, deliveryCharge: itemDeliveryCharge(i) }));
+          // BUG FIX: include the courier the customer selected for each item
+          const items = cart.map(i => ({
+            productId: i.productId,
+            quantity: i.quantity,
+            deliveryCharge: itemDeliveryCharge(i),
+            courierId:   courierMap[i.cartId]?.selected?.courierId   ?? null,
+            courierName: courierMap[i.cartId]?.selected?.courierName ?? null,
+          }));
           await orderService.placeOrder({ items, ...address, paymentId: cfOrder.orderId, deliveryCharge: effectiveDeliveryCharge, platformFee });
                 toast.success('Payment successful! Order placed.');
           navigate('/orders');
@@ -298,9 +354,10 @@ export default function Checkout() {
     if (!/^\d{6}$/.test(address.pincode)) {
       toast.error('Enter a valid 6-digit pincode'); setAddrExpanded(true); return;
     }
-    if (Object.keys(courierMap).length > 0) {
-      const unselected = cart.some(i => courierMap[i.cartId] && !courierMap[i.cartId].loading && !courierMap[i.cartId].selected);
-      if (unselected) { toast.error('Please select a courier for each item'); return; }
+    const missingCourier = cart.some(i => !courierMap[i.cartId]?.selected);
+    if (missingCourier) {
+      toast.error('Please select a delivery courier for every item before placing your order');
+      return;
     }
     setPlacing(true);
     try {
@@ -483,10 +540,20 @@ export default function Checkout() {
               </div>
 
               {/* ── Order Summary: items + courier selection ── */}
-              <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '20px 24px', marginBottom: 12 }}>
-                <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#0f1111', margin: '0 0 18px' }}>
-                  Order Summary ({itemCount} {itemCount === 1 ? 'item' : 'items'})
-                </h2>
+              <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,0.05)', overflow: 'hidden', marginBottom: 12 }}>
+                <div style={{ background: '#1e3c72', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: '1.05rem' }}></span>
+                    Order Summary ({itemCount} {itemCount === 1 ? 'item' : 'items'})
+                  </h2>
+                  {totalSavings > 0 && (
+                    <span style={{ background: '#16a34a', color: '#fff', fontSize: '0.75rem', fontWeight: 700, padding: '4px 12px', borderRadius: 99, whiteSpace: 'nowrap' }}>
+                      🎉 You're saving ₹{totalSavings.toLocaleString('en-IN')}
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ padding: '20px 24px', background: '#f5f8ff' }}>
 
                 {!addrDone && (
                   <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 4, padding: '10px 14px', fontSize: '0.8rem', color: '#92400e', marginBottom: 14 }}>
@@ -639,6 +706,7 @@ export default function Checkout() {
                     );
                   })}
                 </div>
+                </div>
               </div>
 
               {/* ── Payment Method (moved to the end) ── */}
@@ -654,34 +722,43 @@ export default function Checkout() {
                       label: 'Cash on Delivery',
                       sub: 'Pay when your order arrives at your door',
                       badge: null,
+                      allowed: codAllowed,
+                      disabledMsg: codDisabledItems.length === 1
+                        ? `Cash on delivery is not available for "${codDisabledItems[0].name}"`
+                        : 'Cash on delivery is not available for one or more items in your cart',
                     },
                     {
                       val: 'Online', icon: '💳',
                       label: 'Pay Online',
                       sub: 'UPI · Credit/Debit Card · Net Banking · Wallets via Cashfree',
                       badge: 'Instant confirmation',
+                      allowed: onlineAllowed,
+                      disabledMsg: onlineDisabledItems.length === 1
+                        ? `Online payment is not available for "${onlineDisabledItems[0].name}"`
+                        : 'Online payment is not available for one or more items in your cart',
                     },
-                  ].map(({ val, icon, label, sub, badge }) => {
+                  ].map(({ val, icon, label, sub, badge, allowed, disabledMsg }) => {
                     const selected = address.paymentMethod === val;
                     return (
                       <label key={val}
-                        onClick={() => set('paymentMethod', val)}
+                        onClick={() => allowed ? set('paymentMethod', val) : toast.error(disabledMsg)}
                         style={{
                           display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px',
-                          border: `2px solid ${selected ? '#2a5298' : '#e5e7eb'}`,
-                          borderRadius: 4, cursor: 'pointer',
-                          background: selected ? '#eef2ff' : '#fff',
+                          border: `2px solid ${selected && allowed ? '#2a5298' : '#e5e7eb'}`,
+                          borderRadius: 4, cursor: allowed ? 'pointer' : 'not-allowed',
+                          background: !allowed ? '#f9fafb' : (selected ? '#eef2ff' : '#fff'),
+                          opacity: allowed ? 1 : 0.6,
                           transition: 'all 0.15s',
                         }}
                       >
                         {/* Radio */}
                         <div style={{
                           width: 18, height: 18, borderRadius: '50%',
-                          border: `2px solid ${selected ? '#2a5298' : '#d1d5db'}`,
+                          border: `2px solid ${selected && allowed ? '#2a5298' : '#d1d5db'}`,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           flexShrink: 0, background: '#fff',
                         }}>
-                          {selected && <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#2a5298' }} />}
+                          {selected && allowed && <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#2a5298' }} />}
                         </div>
 
                         <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>{icon}</span>
@@ -689,13 +766,15 @@ export default function Checkout() {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <span style={{ fontWeight: 600, fontSize: '0.92rem', color: '#0f1111' }}>{label}</span>
-                            {badge && (
+                            {badge && allowed && (
                               <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#dcfce7', color: '#15803d', padding: '2px 7px', borderRadius: 3 }}>
                                 {badge}
                               </span>
                             )}
                           </div>
-                          <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 2 }}>{sub}</div>
+                          <div style={{ fontSize: '0.78rem', color: allowed ? '#6b7280' : '#dc2626', marginTop: 2 }}>
+                            {allowed ? sub : disabledMsg}
+                          </div>
                         </div>
                       </label>
                     );
@@ -707,7 +786,7 @@ export default function Checkout() {
               <button
                 type="button"
                 onClick={handlePlaceOrder}
-                disabled={placing || cart.length === 0}
+                disabled={placing || cart.length === 0 || (address.paymentMethod === 'COD' ? !codAllowed : !onlineAllowed)}
                 style={{
                   width: '100%', padding: '13px',
                   background: placing ? '#e5e7eb' : '#f0c14b',
@@ -872,3 +951,4 @@ export default function Checkout() {
     </div>
   );
 }
+

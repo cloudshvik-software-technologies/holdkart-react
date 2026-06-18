@@ -195,6 +195,22 @@ export default function BuyNow() {
   const addrDone = !!(address.address && address.city && address.state && address.pincode);
   const cities   = address.state ? (CITIES_BY_STATE[address.state] || []) : [];
 
+  /* ── Payment method availability (seller-controlled per product) ── */
+  const codAllowed    = item ? item.shipCod    !== false : true;
+  const onlineAllowed = item ? item.shipOnline !== false : true;
+
+  /* If the currently selected method isn't allowed for this product, fall
+     back to whichever method is still allowed. */
+  useEffect(() => {
+    if (!item) return;
+    if (address.paymentMethod === 'COD' && !codAllowed && onlineAllowed) {
+      set('paymentMethod', 'Online');
+    } else if (address.paymentMethod === 'Online' && !onlineAllowed && codAllowed) {
+      set('paymentMethod', 'COD');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item, codAllowed, onlineAllowed]);
+
   const removeBuyNowItem = async () => {
     if (item?.cartId) {
       try { await cartService.removeFromCart({ cartId: item.cartId }); } catch { /* best-effort */ }
@@ -203,7 +219,14 @@ export default function BuyNow() {
 
   const placeCOD = async () => {
     await orderService.placeOrder({
-      items: [{ productId: item.productId, quantity: item.quantity }],
+      // BUG FIX: include the courier the customer selected on this page —
+      // previously it was used only to compute deliveryCharge and discarded.
+      items: [{
+        productId: item.productId,
+        quantity: item.quantity,
+        courierId:   courier.selected?.courierId   ?? null,
+        courierName: courier.selected?.courierName ?? null,
+      }],
       ...address, deliveryCharge, platformFee,
     });
     await removeBuyNowItem();
@@ -234,7 +257,12 @@ export default function BuyNow() {
           try {
             await paymentService.verifyPayment({ orderId: cfOrder.orderId });
             await orderService.placeOrder({
-              items: [{ productId: item.productId, quantity: item.quantity }],
+              items: [{
+                productId: item.productId,
+                quantity: item.quantity,
+                courierId:   courier.selected?.courierId   ?? null,
+                courierName: courier.selected?.courierName ?? null,
+              }],
               ...address, paymentId: cfOrder.orderId, deliveryCharge, platformFee,
             });
             await removeBuyNowItem();
@@ -270,78 +298,122 @@ export default function BuyNow() {
     } finally { setPlacing(false); }
   };
 
-  /* ── Price Details panel ── */
+  /* ── Price Details panel — mirrors Checkout.jsx's Order Summary layout ── */
   const PricePanel = () => (
-    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, overflow: 'hidden', position: 'sticky', top: 96 }}>
-      <div style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '14px 18px' }}>
-        <h3 style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f1111', margin: 0 }}>Price Details</h3>
-      </div>
-      <div style={{ padding: '16px 18px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', color: '#374151', marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid #f3f4f6' }}>
-          <span>MRP (incl. of all taxes)</span>
-          <span>₹{mrpTotal.toLocaleString('en-IN')}</span>
+    <div style={{ position: 'sticky', top: 96 }}>
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, overflow: 'hidden' }}>
+
+        {/* Header */}
+        <div style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '14px 18px' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f1111', margin: 0 }}>Price Details</h3>
         </div>
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', color: '#374151', marginBottom: 6 }}>
-            <span>Delivery Charge</span>
-            <span style={{ fontWeight: 600, color: deliveryCharge === 0 ? '#007600' : '#0f1111' }}>
-  {deliveryCharge === null ? <span style={{ color: '#6b7280', fontSize: '0.8rem' }}>Select courier</span> : deliveryCharge === 0 ? 'FREE' : `₹${deliveryCharge}`}
-</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', color: '#374151', marginBottom: 4 }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              Platform Fee
-              <span
-                style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
-                onMouseEnter={() => setShowFees(true)}
-                onMouseLeave={() => setShowFees(false)}
-              >
-                <span style={{ width: 14, height: 14, borderRadius: '50%', background: '#6b7280', color: '#fff', fontSize: '0.65rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'default', userSelect: 'none' }}>i</span>
-                {showFees && (
-                  <div style={{ position: 'absolute', bottom: '120%', left: '50%', transform: 'translateX(-50%)', width: 220, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px 14px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 999, pointerEvents: 'none' }}>
-                    <p style={{ fontWeight: 700, fontSize: '0.82rem', color: '#0f1111', marginBottom: 6 }}>Platform Fee</p>
-                    <p style={{ fontSize: '0.78rem', color: '#6b7280', lineHeight: 1.5 }}>A non-refundable fee charged to help keep the platform running smoothly and support app improvements.</p>
-                    <div style={{ position: 'absolute', bottom: -6, left: '50%', transform: 'translateX(-50%)', width: 10, height: 10, background: '#fff', border: '1px solid #e5e7eb', borderTop: 'none', borderLeft: 'none', rotate: '45deg' }} />
-                  </div>
-                )}
-              </span>
-            </span>
-            <span style={{ fontWeight: 600 }}>₹{platformFee}</span>
-          </div>
-        </div>
-        {(savings > 0 || depositPaid > 0) && (
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem' }}>
-              <span style={{ color: '#374151' }}>Discounts</span>
-              <span style={{ color: '#007600', fontWeight: 600 }}>−₹{(savings + depositPaid).toLocaleString('en-IN')}</span>
+
+        {/* Item list */}
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid #e5e7eb' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: '0.82rem', color: '#0f1111', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {item.name}
+              </p>
+              <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: 0 }}>
+                ₹{price.toLocaleString('en-IN')} × {qty}
+              </p>
             </div>
-            {savings > 0 && (
-              <div style={{ paddingLeft: 10, marginTop: 4, display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#6b7280' }}>
-                <span style={{ borderBottom: '1px dotted #d1d5db' }}>{item.hasGroupDeal ? 'Group Deal Discount' : 'Product Discount'}</span>
-                <span style={{ color: '#007600' }}>−₹{savings.toLocaleString('en-IN')}</span>
-              </div>
-            )}
-            {depositPaid > 0 && (
-              <div style={{ paddingLeft: 10, marginTop: 4, display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#6b7280' }}>
-                <span style={{ borderBottom: '1px dotted #d1d5db' }}>Deposit Pre-paid</span>
-                <span style={{ color: '#7c3aed' }}>−₹{depositPaid.toLocaleString('en-IN')}</span>
-              </div>
-            )}
+            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#0f1111', flexShrink: 0 }}>
+              ₹{lineTotal.toLocaleString('en-IN')}
+            </span>
           </div>
-        )}
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1rem', color: '#0f1111', paddingTop: 10, borderTop: '1px solid #e5e7eb', marginBottom: 8 }}>
-          <span>Total Amount</span>
-          <span>₹{total.toLocaleString('en-IN')}</span>
         </div>
-        {(savings + depositPaid) > 0 && (
-          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 4, padding: '8px 12px', fontSize: '0.8rem', color: '#15803d', fontWeight: 600, textAlign: 'center', marginBottom: 12 }}>
-            You will save ₹{(savings + depositPaid).toLocaleString('en-IN')} on this order
+
+        {/* Totals */}
+        <div style={{ padding: '14px 18px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#374151', marginBottom: 8 }}>
+            <span>Items ({qty})</span>
+            <span>₹{lineTotal.toLocaleString('en-IN')}</span>
           </div>
-        )}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 0', borderTop: '1px solid #f3f4f6', fontSize: '0.75rem', color: '#6b7280' }}>
-          <span style={{ fontSize: '1rem', flexShrink: 0 }}>🛡️</span>
-          <span>Safe and secure payments. Easy returns. 100% Authentic products.</span>
+
+          {savings > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#007600', fontWeight: 600, marginBottom: 8 }}>
+              <span>{item.hasGroupDeal ? 'Group Deal Savings' : 'Product Discount'}</span>
+              <span>−₹{savings.toLocaleString('en-IN')}</span>
+            </div>
+          )}
+
+          {depositPaid > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#7c3aed', fontWeight: 600, marginBottom: 8 }}>
+              <span>Deposit Pre-paid</span>
+              <span>−₹{depositPaid.toLocaleString('en-IN')}</span>
+            </div>
+          )}
+
+          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 10, marginBottom: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#374151', marginBottom: 6 }}>
+              <span>Delivery Charge</span>
+              <span style={{ fontWeight: 600 }}>
+                {deliveryCharge === null
+                  ? <span style={{ color: '#6b7280', fontSize: '0.8rem' }}>Select courier</span>
+                  : deliveryCharge === 0
+                    ? <span style={{ color: '#007600' }}>FREE</span>
+                    : `₹${deliveryCharge}`
+                }
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#374151', marginBottom: 4 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                Platform Fee
+                <span
+                  style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
+                  onMouseEnter={() => setShowFees(true)}
+                  onMouseLeave={() => setShowFees(false)}
+                >
+                  <span style={{ width: 14, height: 14, borderRadius: '50%', background: '#6b7280', color: '#fff', fontSize: '0.65rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'default', userSelect: 'none' }}>i</span>
+                  {showFees && (
+                    <div style={{ position: 'absolute', bottom: '120%', left: '50%', transform: 'translateX(-50%)', width: 220, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px 14px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 999, pointerEvents: 'none' }}>
+                      <p style={{ fontWeight: 700, fontSize: '0.82rem', color: '#0f1111', marginBottom: 6 }}>Platform Fee</p>
+                      <p style={{ fontSize: '0.78rem', color: '#6b7280', lineHeight: 1.5 }}>A non-refundable fee charged to help keep the platform running smoothly and support app improvements.</p>
+                      <div style={{ position: 'absolute', bottom: -6, left: '50%', transform: 'translateX(-50%)', width: 10, height: 10, background: '#fff', border: '1px solid #e5e7eb', borderTop: 'none', borderLeft: 'none', rotate: '45deg' }} />
+                    </div>
+                  )}
+                </span>
+              </span>
+              <span style={{ fontWeight: 600 }}>₹{platformFee}</span>
+            </div>
+          </div>
+
+          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1.05rem', color: '#0f1111' }}>
+            <span>{depositPaid > 0 ? 'Amount Due' : 'Order Total'}</span>
+            <span style={{ color: depositPaid > 0 ? '#2a5298' : '#0f1111' }}>₹{total.toLocaleString('en-IN')}</span>
+          </div>
+          <p style={{ fontSize: '0.68rem', color: '#6b7280', marginTop: 4 }}>Inclusive of all taxes</p>
+          {depositPaid > 0 && (
+            <p style={{ fontSize: '0.68rem', color: '#7c3aed', marginTop: 2, fontWeight: 600 }}>
+              ₹{depositPaid.toLocaleString('en-IN')} group deal deposit already paid — deducted above
+            </p>
+          )}
+
+          {/* Payment info */}
+          <div style={{ marginTop: 14, background: '#f4f6fa', borderRadius: 4, padding: '10px 12px', fontSize: '0.78rem', color: '#374151', display: 'flex', alignItems: 'center', gap: 8 }}>
+            {address.paymentMethod === 'COD'
+              ? <><span>💵</span><span>You pay <strong>₹{total.toLocaleString('en-IN')}</strong> on delivery</span></>
+              : <><span>🔒</span><span>Secure payment via <strong>Cashfree</strong></span></>
+            }
+          </div>
         </div>
+      </div>
+
+      {/* Trust badges */}
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '14px 18px', marginTop: 12 }}>
+        {[
+          ['✅', '100% Secure Checkout'],
+          ['🔄', '7-Day Easy Returns'],
+          ['🚚', 'Fast & Reliable Delivery'],
+          ['📦', 'Quality Certified Products'],
+        ].map(([icon, label]) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.78rem', color: '#374151', marginBottom: 8 }}>
+            <span>{icon}</span>
+            <span>{label}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -475,17 +547,29 @@ export default function BuyNow() {
               )}
             </div>
 
-            {/* ── ORDER SUMMARY (item + inline courier card grid) ── */}
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '20px 24px', marginBottom: 16 }}>
-              <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#0f1111', margin: '0 0 18px' }}>
-                Order Summary
-              </h2>
+            {/* ── ORDER SUMMARY (item + inline courier card grid) — mirrors Checkout.jsx ── */}
+            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,0.05)', overflow: 'hidden', marginBottom: 12 }}>
+              <div style={{ background: '#1e3c72', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: '1.05rem' }}></span>
+                  Order Summary ({qty} {qty === 1 ? 'item' : 'items'})
+                </h2>
+                {savings > 0 && (
+                  <span style={{ background: '#16a34a', color: '#fff', fontSize: '0.75rem', fontWeight: 700, padding: '4px 12px', borderRadius: 99, whiteSpace: 'nowrap' }}>
+                    🎉 You're saving ₹{savings.toLocaleString('en-IN')}
+                  </span>
+                )}
+              </div>
+
+              <div style={{ padding: '20px 24px', background: '#f5f8ff' }}>
 
               {!addrDone && (
                 <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 4, padding: '10px 14px', fontSize: '0.8rem', color: '#92400e', marginBottom: 14 }}>
                   ⓘ Add your delivery address above to see available couriers.
                 </div>
               )}
+
+              <div style={{ padding: '16px 0' }}>
 
               {/* Product row */}
               <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: 14, alignItems: 'center' }}>
@@ -616,7 +700,10 @@ export default function BuyNow() {
                   })()}
                 </div>
               )}
+              </div>
+              </div>
             </div>
+
 
             {/* ── PAYMENT METHOD ── */}
             <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '20px 24px', marginBottom: 16 }}>
@@ -626,31 +713,36 @@ export default function BuyNow() {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
                 {[
-                  { val: 'COD',    icon: '💵', label: 'Cash on Delivery', sub: 'Pay when your order arrives at your door', badge: null },
-                  { val: 'Online', icon: '💳', label: 'Pay Online',        sub: 'UPI · Credit/Debit Card · Net Banking · Wallets via Cashfree', badge: 'Instant confirmation' },
-                ].map(({ val, icon, label, sub, badge }) => {
+                  { val: 'COD',    icon: '💵', label: 'Cash on Delivery', sub: 'Pay when your order arrives at your door', badge: null,
+                    allowed: codAllowed, disabledMsg: 'Cash on delivery is not available for this product' },
+                  { val: 'Online', icon: '💳', label: 'Pay Online',        sub: 'UPI · Credit/Debit Card · Net Banking · Wallets via Cashfree', badge: 'Instant confirmation',
+                    allowed: onlineAllowed, disabledMsg: 'Online payment is not available for this product' },
+                ].map(({ val, icon, label, sub, badge, allowed, disabledMsg }) => {
                   const selected = address.paymentMethod === val;
                   return (
                     <label key={val}
-                      onClick={() => set('paymentMethod', val)}
+                      onClick={() => allowed ? set('paymentMethod', val) : toast.error(disabledMsg)}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px',
-                        border: `2px solid ${selected ? '#2a5298' : '#e5e7eb'}`,
-                        borderRadius: 4, cursor: 'pointer',
-                        background: selected ? '#eef2ff' : '#fff',
+                        border: `2px solid ${selected && allowed ? '#2a5298' : '#e5e7eb'}`,
+                        borderRadius: 4, cursor: allowed ? 'pointer' : 'not-allowed',
+                        background: !allowed ? '#f9fafb' : (selected ? '#eef2ff' : '#fff'),
+                        opacity: allowed ? 1 : 0.6,
                         transition: 'all 0.15s',
                       }}
                     >
-                      <div style={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${selected ? '#2a5298' : '#d1d5db'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: '#fff' }}>
-                        {selected && <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#2a5298' }} />}
+                      <div style={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${selected && allowed ? '#2a5298' : '#d1d5db'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: '#fff' }}>
+                        {selected && allowed && <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#2a5298' }} />}
                       </div>
                       <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>{icon}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ fontWeight: 600, fontSize: '0.92rem', color: '#0f1111' }}>{label}</span>
-                          {badge && <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#dcfce7', color: '#15803d', padding: '2px 7px', borderRadius: 3 }}>{badge}</span>}
+                          {badge && allowed && <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#dcfce7', color: '#15803d', padding: '2px 7px', borderRadius: 3 }}>{badge}</span>}
                         </div>
-                        <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 2 }}>{sub}</div>
+                        <div style={{ fontSize: '0.78rem', color: allowed ? '#6b7280' : '#dc2626', marginTop: 2 }}>
+                          {allowed ? sub : disabledMsg}
+                        </div>
                       </div>
                     </label>
                   );
@@ -661,7 +753,7 @@ export default function BuyNow() {
               <button
                 type="button"
                 onClick={handlePlaceOrder}
-                disabled={placing}
+                disabled={placing || (address.paymentMethod === 'COD' ? !codAllowed : !onlineAllowed)}
                 style={{
                   width: '100%', padding: '13px',
                   background: placing ? '#e5e7eb' : '#f0c14b',

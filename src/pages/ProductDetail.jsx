@@ -46,6 +46,13 @@ function extractBrand(name = '') {
   return words[0]?.toLowerCase() || '';
 }
 
+// Turn a specs key like "skin_type" into a readable label like "Skin Type"
+function specLabel(key = '') {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
 /* ─── styles ─── */
 const S = {
   page: {
@@ -76,7 +83,7 @@ const S = {
     display: 'grid',
     gridTemplateColumns: '500px 1fr 280px',
     gap: 20,
-    alignItems: 'flex-start',
+    alignItems: 'stretch',
     marginBottom: 24,
   },
   imageCol: {
@@ -492,6 +499,29 @@ const S = {
     lineHeight: 1.8,
     fontSize: '0.9rem',
     color: '#374151',
+  },
+  specsGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '4px 24px',
+  },
+  specsRow: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+    padding: '12px 0',
+    borderBottom: '1px solid #f3f4f6',
+    fontSize: '1.05rem',
+  },
+  specsLabel: {
+    color: '#6b7280',
+    minWidth: 120,
+    flexShrink: 0,
+  },
+  specsValue: {
+    color: '#0f1111',
+    fontWeight: 700,
+    fontSize: '1.05rem',
   },
   reviewCard: {
     background: '#fff',
@@ -1240,20 +1270,6 @@ export default function ProductDetail() {
               />
             )}
 
-            {/* About this item */}
-            <div style={{ marginBottom: 14 }}>
-              <p style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f1111', marginBottom: 10 }}>
-                About this item
-              </p>
-              {product.description ? (
-                <p style={{ fontSize: '0.88rem', lineHeight: 1.7, color: '#374151' }}>
-                  {product.description}
-                </p>
-              ) : (
-                <p style={{ fontSize: '0.88rem', color: '#6b7280' }}>No description available.</p>
-              )}
-            </div>
-
             {/* Feature bullets */}
             <ul style={S.featuresList}>
               {features.map((f, i) => (
@@ -1421,6 +1437,22 @@ export default function ProductDetail() {
             <div style={S.descCard}>
               <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f1111', marginBottom: 16 }}>Product Description</h2>
               <p style={{ lineHeight: 1.8, color: '#374151' }}>{product.description || 'No description available.'}</p>
+
+              {product.specs && Object.keys(product.specs).length > 0 && (
+                <>
+                  <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f1111', margin: '24px 0 16px' }}>Product Details</h2>
+                  <div style={S.specsGrid}>
+                    {Object.entries(product.specs)
+                      .filter(([key, value]) => value !== '' && value != null && !key.toLowerCase().startsWith('ship'))
+                      .map(([key, value]) => (
+                        <div key={key} style={S.specsRow}>
+                          <span style={S.specsLabel}>{specLabel(key)}</span>
+                          <span style={S.specsValue}>{String(value)}</span>
+                        </div>
+                      ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
 
