@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import SessionGuard from './components/SessionGuard.jsx';
+import LoginNudge   from './components/LoginNudge.jsx';
 import Header from './components/Header.jsx';
 import Footer from './components/Footer.jsx';
 
@@ -13,6 +14,7 @@ import Products      from './pages/Products.jsx';
 import ProductDetail from './pages/ProductDetail.jsx';
 import Cart          from './pages/Cart.jsx';
 import Checkout      from './pages/Checkout.jsx';
+import BuyNow        from './pages/BuyNow.jsx';
 import Orders        from './pages/Orders.jsx';
 import OrderDetail   from './pages/OrderDetail.jsx';
 import Invoice        from './pages/Invoice.jsx';
@@ -51,6 +53,7 @@ function PublicLayout() {
       <Header />
       <Outlet />
       <Footer />
+      <LoginNudge />
     </>
   );
 }
@@ -83,6 +86,7 @@ function AppRoutes() {
             <Route path="/campaigns/:id"  element={<CampaignDetail />} />
             <Route path="/cart"           element={<Cart />} />
             <Route path="/checkout"       element={<Checkout />} />
+            <Route path="/buy-now"        element={<BuyNow />} />
             <Route path="/orders"         element={<Orders />} />
             <Route path="/order/:id"      element={<OrderDetail />} />
             <Route path="/invoice/:id"    element={<Invoice />} />

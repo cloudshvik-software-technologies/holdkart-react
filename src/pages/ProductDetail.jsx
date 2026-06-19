@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { productService, cartService, wishlistService, reviewService, campaignService } from '../services/index.js';
+import { productService, cartService, wishlistService, reviewService, campaignService, profileService } from '../services/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import StarRating from '../components/StarRating.jsx';
 import JoinDealModal from '../components/JoinDealModal.jsx';
@@ -25,6 +25,32 @@ function resolveSellerImg(url) {
     ? url.replace('/uploads', '/seller-uploads')
     : `/seller-uploads${url.startsWith('/') ? '' : '/'}${url}`;
   return normalised;
+}
+
+/* ─── Earphone keyword detection ─── */
+const EARPHONE_KEYWORDS = [
+  'earpod', 'earphone', 'earbud', 'earbuds', 'airpod', 'tws', 'in-ear',
+  'noise cancelling', 'noise canceling', 'wireless earphone', 'bluetooth earphone',
+  'headphone', 'headphones', 'headset', 'neckband', 'buds', 'earpiece',
+];
+
+function isEarphoneProduct(name = '') {
+  const lower = name.toLowerCase();
+  return EARPHONE_KEYWORDS.some(kw => lower.includes(kw));
+}
+
+// Extract a rough "brand" from the product name (first 1-2 words)
+function extractBrand(name = '') {
+  const words = name.trim().split(/\s+/);
+  // Common brand indicators — use first word as brand
+  return words[0]?.toLowerCase() || '';
+}
+
+// Turn a specs key like "skin_type" into a readable label like "Skin Type"
+function specLabel(key = '') {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
 }
 
 /* ─── styles ─── */
@@ -55,9 +81,9 @@ const S = {
   },
   productGrid: {
     display: 'grid',
-    gridTemplateColumns: '340px 1fr 280px',
+    gridTemplateColumns: '500px 1fr 280px',
     gap: 20,
-    alignItems: 'flex-start',
+    alignItems: 'stretch',
     marginBottom: 24,
   },
   imageCol: {
@@ -474,6 +500,29 @@ const S = {
     fontSize: '0.9rem',
     color: '#374151',
   },
+  specsGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '4px 24px',
+  },
+  specsRow: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+    padding: '12px 0',
+    borderBottom: '1px solid #f3f4f6',
+    fontSize: '1.05rem',
+  },
+  specsLabel: {
+    color: '#6b7280',
+    minWidth: 120,
+    flexShrink: 0,
+  },
+  specsValue: {
+    color: '#0f1111',
+    fontWeight: 700,
+    fontSize: '1.05rem',
+  },
   reviewCard: {
     background: '#fff',
     border: '1px solid #e5e7eb',
@@ -487,14 +536,19 @@ const S = {
    GROUP BUY SECTION
 ─────────────────────────────────────────────────────────── */
 function GroupBuySection({ product, localHold, onJoin, onLeave, onAddProduct, joinLoading, hasJoined }) {
-  const { holdTarget, retailPrice } = product;
+  const { holdTarget, holdPrice, retailPrice } = product;
   if (!holdTarget || holdTarget <= 0) return null;
 
+  // holdPrice is the absolute deal price; holdTarget is the number of slots needed
+  const finalPrice      = holdPrice > 0 ? holdPrice : retailPrice;
+  const discountPctFull = retailPrice > 0 ? Math.round((1 - finalPrice / retailPrice) * 100) : 0;
   const safeHold        = Math.min(localHold, holdTarget);
-  const discountedPrice = Math.round(retailPrice * (1 - safeHold / 100));
-  const finalPrice      = Math.round(retailPrice * (1 - holdTarget / 100));
   const pct             = Math.round((safeHold / holdTarget) * 100);
   const remaining       = holdTarget - safeHold;
+  // Current effective price scales toward deal price as more people join
+  const discountedPrice = safeHold > 0
+    ? Math.round(retailPrice - (retailPrice - finalPrice) * (safeHold / holdTarget))
+    : retailPrice;
 
   return (
     <div style={S.groupDealBox}>
@@ -513,7 +567,7 @@ function GroupBuySection({ product, localHold, onJoin, onLeave, onAddProduct, jo
         <span style={{ fontWeight: 700, color: '#0f1111' }}>Best price on hold</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontWeight: 800, color: '#dc2626' }}>₹{finalPrice.toLocaleString('en-IN')}</span>
-          <span style={{ background: '#dc2626', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: '0.75rem' }}>{holdTarget}% off</span>
+          <span style={{ background: '#dc2626', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: '0.75rem' }}>{discountPctFull}% off</span>
         </div>
       </div>
 
@@ -560,6 +614,9 @@ export default function ProductDetail() {
   const [product, setProduct]   = useState(null);
   const [reviews, setReviews]         = useState([]);
   const [showAllReviews, setShowAllReviews] = useState(false);
+  const [lightbox, setLightbox] = useState(null); // { images: [...], index: 0, isReview: bool }
+  const [productLightbox, setProductLightbox] = useState(null); // { index: 0 }
+  const [similarProducts, setSimilarProducts] = useState([]);
   const [mainImg, setMainImg]         = useState('');
   const [qty, setQty]           = useState(1);
   const [loading, setLoading]   = useState(true);
@@ -571,6 +628,9 @@ export default function ProductDetail() {
   const [reviewImagePreviews, setReviewImagePreviews] = useState([]); // data-URL previews
   const fileInputRef = useRef(null);
 
+  const [recentlyViewed, setRecentlyViewed] = useState([]);
+  const [youMayAlsoLike, setYouMayAlsoLike] = useState([]);
+
   const [activeCampaign, setActiveCampaign] = useState(null);
   const [hasJoined, setHasJoined]           = useState(false);
   const [joinLoading, setJoinLoading]       = useState(false);
@@ -578,6 +638,12 @@ export default function ProductDetail() {
   const [showJoinModal, setShowJoinModal]   = useState(false);
   const [isAddMore, setIsAddMore]           = useState(false);
   const [campaignPaused, setCampaignPaused] = useState(false); // true when seller has paused the campaign
+  const [addedToCart, setAddedToCart] = useState(false);
+  const [deliveryAddress, setDeliveryAddress] = useState(null); // { address, city, state, pincode, name }
+  const [deliveryDate, setDeliveryDate] = useState(null);
+  const [deliveryLoading, setDeliveryLoading] = useState(false);
+  const [showAddressModal, setShowAddressModal] = useState(false);
+  const [manualPincode, setManualPincode] = useState('');
   const pollRef                             = useRef(null);
 
   // Poll campaign status every 4s while user has joined — redirect all participants when deal completes
@@ -631,7 +697,7 @@ export default function ProductDetail() {
     setProduct(p);
     setLocalHold(p.currentHold || 0);
     setMainImg(p.images?.[0] || '');
-    setReviews(Array.isArray(r) ? r : []);
+    setReviews((Array.isArray(r) ? r : []).map(rv => ({ ...rv, likes: rv.likes ?? 0, userVote: rv.userVote ?? null })));
     return p;
   };
 
@@ -671,17 +737,110 @@ export default function ProductDetail() {
       try {
         const p = await loadProduct();
         await loadCampaignStatus(p);
-        // Check if the current customer has purchased this product (for review eligibility)
-        if (isAuthenticated) {
+        // Fetch similar products with smart earphone-aware filtering
+        if (p?.category) {
           try {
-            const { data } = await reviewService.canReview(p.productId);
-            setCanWriteReview(data?.canReview === true);
-          } catch { setCanWriteReview(false); }
+            const res = await productService.listProducts({ category: p.category, limit: 50 });
+            const items = Array.isArray(res) ? res : (res?.products || res?.data || []);
+            const others = items.filter(item => String(item.productId) !== String(p.productId));
+
+            const currentIsEarphone = isEarphoneProduct(p.name);
+
+            if (currentIsEarphone) {
+              // Filter to earphone-type products only
+              const earphones = others.filter(item => isEarphoneProduct(item.name));
+              const currentBrand = extractBrand(p.name);
+
+              // Group 1: same brand, same seller
+              const sameBrandSameSeller = earphones.filter(item =>
+                extractBrand(item.name) === currentBrand && item.sellerId === p.sellerId
+              );
+              // Group 2: same brand, different seller
+              const sameBrandDiffSeller = earphones.filter(item =>
+                extractBrand(item.name) === currentBrand && item.sellerId !== p.sellerId
+              );
+              // Group 3: different brand
+              const otherBrands = earphones.filter(item =>
+                extractBrand(item.name) !== currentBrand
+              );
+
+              const sorted = [
+                ...sameBrandSameSeller,
+                ...sameBrandDiffSeller,
+                ...otherBrands,
+              ].slice(0, 16);
+
+              setSimilarProducts(sorted);
+            } else {
+              setSimilarProducts(others.slice(0, 12));
+            }
+          } catch { /* non-critical */ }
         }
+        // Track this product in Recently Viewed (localStorage, max 10)
+        try {
+          const stored = JSON.parse(localStorage.getItem('hk_recently_viewed') || '[]');
+          const entry = {
+            productId: p.productId, name: p.name, retailPrice: p.retailPrice,
+            holdTarget: p.holdTarget, images: p.images, avgRating: p.avgRating,
+            reviewCount: p.reviewCount, category: p.category,
+          };
+          const filtered = stored.filter(x => String(x.productId) !== String(p.productId));
+          const updated = [entry, ...filtered].slice(0, 10);
+          localStorage.setItem('hk_recently_viewed', JSON.stringify(updated));
+          // Show all except current
+          setRecentlyViewed(updated.filter(x => String(x.productId) !== String(p.productId)));
+        } catch { /* localStorage unavailable */ }
+
+        // Track view server-side for personalised recommendations (logged-in only)
+        if (isAuthenticated) {
+          productService.trackProductView?.(p.productId);
+        }
+
+        // You May Also Like — try categories one by one until we collect 10 products
+        try {
+          const allCats = ['Electronics', 'Fashion', 'Beauty', 'Books', 'Health', 'Grocery', 'Sports', 'Toys', 'Automotive'];
+          const otherCats = allCats.filter(c => c.toLowerCase() !== (p.category || '').toLowerCase());
+          // Shuffle so we don't always hit the same category first
+          const shuffled = otherCats.sort(() => Math.random() - 0.5);
+          const collected = [];
+          for (const cat of shuffled) {
+            if (collected.length >= 10) break;
+            try {
+              const res2 = await productService.listProducts({ category: cat, limit: 10 });
+              const items2 = Array.isArray(res2) ? res2 : (res2?.products || res2?.data || []);
+              items2.forEach(item => {
+                if (collected.length < 10 && !collected.find(x => x.productId === item.productId)) {
+                  collected.push(item);
+                }
+              });
+            } catch { /* skip this category */ }
+          }
+          // If still empty, fall back to same category excluding current product
+          if (collected.length === 0) {
+            try {
+              const res3 = await productService.listProducts({ category: p.category, limit: 11 });
+              const items3 = Array.isArray(res3) ? res3 : (res3?.products || res3?.data || []);
+              items3.filter(item => String(item.productId) !== String(p.productId))
+                    .slice(0, 10).forEach(item => collected.push(item));
+            } catch { /* ignore */ }
+          }
+          if (collected.length > 0) setYouMayAlsoLike(collected);
+        } catch { /* non-critical */ }
       } catch { toast.error('Product not found'); navigate('/products'); }
       finally { setLoading(false); }
     })();
-  }, [id, isAuthenticated]);
+  }, [id]);
+
+  // Separately handle auth-dependent data (canReview) without re-fetching the whole product
+  useEffect(() => {
+    if (!isAuthenticated || !product) return;
+    (async () => {
+      try {
+        const { data } = await reviewService.canReview(product.productId);
+        setCanWriteReview(data?.canReview === true);
+      } catch { setCanWriteReview(false); }
+    })();
+  }, [isAuthenticated, product?.productId]);
 
   useEffect(() => {
     if (!isAuthenticated || !product) return;
@@ -695,9 +854,101 @@ export default function ProductDetail() {
     }).catch(() => {});
   }, [isAuthenticated, product?.productId]);
 
+  // Check if this product is already in the cart (persists across page visits / removes)
+  useEffect(() => {
+    if (!isAuthenticated || !product) return;
+    cartService.getCart().then(res => {
+      const items = Array.isArray(res) ? res : (res?.data?.items || res?.data || res?.items || []);
+      const inCart = Array.isArray(items) && items.some(
+        item => String(item.productId) === String(product.productId)
+      );
+      setAddedToCart(inCart);
+    }).catch(() => {});
+  }, [isAuthenticated, product?.productId]);
+
+  // Fetch profile address and then delivery estimate
+  useEffect(() => {
+    if (!product) return;
+    const fetchAddressAndEstimate = async () => {
+      let pincode = null;
+      if (isAuthenticated) {
+        try {
+          const profileRes = await profileService.getProfile();
+          const p = profileRes?.data || profileRes;
+          if (p?.pincode) {
+            setDeliveryAddress({
+              name: p.name || '',
+              address: p.address || '',
+              city: p.city || '',
+              state: p.state || '',
+              pincode: p.pincode,
+            });
+            pincode = p.pincode;
+          }
+        } catch { /* ignore */ }
+      }
+      if (pincode) {
+        setDeliveryLoading(true);
+        try {
+          const res = await fetch(
+            `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081'}/api/customer/product/${product.productId}/delivery-estimate?pincode=${pincode}`
+          );
+          const data = await res.json();
+          if (data?.estimatedDate) {
+            // Parse and format: "2025-06-12" or "12 Jun, Fri" style
+            try {
+              const d = new Date(data.estimatedDate);
+              if (!isNaN(d)) {
+                const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+                const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                setDeliveryDate(`${d.getDate()} ${months[d.getMonth()]}, ${days[d.getDay()]}`);
+              } else {
+                setDeliveryDate(data.estimatedDate);
+              }
+            } catch { setDeliveryDate(data.estimatedDate); }
+          } else {
+            setDeliveryDate(null);
+          }
+        } catch { setDeliveryDate(null); }
+        finally { setDeliveryLoading(false); }
+      }
+    };
+    fetchAddressAndEstimate();
+  }, [isAuthenticated, product?.productId]);
+
+  const handleSelectPincode = async (pincode) => {
+    if (!/^[1-9][0-9]{5}$/.test(pincode)) return;
+    setManualPincode(pincode);
+    setShowAddressModal(false);
+    setDeliveryAddress(prev => ({ ...(prev || {}), pincode }));
+    setDeliveryLoading(true);
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081'}/api/customer/product/${product.productId}/delivery-estimate?pincode=${pincode}`
+      );
+      const data = await res.json();
+      if (data?.estimatedDate) {
+        try {
+          const d = new Date(data.estimatedDate);
+          if (!isNaN(d)) {
+            const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            setDeliveryDate(`${d.getDate()} ${months[d.getMonth()]}, ${days[d.getDay()]}`);
+          } else {
+            setDeliveryDate(data.estimatedDate);
+          }
+        } catch { setDeliveryDate(data.estimatedDate); }
+      } else {
+        setDeliveryDate(null);
+      }
+    } catch { setDeliveryDate(null); }
+    finally { setDeliveryLoading(false); }
+  };
+
   const handleCart = async () => {
     if (!isAuthenticated) { toast.error('Please sign in to add items to cart'); navigate('/login'); return; }
-    try { await cartService.addToCart({ productId: product.productId, quantity: qty }); toast.success('Added to cart!'); }
+    if (addedToCart) { navigate('/cart'); return; }
+    try { await cartService.addToCart({ productId: product.productId, quantity: qty }); toast.success('Added to cart!'); setAddedToCart(true); }
     catch(e) { toast.error(e?.response?.data?.message || 'Failed'); }
   };
 
@@ -836,7 +1087,7 @@ export default function ProductDetail() {
       await reviewService.addReview(formData);
       toast.success('Review submitted!');
       const r = await reviewService.getProductReviews(id);
-      setReviews(Array.isArray(r) ? r : []);
+      setReviews((Array.isArray(r) ? r : []).map(rv => ({ ...rv, likes: rv.likes ?? 0, userVote: rv.userVote ?? null })));
       setReviewForm({ rating: 5, comment: '' });
       setReviewImages([]);
       setReviewImagePreviews([]);
@@ -858,21 +1109,26 @@ export default function ProductDetail() {
   const avgRating    = reviews.length ? (reviews.reduce((a, r) => a + r.rating, 0) / reviews.length) : 0;
   const hasGroupBuy  = product.holdTarget > 0;
   const safeHold     = Math.min(localHold, product.holdTarget || 0);
-  const discountPct  = safeHold;
-  const displayPrice = hasGroupBuy && discountPct > 0
-    ? Math.round(product.retailPrice * (1 - discountPct / 100))
+  // Use holdPrice as the absolute deal price (set by seller on campaign)
+  const bestGroupPrice = hasGroupBuy && product.holdPrice > 0
+    ? product.holdPrice
+    : product.retailPrice;
+  const maxDiscountPct = hasGroupBuy && product.retailPrice > 0
+    ? Math.round((1 - bestGroupPrice / product.retailPrice) * 100)
+    : 0;
+  // Display price scales toward deal price proportionally as slots fill
+  const displayPrice = hasGroupBuy && safeHold > 0 && product.holdTarget > 0
+    ? Math.round(product.retailPrice - (product.retailPrice - bestGroupPrice) * (safeHold / product.holdTarget))
     : product.retailPrice;
   // If the campaign is PAUSED, treat product as out of stock for all customers.
-  // (Existing holders can view the page but cannot buy.)
-  const inStock      = product.stock > 0 && !campaignPaused;
-  const maxDiscountPct = hasGroupBuy ? product.holdTarget : 0;
-  const bestGroupPrice = hasGroupBuy
-    ? Math.round(product.retailPrice * (1 - maxDiscountPct / 100))
-    : product.retailPrice;
+  // remainingStock is the number of units available for regular Add to Cart
+  // (total stock minus slots committed to the active campaign).
+  const remainingStock = product.remainingStock ?? product.stock;
+  const inStock      = remainingStock > 0 && !campaignPaused;
 
   const features = [
     product.category && `Category: ${product.category}`,
-    inStock          && `In Stock: ${product.stock} units available`,
+    inStock          && `In Stock: ${remainingStock} unit${remainingStock !== 1 ? 's' : ''} available`,
     product.warehouseLocation && `Dispatched from: ${product.warehouseLocation}`,
     'Quality Certified by HoldKart',
     '7-Day Returns',
@@ -881,7 +1137,8 @@ export default function ProductDetail() {
   const isNarrow = typeof window !== 'undefined' && window.innerWidth < 900;
 
   return (
-    <div style={S.page}>
+    <React.Fragment>
+      <div style={S.page}>
       {/* Join modal — shared with Home/Products page cards */}
       {showJoinModal && hasGroupBuy && (
         <JoinDealModal
@@ -891,8 +1148,13 @@ export default function ProductDetail() {
           remainingSlots={Math.max(0, product.holdTarget - localHold)}
           onClose={() => setShowJoinModal(false)}
           onJoinSuccess={handleJoinSuccess}
-          campaignAction={isAddMore ? async (qty) => {
-            await campaignService.addToDeal({ productId: product.productId, quantity: qty });
+          campaignAction={isAddMore ? async (qty, paymentInfo = {}) => {
+            await campaignService.addToDeal({
+              productId: product.productId,
+              quantity: qty,
+              cashfreeOrderId: paymentInfo.cashfreeOrderId || null,
+              depositAmount:   paymentInfo.depositAmount   || 0,
+            });
           } : undefined}
         />
       )}
@@ -919,7 +1181,7 @@ export default function ProductDetail() {
         {/* ── 3-column product grid ── */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: isNarrow ? '1fr' : '320px 1fr 268px',
+          gridTemplateColumns: isNarrow ? '1fr' : '500px 1fr 280px',
           gap: 16,
           alignItems: 'flex-start',
           marginBottom: 20,
@@ -927,12 +1189,26 @@ export default function ProductDetail() {
 
           {/* ── Col 1: Images ── */}
           <div style={S.imageCol}>
-            <img
-              src={resolveSellerImg(mainImg)}
-              alt={product.name}
-              style={S.mainImg}
-              onError={e => { e.target.src = FALLBACK_IMG; }}
-            />
+            <div
+              style={{ position: 'relative', cursor: 'zoom-in' }}
+              onClick={() => setProductLightbox({ index: product.images?.indexOf(mainImg) >= 0 ? product.images.indexOf(mainImg) : 0 })}
+            >
+              <img
+                src={resolveSellerImg(mainImg)}
+                alt={product.name}
+                style={S.mainImg}
+                onError={e => { e.target.src = FALLBACK_IMG; }}
+              />
+            </div>
+            {/* Click to see full view */}
+            <div
+              onClick={() => setProductLightbox({ index: product.images?.indexOf(mainImg) >= 0 ? product.images.indexOf(mainImg) : 0 })}
+              style={{ textAlign: 'center', marginBottom: 10, cursor: 'pointer' }}
+            >
+              <span style={{ fontSize: '0.8rem', color: '#2a5298', textDecoration: 'underline', fontWeight: 500 }}>
+                Click to see full view
+              </span>
+            </div>
             {product.images?.length > 1 && (
               <div style={S.thumbRow}>
                 {product.images.map((img, i) => (
@@ -941,6 +1217,7 @@ export default function ProductDetail() {
                     src={resolveSellerImg(img)}
                     alt=""
                     onClick={() => setMainImg(img)}
+                    onMouseEnter={() => setMainImg(img)}
                     style={{ ...S.thumb, ...(mainImg === img ? S.thumbActive : {}) }}
                     onError={e => { e.target.src = FALLBACK_IMG; }}
                   />
@@ -971,7 +1248,7 @@ export default function ProductDetail() {
                   <span style={S.priceSymbol}>₹</span>
                   {displayPrice.toLocaleString('en-IN')}
                 </span>
-                {discountPct > 0 && (
+                {maxDiscountPct > 0 && (
                   <span style={{ fontSize: '0.88rem', color: '#9ca3af', textDecoration: 'line-through' }}>
                     ₹{product.retailPrice.toLocaleString('en-IN')}
                   </span>
@@ -993,20 +1270,6 @@ export default function ProductDetail() {
               />
             )}
 
-            {/* About this item */}
-            <div style={{ marginBottom: 14 }}>
-              <p style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f1111', marginBottom: 10 }}>
-                About this item
-              </p>
-              {product.description ? (
-                <p style={{ fontSize: '0.88rem', lineHeight: 1.7, color: '#374151' }}>
-                  {product.description}
-                </p>
-              ) : (
-                <p style={{ fontSize: '0.88rem', color: '#6b7280' }}>No description available.</p>
-              )}
-            </div>
-
             {/* Feature bullets */}
             <ul style={S.featuresList}>
               {features.map((f, i) => (
@@ -1025,27 +1288,67 @@ export default function ProductDetail() {
               {displayPrice.toLocaleString('en-IN')}
             </p>
 
-            {/* Delivery */}
+            {/* Delivery details */}
             <div style={{ marginBottom: 10 }}>
-              <div style={S.deliveryRow}>
-                <span style={S.deliveryLabel}>Delivery:</span>
-                <span style={S.deliveryVal}>FREE delivery available</span>
+              {/* Address row */}
+              <div style={{ fontSize: '0.82rem', color: '#374151', marginBottom: 8, background: '#f8faff', border: '1px solid #e0e7ff', borderRadius: 6, padding: '8px 10px' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                  <span style={{ fontSize: '1rem', marginTop: 1 }}></span>
+                  <div style={{ flex: 1 }}>
+                    {deliveryAddress?.pincode ? (
+                      <div>
+                        <span style={{ fontWeight: 700, color: '#1e3c72' }}>
+                          {deliveryAddress.name ? deliveryAddress.name.split(' ')[0].toUpperCase() + '  ' : ''}
+                        </span>
+                        <span style={{ color: '#374151' }}>
+                          {[deliveryAddress.address, deliveryAddress.city, deliveryAddress.state, deliveryAddress.pincode].filter(Boolean).join(', ')}
+                        </span>
+                        <span
+                          onClick={() => setShowAddressModal(true)}
+                          style={{ marginLeft: 8, color: '#2a5298', cursor: 'pointer', fontSize: '0.78rem', textDecoration: 'underline' }}
+                        >Change</span>
+                      </div>
+                    ) : (
+                      <div>
+                        <span style={{ color: '#6b7280' }}>Location not set </span>
+                        <span
+                          onClick={() => setShowAddressModal(true)}
+                          style={{ color: '#2a5298', cursor: 'pointer', fontWeight: 600 }}
+                        >Select delivery location ›</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {/* Delivery date */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, paddingTop: 6, borderTop: '1px solid #e0e7ff' }}>
+                  <span style={{ fontSize: '1rem' }}></span>
+                  {deliveryLoading ? (
+                    <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>Checking delivery…</span>
+                  ) : deliveryDate ? (
+                    <span style={{ fontWeight: 700, color: '#111' }}>Delivery by {deliveryDate}</span>
+                  ) : deliveryAddress?.pincode ? (
+                    <span style={{ color: '#b45309', fontSize: '0.8rem' }}>Delivery estimate unavailable</span>
+                  ) : (
+                    <span style={{ color: '#6b7280', fontSize: '0.8rem' }}>Enter pincode to see delivery date</span>
+                  )}
+                </div>
               </div>
+
+              {/* Sold by */}
+              {product.sellerName && (
+                <div style={{ fontSize: '0.82rem', color: '#374151', marginBottom: 4 }}>
+                  <span style={{ color: '#6b7280' }}>Sold by: </span>
+                  <span style={{ color: '#2a5298', fontWeight: 600 }}>{product.sellerName}</span>
+                </div>
+              )}
               <div style={S.deliveryRow}>
                 <span style={S.deliveryLabel}>Ships from:</span>
                 <span>HoldKart Warehouse</span>
-              </div>
-              <div style={S.deliveryRow}>
-                <span style={S.deliveryLabel}>Sold by:</span>
-                <span style={{ color: '#2a5298', fontWeight: 600 }}>HoldKart</span>
               </div>
             </div>
 
             <div style={S.divider} />
 
-            <p style={S.stockStatus(inStock)}>
-              {inStock ? 'In Stock' : campaignPaused ? 'Out of Stock' : 'Currently Unavailable'}
-            </p>
             {campaignPaused && (
               <p style={{ fontSize: '0.78rem', color: '#b45309', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 4, padding: '8px 12px', marginBottom: 10 }}>
                 This campaign is temporarily paused. New purchases are unavailable right now.
@@ -1054,24 +1357,12 @@ export default function ProductDetail() {
 
             {inStock && (
               <>
-                {/* Qty */}
-                <div style={S.qtyRow}>
-                  <span>Qty:</span>
-                  <div style={S.qtyCtrl}>
-                    <button style={S.qtyBtn} onClick={() => setQty(q => Math.max(1, q - 1))}>−</button>
-                    <span style={S.qtyVal}>{qty}</span>
-                    <button style={S.qtyBtn} onClick={() => setQty(q => Math.min(product.stock || 99, q + 1))}>+</button>
-                  </div>
-                  <span style={{ fontSize: '0.78rem', color: '#6b7280' }}>
-                    (max {product.stock})
-                  </span>
-                </div>
 
                 {/* Buy box buttons */}
                 {hasGroupBuy && hasJoined ? (
                   <>
                     <button style={S.addToCartBtn} onClick={handleCart}>
-                      Add to Cart
+                      {addedToCart ? 'Go to Cart' : 'Add to Cart'}
                     </button>
                     <p style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 4, marginBottom: 10, textAlign: 'center' }}>
                       Buys at regular price with no discount
@@ -1091,7 +1382,7 @@ export default function ProductDetail() {
                     {hasGroupBuy ? (
                       <>
                         <button style={S.addToCartBtn} onClick={handleCart}>
-                          Add to Cart
+                          {addedToCart ? 'Go to Cart' : 'Add to Cart'}
                         </button>
                         <p style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 4, marginBottom: 10, textAlign: 'center' }}>
                           Buys at regular price with no discount
@@ -1109,7 +1400,7 @@ export default function ProductDetail() {
                       </>
                     ) : (
                       <>
-                        <button style={S.addToCartBtn} onClick={handleCart}>Add to Cart</button>
+                        <button style={S.addToCartBtn} onClick={handleCart}>{addedToCart ? 'Go to Cart' : 'Add to Cart'}</button>
                         <button style={S.buyNowBtn} onClick={handleBuyNow}>Buy Now</button>
                       </>
                     )}
@@ -1146,6 +1437,22 @@ export default function ProductDetail() {
             <div style={S.descCard}>
               <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f1111', marginBottom: 16 }}>Product Description</h2>
               <p style={{ lineHeight: 1.8, color: '#374151' }}>{product.description || 'No description available.'}</p>
+
+              {product.specs && Object.keys(product.specs).length > 0 && (
+                <>
+                  <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f1111', margin: '24px 0 16px' }}>Product Details</h2>
+                  <div style={S.specsGrid}>
+                    {Object.entries(product.specs)
+                      .filter(([key, value]) => value !== '' && value != null && !key.toLowerCase().startsWith('ship'))
+                      .map(([key, value]) => (
+                        <div key={key} style={S.specsRow}>
+                          <span style={S.specsLabel}>{specLabel(key)}</span>
+                          <span style={S.specsValue}>{String(value)}</span>
+                        </div>
+                      ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -1276,42 +1583,163 @@ export default function ProductDetail() {
                 <>
                   {(showAllReviews ? reviews : reviews.slice(0, 2)).map(r => (
                     <div key={r.id} style={S.reviewCard}>
+                      {/* Header: avatar + name + stars + date */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                         <div>
-                          <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f1111', marginBottom: 4 }}>
-                            {r.customerName || 'Customer'}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                            <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#2a5298', color: '#fff',
+                              fontWeight: 700, fontSize: '0.85rem', display: 'flex', alignItems: 'center',
+                              justifyContent: 'center', flexShrink: 0 }}>
+                              {(r.customerName || 'C')[0].toUpperCase()}
+                            </div>
+                            <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f1111' }}>
+                              {r.customerName || 'Customer'}
+                            </span>
                           </div>
-                          <StarRating rating={r.rating} size="0.85rem" />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <StarRating rating={r.rating} size="0.85rem" />
+                            <span style={{ fontSize: '0.72rem', background: '#f0fdf4', color: '#15803d',
+                              border: '1px solid #bbf7d0', borderRadius: 4, padding: '1px 6px', fontWeight: 600 }}>
+                              ✓ Verified Purchase
+                            </span>
+                          </div>
                         </div>
                         <span style={{ color: '#6b7280', fontSize: '0.78rem' }}>
                           {new Date(r.created_date).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}
                         </span>
                       </div>
-                      <p style={{ color: '#374151', fontSize: '0.88rem', lineHeight: 1.7, marginTop: 8 }}>{r.comment}</p>
-                      {/* Review images */}
+
+                      {/* Comment */}
+                      {r.comment && (
+                        <p style={{ color: '#374151', fontSize: '0.88rem', lineHeight: 1.7, marginTop: 8 }}>{r.comment}</p>
+                      )}
+
+                      {/* Review images — thumbnails with lightbox */}
                       {r.images && r.images.length > 0 && (
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-                          {r.images.map((imgPath, imgIdx) => (
-                            <a key={imgIdx} href={resolveReviewImg(imgPath)} target="_blank" rel="noreferrer"
-                              style={{ display: 'block', width: 72, height: 72, borderRadius: 6, overflow: 'hidden', border: '1px solid #e5e7eb', flexShrink: 0 }}>
-                              <img src={resolveReviewImg(imgPath)} alt={`Review photo ${imgIdx + 1}`}
-                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                onError={e => { e.target.style.display = 'none'; }} />
-                            </a>
-                          ))}
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                          {r.images.map((imgPath, imgIdx) => {
+                            const resolved = resolveReviewImg(imgPath);
+                            const isLast = imgIdx === 3 && r.images.length > 4;
+                            if (imgIdx >= 4) return null;
+                            return (
+                              <div
+                                key={imgIdx}
+                                onClick={() => setLightbox({ images: r.images.map(p => resolveReviewImg(p)), index: imgIdx })}
+                                style={{ position: 'relative', width: 80, height: 80, borderRadius: 8,
+                                  overflow: 'hidden', border: '2px solid #e5e7eb', cursor: 'zoom-in', flexShrink: 0 }}
+                              >
+                                <img src={resolved} alt={`Review photo ${imgIdx + 1}`}
+                                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                                  onError={e => { e.target.parentElement.style.display = 'none'; }} />
+                                {isLast && (
+                                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: '#fff', fontWeight: 700, fontSize: '1rem' }}>
+                                    +{r.images.length - 3}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
+
+                      {/* Like / Dislike */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14,
+                        paddingTop: 12, borderTop: '1px solid #f3f4f6' }}>
+                        <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Helpful?</span>
+                        <button
+                          type="button"
+                          onClick={async (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const reviewId = r.id;
+                            const alreadyLiked = r.userVote === 'like';
+                            // Optimistic update using total count
+                            setReviews(prev => prev.map(rv => {
+                              if (rv.id !== reviewId) return rv;
+                              return {
+                                ...rv,
+                                userVote: alreadyLiked ? null : 'like',
+                                likes: alreadyLiked ? Math.max((rv.likes || 1) - 1, 0) : (rv.likes || 0) + 1,
+                                dislikes: rv.userVote === 'dislike' ? Math.max((rv.dislikes || 1) - 1, 0) : (rv.dislikes || 0),
+                              };
+                            }));
+                            try {
+                              // Server returns { likes, userVote } — interceptor already unwraps res.data
+                              const res = await reviewService.toggleReviewLike(reviewId);
+                              setReviews(prev => prev.map(rv =>
+                                rv.id === reviewId
+                                  ? { ...rv, likes: Number(res.likes), userVote: res.userVote }
+                                  : rv
+                              ));
+                            } catch {
+                              // Revert optimistic update on error
+                              setReviews(prev => prev.map(rv => {
+                                if (rv.id !== reviewId) return rv;
+                                return {
+                                  ...rv,
+                                  userVote: alreadyLiked ? 'like' : null,
+                                  likes: alreadyLiked ? (rv.likes || 0) + 1 : Math.max((rv.likes || 1) - 1, 0),
+                                  dislikes: rv.userVote === 'dislike' ? Math.max((rv.dislikes || 1) - 1, 0) : (rv.dislikes || 0),
+                                };
+                              }));
+                            }
+                          }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px',
+                            border: `1px solid ${r.userVote === 'like' ? '#2a5298' : '#d1d5db'}`,
+                            borderRadius: 20, background: r.userVote === 'like' ? '#eef2ff' : '#fff',
+                            color: r.userVote === 'like' ? '#2a5298' : '#374151',
+                            cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, transition: 'all 0.15s' }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24"
+                            fill={r.userVote === 'like' ? '#2a5298' : 'none'}
+                            stroke={r.userVote === 'like' ? '#2a5298' : '#6b7280'} strokeWidth="2">
+                            <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/>
+                            <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+                          </svg>
+                          {r.likes || 0}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setReviews(prev => prev.map(rv => {
+                              if (rv.id !== r.id) return rv;
+                              const alreadyDisliked = rv.userVote === 'dislike';
+                              return {
+                                ...rv,
+                                userVote: alreadyDisliked ? null : 'dislike',
+                                dislikes: alreadyDisliked ? Math.max((rv.dislikes || 1) - 1, 0) : (rv.dislikes || 0) + 1,
+                                likes:    rv.userVote === 'like' ? Math.max((rv.likes || 1) - 1, 0) : (rv.likes || 0),
+                              };
+                            }));
+                          }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px',
+                            border: `1px solid ${r.userVote === 'dislike' ? '#dc2626' : '#d1d5db'}`,
+                            borderRadius: 20, background: r.userVote === 'dislike' ? '#fef2f2' : '#fff',
+                            color: r.userVote === 'dislike' ? '#dc2626' : '#374151',
+                            cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, transition: 'all 0.15s' }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24"
+                            fill={r.userVote === 'dislike' ? '#dc2626' : 'none'}
+                            stroke={r.userVote === 'dislike' ? '#dc2626' : '#6b7280'} strokeWidth="2">
+                            <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/>
+                            <path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>
+                          </svg>
+                          {r.dislikes || 0}
+                        </button>
+                      </div>
                     </div>
                   ))}
                   {reviews.length > 2 && (
                     <div style={{ textAlign: 'center', marginTop: 8, paddingTop: 16, borderTop: '1px solid #f0f0f0' }}>
                       <button
                         onClick={() => setShowAllReviews(p => !p)}
-                        style={{
-                          background: 'none', border: '1.5px solid #e47911', borderRadius: 20,
+                        style={{ background: 'none', border: '1.5px solid #e47911', borderRadius: 20,
                           color: '#e47911', fontWeight: 700, fontSize: '0.88rem',
-                          padding: '8px 28px', cursor: 'pointer', fontFamily: 'inherit',
-                        }}
+                          padding: '8px 28px', cursor: 'pointer', fontFamily: 'inherit' }}
                       >
                         {showAllReviews ? 'Show less' : `See all ${reviews.length} reviews`}
                       </button>
@@ -1322,7 +1750,611 @@ export default function ProductDetail() {
             </div>
           )}
         </div>
+
+        {/* ── Similar Products (earphone-aware) ── */}
+        {similarProducts.length > 0 && (() => {
+          const currentIsEarphone = isEarphoneProduct(product.name);
+          const currentBrand = extractBrand(product.name);
+
+          // Navigate to product and scroll page to top
+          const goToProduct = (productId) => {
+            window.scrollTo({ top: 0, behavior: 'instant' });
+            navigate(`/product/${productId}`);
+          };
+
+          // Reusable product card — fixed width so exactly 5 fit per row in the grid
+          const renderCard = (item) => {
+            const itemImg = resolveSellerImg(item.images?.[0] || '');
+            const hasDiscount = item.holdTarget > 0;
+            const discountedPrice = hasDiscount
+              ? Math.round(item.retailPrice * (1 - item.holdTarget / 100))
+              : item.retailPrice;
+            return (
+              <div
+                key={item.productId}
+                onClick={() => goToProduct(item.productId)}
+                style={{ background: '#fff', border: '1px solid #e5e7eb',
+                  borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
+                  transition: 'box-shadow 0.15s, transform 0.15s',
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
+                onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.13)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.06)'; e.currentTarget.style.transform = 'none'; }}
+              >
+                <div style={{ width: '100%', aspectRatio: '1', background: '#f9fafb', overflow: 'hidden' }}>
+                  <img src={itemImg} alt={item.name}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                    onError={e => { e.target.src = FALLBACK_IMG; }} />
+                </div>
+                <div style={{ padding: '10px 10px 12px' }}>
+                  <p style={{ fontSize: '0.8rem', color: '#0f1111', fontWeight: 500, lineHeight: 1.35,
+                    marginBottom: 6, display: '-webkit-box', WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                    {item.name}
+                  </p>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#b12704' }}>
+                      ₹{discountedPrice.toLocaleString('en-IN')}
+                    </span>
+                    {hasDiscount && (
+                      <span style={{ fontSize: '0.72rem', color: '#9ca3af', textDecoration: 'line-through' }}>
+                        ₹{item.retailPrice.toLocaleString('en-IN')}
+                      </span>
+                    )}
+                  </div>
+                  {hasDiscount && (
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#15803d', marginTop: 2, display: 'block' }}>
+                      {item.holdTarget}% off (Group Deal)
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          };
+
+          // 5-per-row wrapping grid (no scroll, products wrap to next line)
+          const renderGrid = (items) => (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(5, 1fr)',
+              gap: 12,
+            }}>
+              {items.map(item => renderCard(item))}
+            </div>
+          );
+
+          const brandLabel = currentBrand.charAt(0).toUpperCase() + currentBrand.slice(1);
+
+          // For earphone products, split into 3 groups
+          const sameBrandSameSeller = currentIsEarphone
+            ? similarProducts.filter(item => extractBrand(item.name) === currentBrand && item.sellerId === product.sellerId)
+            : [];
+          const sameBrandDiffSeller = currentIsEarphone
+            ? similarProducts.filter(item => extractBrand(item.name) === currentBrand && item.sellerId !== product.sellerId)
+            : [];
+          const otherBrands = currentIsEarphone
+            ? similarProducts.filter(item => extractBrand(item.name) !== currentBrand)
+            : [];
+
+          return (
+            <div style={{ marginTop: 28 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f1111', margin: 0 }}>
+                  {currentIsEarphone ? '🎧 More Earphones & Headphones' : 'Similar Products'}
+                </h2>
+                <span
+                  onClick={() => navigate(`/products?category=${product.category}`)}
+                  style={{ fontSize: '0.82rem', color: '#2a5298', cursor: 'pointer', textDecoration: 'underline', fontWeight: 600 }}
+                >
+                  See all in {product.category}
+                </span>
+              </div>
+
+              {currentIsEarphone ? (
+                <>
+                  {sameBrandSameSeller.length > 0 && (
+                    <div style={{ marginBottom: 24 }}>
+                      <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#2a5298',
+                        textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10,
+                        borderLeft: '3px solid #2a5298', paddingLeft: 8, margin: '0 0 10px 0' }}>
+                        {brandLabel} — Same Seller
+                      </p>
+                      {renderGrid(sameBrandSameSeller)}
+                    </div>
+                  )}
+                  {sameBrandDiffSeller.length > 0 && (
+                    <div style={{ marginBottom: 24 }}>
+                      <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0369a1',
+                        textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10,
+                        borderLeft: '3px solid #0369a1', paddingLeft: 8, margin: '0 0 10px 0' }}>
+                        {brandLabel} — Other Sellers
+                      </p>
+                      {renderGrid(sameBrandDiffSeller)}
+                    </div>
+                  )}
+                  {otherBrands.length > 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#6b7280',
+                        textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10,
+                        borderLeft: '3px solid #9ca3af', paddingLeft: 8, margin: '0 0 10px 0' }}>
+                        Other Brands
+                      </p>
+                      {renderGrid(otherBrands)}
+                    </div>
+                  )}
+                </>
+              ) : (
+                renderGrid(similarProducts)
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ── Recently Viewed ── */}
+        {recentlyViewed.length > 0 && (() => {
+          const goToProduct = (pid) => { window.scrollTo({ top: 0, behavior: 'instant' }); navigate(`/product/${pid}`); };
+          // Each card is exactly 1/5 of container minus gaps; scroll by one full "page" of 5
+          const CARD_W = 'calc((100% - 48px) / 5)'; // 4 gaps × 12px = 48px
+          const SCROLL_AMT = 900;
+          const rvScrollId = 'rv-scroll-track';
+          return (
+            <div style={{ marginTop: 36 }}>
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#0f1111', margin: 0 }}>Recently Viewed</h2>
+                <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#111', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                  onClick={() => navigate('/products')}>
+                  <span style={{ color: '#fff', fontSize: '1.1rem', lineHeight: 1 }}>→</span>
+                </div>
+              </div>
+
+              {/* Carousel with left/right arrow buttons */}
+              <div style={{ position: 'relative' }}>
+                {/* Left arrow */}
+                <button
+                  onClick={() => document.getElementById(rvScrollId)?.scrollBy({ left: -SCROLL_AMT, behavior: 'smooth' })}
+                  style={{ position: 'absolute', left: -18, top: '42%', transform: 'translateY(-50%)',
+                    width: 36, height: 36, borderRadius: '50%', background: '#fff', border: '1px solid #d1d5db',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)', cursor: 'pointer', fontSize: '1.2rem',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3,
+                    color: '#374151', fontWeight: 700 }}>‹</button>
+
+                {/* Scrollable track — hidden scrollbar, snaps 5 at a time */}
+                <div id={rvScrollId} style={{
+                  display: 'flex', gap: 12, overflowX: 'auto',
+                  scrollbarWidth: 'none', msOverflowStyle: 'none',
+                  paddingBottom: 4,
+                }}>
+                  <style>{`#${rvScrollId}::-webkit-scrollbar{display:none}`}</style>
+
+                  {recentlyViewed.map(item => {
+                    const img = resolveSellerImg(item.images?.[0] || '');
+                    const hasDiscount = item.holdTarget > 0;
+                    const discPrice = hasDiscount ? Math.round(item.retailPrice * (1 - item.holdTarget / 100)) : item.retailPrice;
+                    const discPct = hasDiscount ? item.holdTarget : 0;
+                    const isTrending = item.reviewCount > 10;
+                    const isBestseller = item.avgRating >= 4.5;
+                    return (
+                      <div key={item.productId} onClick={() => goToProduct(item.productId)}
+                        style={{ minWidth: CARD_W, maxWidth: CARD_W, flexShrink: 0,
+                          background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
+                          overflow: 'hidden', cursor: 'pointer',
+                          transition: 'box-shadow 0.15s, transform 0.15s',
+                          boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
+                        onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,0.12)'; e.currentTarget.style.transform = 'translateY(-3px)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.06)'; e.currentTarget.style.transform = 'none'; }}
+                      >
+                        {/* Image + badges */}
+                        <div style={{ position: 'relative', width: '100%', aspectRatio: '1', background: '#f4f6fa', overflow: 'hidden' }}>
+                          <img src={img} alt={item.name}
+                            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                            onError={e => { e.target.src = FALLBACK_IMG; }} />
+                          {isTrending && !isBestseller && (
+                            <div style={{ position: 'absolute', top: 8, left: 8, background: '#ff6b35',
+                              color: '#fff', fontSize: '0.65rem', fontWeight: 700, padding: '3px 8px', borderRadius: 4 }}>
+                              Trending
+                            </div>
+                          )}
+                          {isBestseller && (
+                            <div style={{ position: 'absolute', top: 8, right: 8, background: '#2a5298',
+                              color: '#fff', fontSize: '0.65rem', fontWeight: 700, padding: '3px 8px', borderRadius: 4 }}>
+                              Bestseller
+                            </div>
+                          )}
+                          {item.avgRating > 0 && (
+                            <div style={{ position: 'absolute', bottom: 8, left: 8, background: 'rgba(0,0,0,0.72)',
+                              color: '#fff', fontSize: '0.72rem', fontWeight: 700, padding: '3px 7px',
+                              borderRadius: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                              {item.avgRating.toFixed(1)} <span style={{ color: '#f0c14b' }}>★</span>
+                              {item.reviewCount > 0 && <span style={{ color: '#bbb', fontWeight: 400 }}>({item.reviewCount})</span>}
+                            </div>
+                          )}
+                        </div>
+                        {/* Info */}
+                        <div style={{ padding: '10px 10px 12px' }}>
+                          <p style={{ fontSize: '0.8rem', color: '#0f1111', fontWeight: 500, lineHeight: 1.35,
+                            marginBottom: 6, display: '-webkit-box', WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                            {item.name}
+                          </p>
+                          {discPct > 0 && (
+                            <p style={{ fontSize: '0.72rem', fontWeight: 700, color: '#15803d', margin: '0 0 3px' }}>
+                              {discPct}% OFF
+                            </p>
+                          )}
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f1111' }}>
+                              ₹{discPrice.toLocaleString('en-IN')}
+                            </span>
+                            {discPct > 0 && (
+                              <span style={{ fontSize: '0.75rem', color: '#9ca3af', textDecoration: 'line-through' }}>
+                                ₹{item.retailPrice.toLocaleString('en-IN')}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Right arrow */}
+                <button
+                  onClick={() => document.getElementById(rvScrollId)?.scrollBy({ left: SCROLL_AMT, behavior: 'smooth' })}
+                  style={{ position: 'absolute', right: -18, top: '42%', transform: 'translateY(-50%)',
+                    width: 36, height: 36, borderRadius: '50%', background: '#fff', border: '1px solid #d1d5db',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)', cursor: 'pointer', fontSize: '1.2rem',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3,
+                    color: '#374151', fontWeight: 700 }}>›</button>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── You May Also Like ── */}
+        {(() => {
+          if (youMayAlsoLike.length === 0) return null;
+          const goToProduct = (pid) => { window.scrollTo({ top: 0, behavior: 'instant' }); navigate(`/product/${pid}`); };
+          const CARD_W = 'calc((100% - 48px) / 5)';
+          const SCROLL_AMT = 900;
+          const ymalScrollId = 'ymal-scroll-track';
+          return (
+            <div style={{ marginTop: 36, marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#0f1111', margin: 0 }}>You May Also Like</h2>
+                <span style={{ fontSize: '0.7rem', fontWeight: 700, background: '#e5e7eb', color: '#6b7280',
+                  padding: '2px 8px', borderRadius: 4, letterSpacing: '0.04em' }}>AD</span>
+              </div>
+
+              <div style={{ position: 'relative' }}>
+                {/* Left arrow */}
+                <button
+                  onClick={() => document.getElementById(ymalScrollId)?.scrollBy({ left: -SCROLL_AMT, behavior: 'smooth' })}
+                  style={{ position: 'absolute', left: -18, top: '42%', transform: 'translateY(-50%)',
+                    width: 36, height: 36, borderRadius: '50%', background: '#fff', border: '1px solid #d1d5db',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)', cursor: 'pointer', fontSize: '1.2rem',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3,
+                    color: '#374151', fontWeight: 700 }}>‹</button>
+
+                {/* Scrollable track */}
+                <div id={ymalScrollId} style={{
+                  display: 'flex', gap: 12, overflowX: 'auto',
+                  scrollbarWidth: 'none', msOverflowStyle: 'none', paddingBottom: 4,
+                }}>
+                  <style>{`#${ymalScrollId}::-webkit-scrollbar{display:none}`}</style>
+
+                  {youMayAlsoLike.map(item => {
+                    const img = resolveSellerImg(item.images?.[0] || '');
+                    const hasDiscount = item.holdTarget > 0;
+                    const discPrice = hasDiscount ? Math.round(item.retailPrice * (1 - item.holdTarget / 100)) : item.retailPrice;
+                    const discPct = hasDiscount ? item.holdTarget : 0;
+                    return (
+                      <div key={item.productId} onClick={() => goToProduct(item.productId)}
+                        style={{ minWidth: CARD_W, maxWidth: CARD_W, flexShrink: 0,
+                          background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
+                          overflow: 'hidden', cursor: 'pointer',
+                          transition: 'box-shadow 0.15s, transform 0.15s',
+                          boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
+                        onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,0.12)'; e.currentTarget.style.transform = 'translateY(-3px)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.06)'; e.currentTarget.style.transform = 'none'; }}
+                      >
+                        <div style={{ position: 'relative', width: '100%', aspectRatio: '1', background: '#f4f6fa', overflow: 'hidden' }}>
+                          <img src={img} alt={item.name}
+                            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                            onError={e => { e.target.src = FALLBACK_IMG; }} />
+                          {item.avgRating > 0 && (
+                            <div style={{ position: 'absolute', bottom: 8, left: 8, background: 'rgba(0,0,0,0.72)',
+                              color: '#fff', fontSize: '0.72rem', fontWeight: 700, padding: '3px 7px',
+                              borderRadius: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                              {item.avgRating.toFixed(1)} <span style={{ color: '#f0c14b' }}>★</span>
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ padding: '10px 10px 12px' }}>
+                          <p style={{ fontSize: '0.8rem', color: '#0f1111', fontWeight: 500, lineHeight: 1.35,
+                            marginBottom: 6, display: '-webkit-box', WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                            {item.name}
+                          </p>
+                          {discPct > 0 && (
+                            <p style={{ fontSize: '0.72rem', fontWeight: 700, color: '#15803d', margin: '0 0 3px' }}>
+                              {discPct}% OFF
+                            </p>
+                          )}
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f1111' }}>
+                              ₹{discPrice.toLocaleString('en-IN')}
+                            </span>
+                            {discPct > 0 && (
+                              <span style={{ fontSize: '0.75rem', color: '#9ca3af', textDecoration: 'line-through' }}>
+                                ₹{item.retailPrice.toLocaleString('en-IN')}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Right arrow */}
+                <button
+                  onClick={() => document.getElementById(ymalScrollId)?.scrollBy({ left: SCROLL_AMT, behavior: 'smooth' })}
+                  style={{ position: 'absolute', right: -18, top: '42%', transform: 'translateY(-50%)',
+                    width: 36, height: 36, borderRadius: '50%', background: '#fff', border: '1px solid #d1d5db',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)', cursor: 'pointer', fontSize: '1.2rem',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3,
+                    color: '#374151', fontWeight: 700 }}>›</button>
+              </div>
+            </div>
+          );
+        })()}
+
       </div>
     </div>
+
+    {/* ── Product Image Lightbox Modal (Amazon-style) ── */}
+    {productLightbox && product.images?.length > 0 && (() => {
+      const imgs = product.images.map(resolveSellerImg);
+      const idx = productLightbox.index;
+      const setIdx = (i) => setProductLightbox({ index: i });
+      return (
+        <div
+          onClick={() => setProductLightbox(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 8, width: '95vw', maxWidth: 1100,
+              height: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.35)' }}
+          >
+            {/* Header: IMAGES tab only + close */}
+            <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #e5e7eb', padding: '0 24px', flexShrink: 0 }}>
+              <button style={{ padding: '16px 20px', fontWeight: 700, fontSize: '0.95rem', color: '#0f1111',
+                background: 'none', border: 'none', cursor: 'default', borderBottom: '2.5px solid #0f1111', marginBottom: -1 }}>
+                IMAGES
+              </button>
+              <button
+                onClick={() => setProductLightbox(null)}
+                style={{ marginLeft: 'auto', width: 36, height: 36, borderRadius: '50%', border: 'none',
+                  background: '#f3f4f6', cursor: 'pointer', fontSize: '1.2rem', color: '#374151',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+              >✕</button>
+            </div>
+
+            {/* Body: main image left, info+thumbs right */}
+            <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+              {/* Main image area */}
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '32px 40px', position: 'relative', background: '#fff', minWidth: 0 }}>
+                {imgs.length > 1 && (
+                  <button
+                    onClick={() => setIdx((idx - 1 + imgs.length) % imgs.length)}
+                    style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)',
+                      width: 44, height: 44, borderRadius: '50%', background: 'rgba(0,0,0,0.10)',
+                      border: 'none', color: '#222', fontSize: '1.6rem', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
+                      transition: 'background 0.15s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,0,0,0.22)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,0,0,0.10)'}
+                  >‹</button>
+                )}
+                <img
+                  src={imgs[idx]}
+                  alt={product.name}
+                  style={{ maxWidth: '100%', maxHeight: '75vh', objectFit: 'contain', borderRadius: 6,
+                    transition: 'opacity 0.15s' }}
+                  onError={e => { e.target.src = FALLBACK_IMG; }}
+                />
+                {imgs.length > 1 && (
+                  <button
+                    onClick={() => setIdx((idx + 1) % imgs.length)}
+                    style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)',
+                      width: 44, height: 44, borderRadius: '50%', background: 'rgba(0,0,0,0.10)',
+                      border: 'none', color: '#222', fontSize: '1.6rem', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
+                      transition: 'background 0.15s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,0,0,0.22)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,0,0,0.10)'}
+                  >›</button>
+                )}
+                {/* Image counter */}
+                {imgs.length > 1 && (
+                  <div style={{ position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)',
+                    background: 'rgba(0,0,0,0.45)', color: '#fff', fontSize: '0.78rem', fontWeight: 600,
+                    padding: '4px 12px', borderRadius: 20 }}>
+                    {idx + 1} / {imgs.length}
+                  </div>
+                )}
+              </div>
+
+              {/* Right panel: title + thumbnail grid */}
+              <div style={{ width: 320, borderLeft: '1px solid #e5e7eb', padding: '24px 20px',
+                overflowY: 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <p style={{ fontSize: '1rem', color: '#0f1111', fontWeight: 500, lineHeight: 1.5, margin: 0 }}>
+                  {product.name}
+                </p>
+                {product.category && (
+                  <p style={{ fontSize: '0.82rem', color: '#6b7280', margin: 0 }}>
+                    Category: <strong style={{ color: '#0f1111' }}>{product.category}</strong>
+                  </p>
+                )}
+                <div style={{ height: 1, background: '#e5e7eb' }} />
+                {/* Thumbnail grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                  {imgs.map((src, i) => (
+                    <div
+                      key={i}
+                      onClick={() => setIdx(i)}
+                      style={{ aspectRatio: '1', borderRadius: 6, overflow: 'hidden', cursor: 'pointer',
+                        border: i === idx ? '2.5px solid #2a5298' : '1.5px solid #e5e7eb',
+                        opacity: i === idx ? 1 : 0.7,
+                        transition: 'all 0.15s', boxShadow: i === idx ? '0 0 0 3px #dbeafe' : 'none' }}
+                      onMouseEnter={e => { if (i !== idx) e.currentTarget.style.opacity = '1'; }}
+                      onMouseLeave={e => { if (i !== idx) e.currentTarget.style.opacity = '0.7'; }}
+                    >
+                      <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                        onError={e => { e.target.src = FALLBACK_IMG; }} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    })()}
+
+    {/* ── Review Image Lightbox Modal ── */}
+    {lightbox && (
+      <div onClick={() => setLightbox(null)}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 9999,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        <button onClick={() => setLightbox(null)}
+          style={{ position: 'absolute', top: 20, right: 24, background: 'rgba(255,255,255,0.15)',
+            border: 'none', color: '#fff', fontSize: '1.5rem', width: 40, height: 40,
+            borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', zIndex: 10 }}>✕</button>
+        <div style={{ position: 'absolute', top: 24, left: '50%', transform: 'translateX(-50%)',
+          color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem' }}>
+          {lightbox.index + 1} / {lightbox.images.length}
+        </div>
+        {lightbox.images.length > 1 && (
+          <button
+            onClick={e => { e.stopPropagation(); setLightbox(lb => ({ ...lb, index: (lb.index - 1 + lb.images.length) % lb.images.length })); }}
+            style={{ position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)',
+              background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', fontSize: '1.5rem',
+              width: 48, height: 48, borderRadius: '50%', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+        )}
+        <img src={lightbox.images[lightbox.index]} alt=""
+          onClick={e => e.stopPropagation()}
+          style={{ maxWidth: '90vw', maxHeight: '80vh', objectFit: 'contain', borderRadius: 8,
+            boxShadow: '0 4px 40px rgba(0,0,0,0.5)' }} />
+        {lightbox.images.length > 1 && (
+          <button
+            onClick={e => { e.stopPropagation(); setLightbox(lb => ({ ...lb, index: (lb.index + 1) % lb.images.length })); }}
+            style={{ position: 'absolute', right: 20, top: '50%', transform: 'translateY(-50%)',
+              background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', fontSize: '1.5rem',
+              width: 48, height: 48, borderRadius: '50%', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+        )}
+        {lightbox.images.length > 1 && (
+          <div style={{ position: 'absolute', bottom: 20, display: 'flex', gap: 8, padding: '0 20px',
+            overflowX: 'auto', maxWidth: '90vw' }} onClick={e => e.stopPropagation()}>
+            {lightbox.images.map((src, i) => (
+              <div key={i} onClick={e => { e.stopPropagation(); setLightbox(lb => ({ ...lb, index: i })); }}
+                style={{ width: 56, height: 56, borderRadius: 6, overflow: 'hidden', flexShrink: 0,
+                  cursor: 'pointer', opacity: i === lightbox.index ? 1 : 0.6, transition: 'all 0.15s',
+                  border: i === lightbox.index ? '2.5px solid #f0c14b' : '2px solid rgba(255,255,255,0.25)' }}>
+                <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )}
+    {/* ── Address / Pincode Selection Modal ── */}
+    {showAddressModal && (
+      <div
+        onClick={() => setShowAddressModal(false)}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 560,
+            padding: '24px 20px 32px', boxShadow: '0 -4px 32px rgba(0,0,0,0.15)' }}
+        >
+          {/* Handle */}
+          <div style={{ width: 40, height: 4, background: '#d1d5db', borderRadius: 99, margin: '0 auto 20px' }} />
+
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f1111', margin: 0 }}>Select delivery address</h3>
+            <button onClick={() => setShowAddressModal(false)}
+              style={{ background: 'none', border: 'none', fontSize: '1.3rem', color: '#6b7280', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+          </div>
+
+          {/* Pincode input */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: 8,
+              padding: '0 12px', background: '#f9fafb' }}>
+              <span style={{ color: '#9ca3af', marginRight: 8, fontSize: '0.9rem' }}>🔍</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="Enter pincode"
+                value={manualPincode}
+                onChange={e => setManualPincode(e.target.value.replace(/\D/g, ''))}
+                style={{ border: 'none', background: 'none', outline: 'none', fontSize: '0.9rem',
+                  color: '#0f1111', width: '100%', padding: '10px 0' }}
+              />
+            </div>
+            <button
+              onClick={() => handleSelectPincode(manualPincode)}
+              disabled={!/^[1-9][0-9]{5}$/.test(manualPincode)}
+              style={{ padding: '10px 18px', background: /^[1-9][0-9]{5}$/.test(manualPincode) ? '#2a5298' : '#e5e7eb',
+                color: /^[1-9][0-9]{5}$/.test(manualPincode) ? '#fff' : '#9ca3af',
+                border: 'none', borderRadius: 8, fontWeight: 700, fontSize: '0.88rem', cursor: /^[1-9][0-9]{5}$/.test(manualPincode) ? 'pointer' : 'not-allowed' }}
+            >
+              Apply
+            </button>
+          </div>
+
+          <div style={{ height: 1, background: '#e5e7eb', margin: '16px 0' }} />
+
+          {/* Saved address */}
+          <p style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', marginBottom: 12 }}>Saved addresses</p>
+          {isAuthenticated && deliveryAddress?.pincode ? (
+            <div
+              onClick={() => { setShowAddressModal(false); }}
+              style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 14px',
+                border: '1.5px solid #2a5298', borderRadius: 8, cursor: 'pointer', background: '#f0f4ff' }}
+            >
+              <span style={{ fontSize: '1.2rem', marginTop: 2 }}>🏠</span>
+              <div>
+                <p style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e3c72', margin: '0 0 2px' }}>HOME</p>
+                <p style={{ fontSize: '0.82rem', color: '#374151', margin: 0 }}>
+                  {[deliveryAddress.address, deliveryAddress.city, deliveryAddress.state, deliveryAddress.pincode].filter(Boolean).join(', ')}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#2a5298', fontSize: '0.88rem', padding: '4px 0' }}>
+              <span style={{ fontSize: '1.1rem' }}>👤</span>
+              {isAuthenticated
+                ? <span style={{ color: '#6b7280' }}>No saved address — add one in your profile</span>
+                : <span style={{ cursor: 'pointer', fontWeight: 600 }} onClick={() => navigate('/login')}>Login to see saved addresses</span>
+              }
+            </div>
+          )}
+        </div>
+      </div>
+    )}
+    </React.Fragment>
   );
 }

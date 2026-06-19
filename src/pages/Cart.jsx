@@ -19,7 +19,7 @@ export default function Cart() {
   const navigate = useNavigate();
   const [cart, setCart]     = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showFeeTooltip, setShowFeeTooltip] = useState(false);
+  const [dealRemoveItem, setDealRemoveItem] = useState(null); // item pending deal-removal confirmation
 
   const fetchCart = async () => {
     try {
@@ -52,16 +52,12 @@ export default function Cart() {
   const totalSavings = subtotalMRP - subtotalEff;
   const itemCount    = cart.reduce((s, i) => s + i.quantity, 0);
 
-  /* ── fees (always collected) ── */
-  const deliveryCharge = 49;
-  const platformFee    = 10;
-
   /* ── prepaid deposit deduction ──
-     depositPaid is the actual amount the customer paid upfront when joining the deal.
-     It is stored on the cart row at join-time — NOT derived from current cart quantity,
-     because the cart quantity may be larger if the deal completed multiple times.       */
+     depositPaid = actual money the customer paid upfront when joining the deal
+     (stored at join time per slot in campaign_hold.deposit_amount, summed on completion).
+     Delivery charge & platform fee are calculated at checkout. */
   const totalPrepaid = cart.reduce((s, i) => s + (i.depositPaid || 0), 0);
-  const amountDue = Math.max(0, subtotalEff - totalPrepaid + deliveryCharge + platformFee);
+  const amountDue = Math.max(0, subtotalEff - totalPrepaid);
 
   /* ── styles ── */
   const page = {
@@ -144,7 +140,10 @@ export default function Cart() {
                       }}
                     >
                       {/* Image */}
-                      <div style={{ border: '1px solid #e5e7eb', borderRadius: 4, overflow: 'hidden', background: '#f9fafb' }}>
+                      <div
+                        onClick={() => navigate(`/product/${item.productId}`)}
+                        style={{ border: '1px solid #e5e7eb', borderRadius: 4, overflow: 'hidden', background: '#f9fafb', cursor: 'pointer' }}
+                      >
                         <img
                           src={resolveImg(item.imageUrl)}
                           alt={item.name}
@@ -155,7 +154,10 @@ export default function Cart() {
 
                       {/* Info */}
                       <div>
-                        <p style={{ fontWeight: 400, fontSize: '1rem', color: '#0f1111', marginBottom: 4, lineHeight: 1.4 }}>
+                        <p
+                          onClick={() => navigate(`/product/${item.productId}`)}
+                          style={{ fontWeight: 400, fontSize: '1rem', color: '#0f1111', marginBottom: 4, lineHeight: 1.4, cursor: 'pointer' }}
+                        >
                           {item.name}
                         </p>
                         <p style={{ fontSize: '0.78rem', color: '#007600', fontWeight: 600, marginBottom: 4 }}>
@@ -205,19 +207,22 @@ export default function Cart() {
                           )}
 
                           <button
-                            onClick={() => remove(item.cartId)}
+                            onClick={() => item.hasGroupDeal ? setDealRemoveItem(item) : remove(item.cartId)}
                             style={{ background: 'none', border: 'none', color: '#2a5298', fontSize: '0.82rem', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
                           >
-                            Delete
+                            Remove
                           </button>
 
                           <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>|</span>
 
                           <button
-                            onClick={() => navigate(`/product/${item.productId}`)}
+                            onClick={() => {
+                              if (!isAuthenticated) { toast.error('Please sign in to checkout'); navigate('/login'); return; }
+                              navigate('/buy-now', { state: { buyNowItem: item } });
+                            }}
                             style={{ background: 'none', border: 'none', color: '#2a5298', fontSize: '0.82rem', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
                           >
-                            View item
+                            Buy Now
                           </button>
                         </div>
                       </div>
@@ -313,39 +318,12 @@ export default function Cart() {
                 </div>
               )}
 
-              {/* Delivery + Platform fee */}
-              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 10, marginBottom: 10 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#374151', marginBottom: 6 }}>
-                  <span>Delivery Charge</span>
-                  <span style={{ fontWeight: 600 }}>₹{deliveryCharge}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#374151', marginBottom: 4 }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    Platform Fee
-                    <span
-                      style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
-                      onMouseEnter={() => setShowFeeTooltip(true)}
-                      onMouseLeave={() => setShowFeeTooltip(false)}
-                    >
-                      <span style={{ width: 14, height: 14, borderRadius: '50%', background: '#6b7280', color: '#fff', fontSize: '0.65rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'default', userSelect: 'none' }}>i</span>
-                      {showFeeTooltip && (
-                        <div style={{ position: 'absolute', bottom: '120%', left: '50%', transform: 'translateX(-50%)', width: 220, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px 14px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 999, pointerEvents: 'none' }}>
-                          <p style={{ fontWeight: 700, fontSize: '0.82rem', color: '#0f1111', marginBottom: 6 }}>Platform Fee</p>
-                          <p style={{ fontSize: '0.78rem', color: '#6b7280', lineHeight: 1.5 }}>A non-refundable fee charged to help keep the platform running smoothly and support app improvements.</p>
-                          <div style={{ position: 'absolute', bottom: -6, left: '50%', transform: 'translateX(-50%)', width: 10, height: 10, background: '#fff', border: '1px solid #e5e7eb', borderTop: 'none', borderLeft: 'none', rotate: '45deg' }} />
-                        </div>
-                      )}
-                    </span>
-                  </span>
-                  <span style={{ fontWeight: 600 }}>₹{platformFee}</span>
-                </div>
-              </div>
 
               <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, marginBottom: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1rem', color: '#0f1111', marginBottom: totalPrepaid > 0 ? 6 : 0 }}>
                   <span>Order Total</span>
                   <span style={{ textDecoration: totalPrepaid > 0 ? 'line-through' : 'none', color: totalPrepaid > 0 ? '#9ca3af' : '#0f1111', fontWeight: totalPrepaid > 0 ? 400 : 700, fontSize: totalPrepaid > 0 ? '0.9rem' : '1rem' }}>
-                    ₹{(subtotalEff + deliveryCharge + platformFee).toLocaleString('en-IN')}
+                    ₹{subtotalEff.toLocaleString('en-IN')}
                   </span>
                 </div>
                 {totalPrepaid > 0 && (
@@ -385,6 +363,62 @@ export default function Cart() {
           </div>
         )}
       </div>
+
+      {/* ── Deal Remove Warning Modal ── */}
+      {dealRemoveItem && (
+        <div
+          onClick={() => setDealRemoveItem(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 12, padding: 28, maxWidth: 440, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+              <span style={{ fontSize: '1.5rem' }}>⚠️</span>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#b45309' }}>
+                Remove Group Deal Item?
+              </h3>
+            </div>
+
+            {/* Product name */}
+            <p style={{ margin: '0 0 12px', fontWeight: 600, color: '#0f1111', fontSize: '0.95rem' }}>
+              {dealRemoveItem.name}
+            </p>
+
+            {/* Warning body */}
+            <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, padding: '12px 14px', marginBottom: 16, fontSize: '0.85rem', color: '#78350f', lineHeight: 1.6 }}>
+              <p style={{ margin: '0 0 8px', fontWeight: 600 }}>This item is part of a completed group deal.</p>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                <li>You joined a hold campaign and unlocked the discounted group deal price.</li>
+                <li>The deposit you paid to join this deal (<strong>₹{(dealRemoveItem.depositPaid || 0).toLocaleString('en-IN')}</strong>) is <strong>non-refundable</strong> once removed.</li>
+                <li>Removing this item will permanently forfeit your group deal spot and deposit.</li>
+              </ul>
+            </div>
+
+            <p style={{ margin: '0 0 20px', fontSize: '0.82rem', color: '#6b7280' }}>
+              Are you sure you want to remove this item and lose your deposit?
+            </p>
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setDealRemoveItem(null)}
+                style={{ padding: '8px 20px', borderRadius: 6, border: '1px solid #d1d5db', background: '#f9fafb', fontSize: '0.88rem', fontWeight: 600, color: '#374151', cursor: 'pointer' }}
+              >
+                Keep Item
+              </button>
+              <button
+                onClick={async () => { await remove(dealRemoveItem.cartId); setDealRemoveItem(null); }}
+                style={{ padding: '8px 20px', borderRadius: 6, border: 'none', background: '#dc2626', fontSize: '0.88rem', fontWeight: 600, color: '#fff', cursor: 'pointer' }}
+              >
+                Yes, Remove & Forfeit Deposit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

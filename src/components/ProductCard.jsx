@@ -51,14 +51,12 @@ export default function ProductCard({ product, alreadyJoined = false }) {
   };
 
   useEffect(() => {
-    // Start polling immediately if user already joined this deal on mount
     if (alreadyJoined && product.holdTarget > 0) {
       startPolling(product.productId, product.holdTarget);
     }
     return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
   }, [alreadyJoined, product.productId]);
 
-  // Keep in sync when parent refreshes product data
   useEffect(() => { setLocalHold(product.currentHold || 0); }, [product.currentHold]);
   useEffect(() => { setHasJoined(alreadyJoined); }, [alreadyJoined]);
 
@@ -106,10 +104,8 @@ export default function ProductCard({ product, alreadyJoined = false }) {
   const handleJoinSuccess = async (qty) => {
     setShowJoinModal(false);
     setHasJoined(true);
-    // Optimistic update immediately
     setLocalHold(prev => Math.min(prev + qty, product.holdTarget));
 
-    // Sync real current_hold from server
     let realHold = localHold + qty;
     try {
       const campaigns = await campaignService.listCampaigns();
@@ -139,15 +135,12 @@ export default function ProductCard({ product, alreadyJoined = false }) {
 
   const hasGroupDeal   = product.holdTarget > 0;
   const safeHold       = Math.min(localHold, product.holdTarget || 0);
-  const discountPct    = hasGroupDeal ? safeHold : 0;
-  const displayPrice   = hasGroupDeal && discountPct > 0
-    ? Math.round(product.retailPrice * (1 - discountPct / 100))
-    : product.retailPrice;
   const progressPct    = hasGroupDeal ? Math.round((safeHold / product.holdTarget) * 100) : 0;
-  const maxDiscountPct = hasGroupDeal ? product.holdTarget : 0;
-  const bestGroupPrice = hasGroupDeal
-    ? Math.round(product.retailPrice * (1 - maxDiscountPct / 100))
-    : product.retailPrice;
+  const bestGroupPrice = hasGroupDeal ? product.holdPrice : product.retailPrice;
+  const maxDiscountPct = hasGroupDeal && product.retailPrice > 0
+    ? Math.round(((product.retailPrice - product.holdPrice) / product.retailPrice) * 100)
+    : 0;
+  const displayPrice   = product.retailPrice;
 
   return (
     <>
@@ -194,12 +187,12 @@ export default function ProductCard({ product, alreadyJoined = false }) {
         </button>
 
         {/* Image */}
-        <div style={{ background: '#f9fafb', overflow: 'hidden' }}>
+        <div style={{ background: '#f9fafb', overflow: 'hidden', height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <img
             src={imgSrc}
             alt={product.name}
             onError={() => setImgSrc(FALLBACK_IMG)}
-            style={{ width: '100%', height: 160, objectFit: 'contain', display: 'block' }}
+            style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
           />
         </div>
 
@@ -225,7 +218,7 @@ export default function ProductCard({ product, alreadyJoined = false }) {
             ) : <span style={{ display: 'block' }} />}
           </div>
 
-          {/* Group Deal progress */}
+          {/* Group Deal progress — only shown when deal exists */}
           {hasGroupDeal && (
             <div style={{ marginBottom: 5 }}>
               <div style={{ height: 4, background: '#e5e7eb', borderRadius: 99, overflow: 'hidden', marginBottom: 3 }}>
@@ -257,19 +250,14 @@ export default function ProductCard({ product, alreadyJoined = false }) {
               <span style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0f1111' }}>
                 ₹{displayPrice.toLocaleString('en-IN')}
               </span>
-              {discountPct > 0 && (
-                <span style={{ fontSize: '0.78rem', color: '#9ca3af', textDecoration: 'line-through' }}>
-                  ₹{product.retailPrice.toLocaleString('en-IN')}
-                </span>
-              )}
             </div>
             <p style={{ fontSize: '0.65rem', color: '#6b7280', marginTop: 1 }}>Inclusive of all taxes</p>
           </div>
 
           {/* Buttons */}
-          {hasGroupDeal ? (
-            <div style={{ display: 'flex', gap: 6 }}>
-              {hasJoined ? (
+          <div style={{ display: 'flex', gap: 6 }}>
+            {hasGroupDeal && (
+              hasJoined ? (
                 <button disabled style={{
                   flex: 1, padding: '6px 0',
                   background: '#d1fae5', border: '1px solid #6ee7b7',
@@ -290,50 +278,23 @@ export default function ProductCard({ product, alreadyJoined = false }) {
                 >
                   Join
                 </button>
-              )}
-              <button
-                onClick={handleCart}
-                disabled={cartLoading}
-                style={{
-                  flex: 1, padding: '6px 0',
-                  background: cartLoading ? '#e5e7eb' : 'linear-gradient(135deg, #2a5298, #1e3c72)',
-                  border: 'none', borderRadius: 4,
-                  fontWeight: 700, fontSize: '0.78rem',
-                  color: cartLoading ? '#9ca3af' : '#fff',
-                  cursor: cartLoading ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {cartLoading ? '…' : 'Add to Cart'}
-              </button>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button
-                onClick={handleCart}
-                disabled={cartLoading}
-                style={{
-                  flex: 1, padding: '6px 0',
-                  background: cartLoading ? '#e5e7eb' : '#f0c14b',
-                  border: '1px solid #a88734', borderRadius: 4,
-                  fontWeight: 700, fontSize: '0.8rem', color: '#111',
-                  cursor: cartLoading ? 'not-allowed' : 'pointer',
-                }}
-              >
-                🛒 {cartLoading ? '…' : 'Cart'}
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); navigate(`/product/${product.productId}`); }}
-                style={{
-                  flex: 1, padding: '6px 0',
-                  background: 'linear-gradient(135deg, #2a5298, #1e3c72)',
-                  border: 'none', borderRadius: 4,
-                  fontWeight: 700, fontSize: '0.8rem', color: '#fff', cursor: 'pointer',
-                }}
-              >
-                Buy Now
-              </button>
-            </div>
-          )}
+              )
+            )}
+            <button
+              onClick={handleCart}
+              disabled={cartLoading}
+              style={{
+                flex: 1, padding: '6px 0',
+                background: cartLoading ? '#e5e7eb' : 'linear-gradient(135deg, #2a5298, #1e3c72)',
+                border: 'none', borderRadius: 4,
+                fontWeight: 700, fontSize: '0.78rem',
+                color: cartLoading ? '#9ca3af' : '#fff',
+                cursor: cartLoading ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {cartLoading ? '…' : 'Add to Cart'}
+            </button>
+          </div>
         </div>
       </div>
     </>
