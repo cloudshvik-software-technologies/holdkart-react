@@ -110,6 +110,7 @@ export default function Complaints() {
   const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
+  const [viewingResolution, setViewingResolution] = useState(null);
 
   const fetchAll = async () => {
     try {
@@ -579,10 +580,24 @@ export default function Complaints() {
                     <p style={{ color: '#6b7280', fontSize: '0.85rem', lineHeight: 1.65, margin: '0 0 14px' }}>
                       {c.description}
                     </p>
-                    <div style={{ display: 'flex', gap: 24, fontSize: '0.75rem', color: '#9ca3af' }}>
-                      <span>Submitted {new Date(c.created_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                      {c.order_id && <span>Order #{c.order_id}</span>}
-                      {c.resolved_date && <span>Resolved {new Date(c.resolved_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                      <div style={{ display: 'flex', gap: 24, fontSize: '0.75rem', color: '#9ca3af' }}>
+                        <span>Submitted {new Date(c.created_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        {c.order_number ? <span>Order #{c.order_number}</span> : c.order_id && <span>Order #{c.order_id}</span>}
+                        {c.resolved_date && <span>Resolved {new Date(c.resolved_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
+                      </div>
+                      {c.status === 'Resolved' && c.seller_resolution && (
+                        <button
+                          onClick={() => setViewingResolution(c)}
+                          style={{
+                            background: '#F0FDF4', border: '1px solid #BBF7D0',
+                            color: '#16a34a', fontWeight: 700, fontSize: '0.78rem',
+                            padding: '6px 14px', borderRadius: 7, cursor: 'pointer',
+                          }}
+                        >
+                          View Response
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -591,6 +606,61 @@ export default function Complaints() {
           )}
         </div>
       </div>
+
+      {viewingResolution && (
+        <div
+          onClick={() => setViewingResolution(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(17, 24, 39, 0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 24, zIndex: 100,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 14, maxWidth: 480, width: '100%',
+              padding: '28px 28px 24px', boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 16 }}>
+              <div>
+                <p style={{
+                  margin: '0 0 6px', fontSize: '0.72rem', fontWeight: 700,
+                  letterSpacing: '0.04em', textTransform: 'uppercase', color: '#16a34a',
+                }}>
+                  Response from seller
+                </p>
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#111827' }}>
+                  {viewingResolution.subject}
+                </h3>
+              </div>
+              <button
+                onClick={() => setViewingResolution(null)}
+                style={{
+                  background: '#F3F4F6', border: 'none', borderRadius: 6,
+                  width: 28, height: 28, cursor: 'pointer', color: '#6b7280',
+                  fontSize: '1rem', lineHeight: 1, flexShrink: 0,
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <p style={{
+              margin: 0, fontSize: '0.9rem', lineHeight: 1.7, color: '#374151',
+              background: '#F9FAFB', border: '1px solid #E5E7EB',
+              borderRadius: 8, padding: '14px 16px',
+            }}>
+              {viewingResolution.seller_resolution}
+            </p>
+            {viewingResolution.resolved_date && (
+              <p style={{ margin: '14px 0 0', fontSize: '0.78rem', color: '#9ca3af' }}>
+                Resolved {new Date(viewingResolution.resolved_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
