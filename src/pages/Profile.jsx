@@ -18,10 +18,11 @@ const NAV_ITEMS = [
   { key: 'notifications', label: 'Notifications' },
   { key: 'orders',        label: 'Orders' },
   { key: 'wishlist',      label: 'Wishlist' },
+  { key: 'deactivate',    label: 'Deactivate Account' },
 ];
 
 export default function Profile() {
-  const { isAuthenticated, customer, updateCustomer } = useAuth();
+  const { isAuthenticated, customer, updateCustomer, logout } = useAuth();
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab]   = useState('profile');
@@ -31,19 +32,35 @@ export default function Profile() {
   const [imgFile, setImgFile]       = useState(null);
   const [profileImg, setProfileImg] = useState('');
   const [uploading, setUploading]   = useState(false);
+  const [detectingLocation, setDetectingLocation] = useState(false);
+
+  // Deactivate account flow (Flipkart-style: soft deactivation, reversible by logging back in)
+  const [showDeactivateModal, setShowDeactivateModal] = useState(false);
+  const [deactivatePassword, setDeactivatePassword]   = useState('');
+  const [deactivating, setDeactivating]                = useState(false);
+  const [deactivateWarnings, setDeactivateWarnings]    = useState(null);
+  const [loadingWarnings, setLoadingWarnings]          = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) { navigate('/login'); return; }
     profileService.getProfile()
       .then(p => {
         if (p) {
+          // If the profile has no saved address yet, pre-fill from the address
+          // detected via the Home page's location prompt (if the user allowed it).
+          // This never overwrites an existing saved address, and the user can still
+          // edit or clear these fields before saving — exactly like manual entry.
+          let detected = null;
+          if (!p.address && !p.city && !p.pincode) {
+            try { detected = JSON.parse(localStorage.getItem('holdkart_detected_address') || 'null'); } catch { /* ignore */ }
+          }
           setForm({
             name: p.name || '',
             mobile: p.mobile || '',
-            address: p.address || '',
-            city: p.city || '',
-            state: p.state || '',
-            pincode: p.pincode || '',
+            address: p.address || detected?.address || '',
+            city: p.city || detected?.city || '',
+            state: p.state || detected?.state || '',
+            pincode: p.pincode || detected?.pincode || '',
             gender: p.gender || '',
           });
           setProfileImg(p.profile_image || '');
@@ -65,6 +82,54 @@ export default function Profile() {
     } finally {
       setSaving(false);
     }
+  };
+
+  // Re-detect location on demand (same browser permission prompt as Home) and
+  // fill City/State/Pincode into the form. User can still edit before saving.
+  const handleUseCurrentLocation = () => {
+    if (typeof window === 'undefined' || !window.navigator?.geolocation) {
+      toast.error('Location is not supported on this browser');
+      return;
+    }
+    setDetectingLocation(true);
+    window.navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          const res = await fetch(
+            `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
+          );
+          const data = await res.json();
+          const pincode = data?.postcode;
+          const city = data?.city || data?.locality || '';
+          const state = data?.principalSubdivision || '';
+          const validPincode = pincode && /^[1-9][0-9]{5}$/.test(pincode);
+
+          if (validPincode || city || state) {
+            setForm(p => ({
+              ...p,
+              city: city || p.city,
+              state: state || p.state,
+              pincode: validPincode ? pincode : p.pincode,
+            }));
+            toast.success(
+              validPincode ? 'Location detected!' : 'Detected city/state — please enter pincode manually'
+            );
+          } else {
+            toast.error('Could not detect your location — please enter address manually');
+          }
+        } catch {
+          toast.error('Could not detect location right now');
+        } finally {
+          setDetectingLocation(false);
+        }
+      },
+      () => {
+        toast.error('Location permission denied');
+        setDetectingLocation(false);
+      },
+      { timeout: 8000 }
+    );
   };
 
   const handleImageUpload = async (file) => {
@@ -94,6 +159,40 @@ export default function Profile() {
       toast.error('Failed to remove photo');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleOpenDeactivateModal = async () => {
+    setLoadingWarnings(true);
+    setShowDeactivateModal(true);
+    try {
+      const warnings = await profileService.getDeactivationWarnings();
+      setDeactivateWarnings(warnings);
+    } catch {
+      setDeactivateWarnings({ pendingOrders: 0, activeDeals: 0 });
+    } finally {
+      setLoadingWarnings(false);
+    }
+  };
+
+  const handleDeactivate = async () => {
+    if (!deactivatePassword) {
+      toast.error('Please enter your password to confirm.');
+      return;
+    }
+    setDeactivating(true);
+    try {
+      await profileService.deactivateAccount(deactivatePassword);
+      toast.success('Your account has been deactivated.');
+      setShowDeactivateModal(false);
+      setDeactivateWarnings(null);
+      logout();
+      navigate('/login');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to deactivate account');
+    } finally {
+      setDeactivating(false);
+      setDeactivatePassword('');
     }
   };
 
@@ -470,7 +569,31 @@ export default function Profile() {
 
               {/* Address section */}
               <div style={{ marginTop: 36 }}>
-                <div className="myn-section-head" style={{ marginBottom: 20 }}>Address Details</div>
+                <div className="myn-section-head" style={{ marginBottom: 12 }}>Address Details</div>
+                <button
+                  type="button"
+                  onClick={handleUseCurrentLocation}
+                  disabled={detectingLocation}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none',
+                    padding: '8px 0 16px', cursor: detectingLocation ? 'default' : 'pointer', textAlign: 'left',
+                    fontFamily: 'inherit', width: '100%',
+                  }}
+                >
+                  <span style={{
+                    width: 34, height: 34, borderRadius: '50%', background: '#eef2ff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    fontSize: '1.1rem',
+                  }}>📍</span>
+                  <span>
+                    <span style={{ display: 'block', color: MYNTRA_PINK, fontWeight: 700, fontSize: '0.92rem' }}>
+                      {detectingLocation ? 'Detecting location…' : 'Use my current location'}
+                    </span>
+                    <span style={{ display: 'block', color: '#6b7280', fontSize: '0.8rem', marginTop: 1 }}>
+                      Allow access to location
+                    </span>
+                  </span>
+                </button>
                 <div style={{ marginBottom: 16 }}>
                   <label className="myn-label">Street Address</label>
                   <textarea
@@ -586,8 +709,113 @@ export default function Profile() {
               </div>
             </div>
           )}
+          {/* DEACTIVATE ACCOUNT */}
+          {activeTab === 'deactivate' && (
+            <div>
+              <div className="myn-section-head">Deactivate Account</div>
+              <div style={{
+                border: '1px solid #fde2e2', background: '#fff8f8', borderRadius: 8,
+                padding: '20px 24px', maxWidth: 560,
+              }}>
+                <div style={{ fontWeight: 700, color: '#282c3f', marginBottom: 10 }}>
+                  What happens when you deactivate?
+                </div>
+                <ul style={{ color: '#555', fontSize: '0.88rem', lineHeight: 1.8, paddingLeft: 20, marginBottom: 16 }}>
+                  <li>Your profile, orders and wishlist are hidden — not deleted.</li>
+                  <li>You'll be logged out of all devices immediately.</li>
+                  <li>Simply log back in anytime to reactivate your account.</li>
+                </ul>
+                <button
+                  type="button"
+                  onClick={handleOpenDeactivateModal}
+                  style={{
+                    background: '#fff', color: '#d92d20', border: '1px solid #d92d20',
+                    borderRadius: 4, padding: '10px 24px', fontSize: '0.88rem', fontWeight: 700,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >
+                  Deactivate My Account
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Deactivate confirmation modal */}
+      {showDeactivateModal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+        }}>
+          <div style={{ background: '#fff', borderRadius: 8, padding: '28px 30px', width: '100%', maxWidth: 420 }}>
+            <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#282c3f', marginBottom: 8 }}>
+              Deactivate your account?
+            </div>
+            <p style={{ color: '#666', fontSize: '0.86rem', lineHeight: 1.6, marginBottom: 18 }}>
+              Enter your password to confirm. You can reactivate anytime simply by logging back in.
+            </p>
+
+            {loadingWarnings ? (
+              <div style={{ color: '#999', fontSize: '0.84rem', marginBottom: 16 }}>Checking your account…</div>
+            ) : (
+              (deactivateWarnings?.pendingOrders > 0 || deactivateWarnings?.activeDeals > 0) && (
+                <div style={{
+                  background: '#fff8e1', border: '1px solid #fde68a', borderRadius: 6,
+                  padding: '12px 14px', marginBottom: 18, fontSize: '0.84rem', color: '#92660a', lineHeight: 1.6,
+                }}>
+                  <strong>Heads up —</strong>{' '}
+                  {deactivateWarnings.pendingOrders > 0 && (
+                    <>you have {deactivateWarnings.pendingOrders} order{deactivateWarnings.pendingOrders > 1 ? 's' : ''} still in progress</>
+                  )}
+                  {deactivateWarnings.pendingOrders > 0 && deactivateWarnings.activeDeals > 0 && <> and </>}
+                  {deactivateWarnings.activeDeals > 0 && (
+                    <>{deactivateWarnings.activeDeals} active group deal{deactivateWarnings.activeDeals > 1 ? 's' : ''} you've joined</>
+                  )}
+                  . These will continue running, but you won't get updates while deactivated.
+                </div>
+              )
+            )}
+
+            <label className="myn-label">Password</label>
+            <input
+              type="password"
+              className="myn-input"
+              placeholder="Enter your password"
+              value={deactivatePassword}
+              onChange={e => setDeactivatePassword(e.target.value)}
+              style={{ marginBottom: 20 }}
+            />
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => { setShowDeactivateModal(false); setDeactivatePassword(''); setDeactivateWarnings(null); }}
+                disabled={deactivating}
+                style={{
+                  background: '#fff', color: '#333', border: '1px solid #d4d5d9',
+                  borderRadius: 4, padding: '10px 20px', fontSize: '0.86rem', fontWeight: 700,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeactivate}
+                disabled={deactivating}
+                style={{
+                  background: '#d92d20', color: '#fff', border: 'none',
+                  borderRadius: 4, padding: '10px 20px', fontSize: '0.86rem', fontWeight: 700,
+                  cursor: deactivating ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                  opacity: deactivating ? 0.7 : 1,
+                }}
+              >
+                {deactivating ? 'Deactivating…' : 'Yes, Deactivate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

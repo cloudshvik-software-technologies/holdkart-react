@@ -196,7 +196,7 @@ export default function Header() {
           </Link>
 
           {/* ── DELIVER TO — always visible ── */}
-          <Link to={isAuthenticated ? '/profile' : '/login'} className="hk-nav-action" style={{ flexShrink: 0 }}>
+          <div className="hk-nav-action" style={{ flexShrink: 0 }}>
             <span className="top">Deliver to</span>
             <span className="bot" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <svg width="10" height="13" viewBox="0 0 10 13" fill="none">
@@ -204,7 +204,7 @@ export default function Header() {
               </svg>
               India
             </span>
-          </Link>
+          </div>
 
           {/* ── SEARCH BAR — always visible ── */}
           <form onSubmit={handleSearch} style={{
@@ -436,10 +436,9 @@ export default function Header() {
                             { icon: '❤️', label: 'Wishlist' },
                             { icon: '🎯', label: 'Hold Deals' },
                           ].map(item => (
-                            <Link
+                            <button
                               key={item.label}
-                              to="/login"
-                              onClick={() => setAccountOpen(false)}
+                              onClick={() => { setAccountOpen(false); toast.error('Please sign in to continue'); }}
                               style={{
                                 display: 'flex', alignItems: 'center', gap: 8,
                                 padding: '7px 4px', borderRadius: 7,
@@ -447,13 +446,14 @@ export default function Header() {
                                 fontSize: '0.85rem', fontWeight: 500,
                                 fontFamily: "'Plus Jakarta Sans',sans-serif",
                                 transition: 'background 0.12s',
+                                width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
                               }}
                               onMouseEnter={e => e.currentTarget.style.background = '#FFF3E0'}
                               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                             >
                               <span style={{ fontSize: '1rem', width: 20, textAlign: 'center', flexShrink: 0 }}>{item.icon}</span>
                               <span>{item.label}</span>
-                            </Link>
+                            </button>
                           ))}
                         </div>
 
@@ -473,10 +473,9 @@ export default function Header() {
                             { icon: '🔔', label: 'Notifications' },
                             { icon: '💬', label: 'Support' },
                           ].map(item => (
-                            <Link
+                            <button
                               key={item.label}
-                              to="/login"
-                              onClick={() => setAccountOpen(false)}
+                              onClick={() => { setAccountOpen(false); toast.error('Please sign in to continue'); }}
                               style={{
                                 display: 'flex', alignItems: 'center', gap: 8,
                                 padding: '7px 4px', borderRadius: 7,
@@ -484,13 +483,14 @@ export default function Header() {
                                 fontSize: '0.85rem', fontWeight: 500,
                                 fontFamily: "'Plus Jakarta Sans',sans-serif",
                                 transition: 'background 0.12s',
+                                width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
                               }}
                               onMouseEnter={e => e.currentTarget.style.background = '#FFF3E0'}
                               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                             >
                               <span style={{ fontSize: '1rem', width: 20, textAlign: 'center', flexShrink: 0 }}>{item.icon}</span>
                               <span>{item.label}</span>
-                            </Link>
+                            </button>
                           ))}
                         </div>
                       </div>
@@ -499,14 +499,14 @@ export default function Header() {
                 </div>
 
                 {/* Returns & Orders */}
-                <button onClick={() => navigate('/login')} className="hk-nav-action" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                <button onClick={() => toast.error('Please sign in to view your orders')} className="hk-nav-action" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
                   <span className="top">Returns &</span>
                   <span className="bot">My Orders</span>
                 </button>
 
-                {/* Cart — clicking goes to login */}
+                {/* Cart — guests can now view their cart too */}
                 <button
-                  onClick={() => navigate('/login')}
+                  onClick={() => navigate('/cart')}
                   className="hk-nav-action"
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 8, background: 'rgba(255,107,0,0.12)', border: '1.5px solid rgba(255,107,0,0.3)', cursor: 'pointer' }}
                   onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,107,0,0.22)'; e.currentTarget.style.borderColor = '#FF6B00'; }}
@@ -568,7 +568,7 @@ export default function Header() {
                 <button
                   key={l.label}
                   className={`hk-cat-btn${isActive(l.path) ? ' active' : ''}`}
-                  onClick={() => isAuthenticated ? navigate(l.path) : navigate('/login')}
+                  onClick={() => isAuthenticated ? navigate(l.path) : toast.error('Please sign in to continue')}
                 >
                   {l.label}
                 </button>

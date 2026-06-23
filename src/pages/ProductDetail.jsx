@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { productService, cartService, wishlistService, reviewService, campaignService, profileService } from '../services/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { addGuestCartItem } from '../utils/guestCart.js';
 import StarRating from '../components/StarRating.jsx';
 import JoinDealModal from '../components/JoinDealModal.jsx';
 import toast from 'react-hot-toast';
@@ -866,6 +867,34 @@ export default function ProductDetail() {
     }).catch(() => {});
   }, [isAuthenticated, product?.productId]);
 
+  // Shared helper: fetch delivery estimate for a given pincode (used by manual entry,
+  // saved profile address, and browser-geolocation auto-detect)
+  const fetchDeliveryEstimate = useCallback(async (pincode, productId) => {
+    setDeliveryLoading(true);
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081'}/api/customer/product/${productId}/delivery-estimate?pincode=${pincode}`
+      );
+      const data = await res.json();
+      if (data?.estimatedDate) {
+        // Parse and format: "2025-06-12" or "12 Jun, Fri" style
+        try {
+          const d = new Date(data.estimatedDate);
+          if (!isNaN(d)) {
+            const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            setDeliveryDate(`${d.getDate()} ${months[d.getMonth()]}, ${days[d.getDay()]}`);
+          } else {
+            setDeliveryDate(data.estimatedDate);
+          }
+        } catch { setDeliveryDate(data.estimatedDate); }
+      } else {
+        setDeliveryDate(null);
+      }
+    } catch { setDeliveryDate(null); }
+    finally { setDeliveryLoading(false); }
+  }, []);
+
   // Fetch profile address and then delivery estimate
   useEffect(() => {
     if (!product) return;
@@ -888,67 +917,68 @@ export default function ProductDetail() {
         } catch { /* ignore */ }
       }
       if (pincode) {
-        setDeliveryLoading(true);
-        try {
-          const res = await fetch(
-            `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081'}/api/customer/product/${product.productId}/delivery-estimate?pincode=${pincode}`
-          );
-          const data = await res.json();
-          if (data?.estimatedDate) {
-            // Parse and format: "2025-06-12" or "12 Jun, Fri" style
-            try {
-              const d = new Date(data.estimatedDate);
-              if (!isNaN(d)) {
-                const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-                const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-                setDeliveryDate(`${d.getDate()} ${months[d.getMonth()]}, ${days[d.getDay()]}`);
-              } else {
-                setDeliveryDate(data.estimatedDate);
-              }
-            } catch { setDeliveryDate(data.estimatedDate); }
-          } else {
-            setDeliveryDate(null);
-          }
-        } catch { setDeliveryDate(null); }
-        finally { setDeliveryLoading(false); }
+        await fetchDeliveryEstimate(pincode, product.productId);
       }
     };
     fetchAddressAndEstimate();
-  }, [isAuthenticated, product?.productId]);
+  }, [isAuthenticated, product?.productId, fetchDeliveryEstimate]);
+
+  // Auto-detect location via the browser's native geolocation prompt (same prompt Chrome
+  // shows on flipkart.com) — only for users who don't already have a known pincode, and
+  // only once per browser so we don't ask repeatedly. If denied/unsupported/fails, the
+  // existing manual "Enter pincode" flow below keeps working exactly as before.
+  useEffect(() => {
+    if (!product) return;
+    if (deliveryAddress?.pincode || manualPincode) return; // already have a pincode from profile/earlier
+    if (typeof window === 'undefined' || !window.navigator?.geolocation) return;
+    if (localStorage.getItem('locationPromptShown')) return;
+    localStorage.setItem('locationPromptShown', '1');
+
+    window.navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          const res = await fetch(
+            `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
+          );
+          const data = await res.json();
+          const pincode = data?.postcode;
+          if (pincode && /^[1-9][0-9]{5}$/.test(pincode)) {
+            setManualPincode(pincode);
+            setDeliveryAddress(prev => ({
+              ...(prev || {}),
+              pincode,
+              city: prev?.city || data.city || data.locality || '',
+              state: prev?.state || data.principalSubdivision || '',
+            }));
+            await fetchDeliveryEstimate(pincode, product.productId);
+          }
+        } catch { /* reverse-geocoding failed — user can still enter pincode manually */ }
+      },
+      () => { /* user denied or location unavailable — manual entry remains available */ },
+      { timeout: 8000 }
+    );
+  }, [product, deliveryAddress?.pincode, manualPincode, fetchDeliveryEstimate]);
 
   const handleSelectPincode = async (pincode) => {
     if (!/^[1-9][0-9]{5}$/.test(pincode)) return;
     setManualPincode(pincode);
     setShowAddressModal(false);
     setDeliveryAddress(prev => ({ ...(prev || {}), pincode }));
-    setDeliveryLoading(true);
-    try {
-      const res = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081'}/api/customer/product/${product.productId}/delivery-estimate?pincode=${pincode}`
-      );
-      const data = await res.json();
-      if (data?.estimatedDate) {
-        try {
-          const d = new Date(data.estimatedDate);
-          if (!isNaN(d)) {
-            const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-            setDeliveryDate(`${d.getDate()} ${months[d.getMonth()]}, ${days[d.getDay()]}`);
-          } else {
-            setDeliveryDate(data.estimatedDate);
-          }
-        } catch { setDeliveryDate(data.estimatedDate); }
-      } else {
-        setDeliveryDate(null);
-      }
-    } catch { setDeliveryDate(null); }
-    finally { setDeliveryLoading(false); }
+    await fetchDeliveryEstimate(pincode, product.productId);
   };
 
   const handleCart = async () => {
-    if (!isAuthenticated) { toast.error('Please sign in to add items to cart'); navigate('/login'); return; }
     if (addedToCart) { navigate('/cart'); return; }
-    try { await cartService.addToCart({ productId: product.productId, quantity: qty }); toast.success('Added to cart!'); setAddedToCart(true); }
+    try {
+      if (isAuthenticated) {
+        await cartService.addToCart({ productId: product.productId, quantity: qty });
+      } else {
+        addGuestCartItem(product, qty);
+      }
+      toast.success('Added to cart!');
+      setAddedToCart(true);
+    }
     catch(e) { toast.error(e?.response?.data?.message || 'Failed'); }
   };
 

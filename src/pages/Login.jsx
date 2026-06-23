@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { authService } from '../services/index.js';
+import { mergeGuestCart } from '../services/cart.service.js';
+import { getGuestCart, clearGuestCart } from '../utils/guestCart.js';
 import toast from 'react-hot-toast';
 
 const EyeOpen = () => (
@@ -34,6 +36,29 @@ export default function Login() {
     try {
       const data = await authService.login(form);
       loginCustomer(data);
+
+      if (data.customer?.deactivated) {
+        toast('Your account is currently deactivated.', { icon: '🔒' });
+        navigate('/deactivated');
+        return;
+      }
+
+      // --- Guest cart merge ---
+      // Read any items added before login, send them to the server, then clear
+      // local storage so they don't get merged again on the next login.
+      const guestItems = getGuestCart();
+      if (guestItems.length > 0) {
+        try {
+          await mergeGuestCart(
+            guestItems.map(({ productId, quantity }) => ({ productId, quantity }))
+          );
+        } catch {
+          // Merge failure is non-fatal — the user's existing server cart is safe.
+        }
+        clearGuestCart();
+      }
+      // --- End guest cart merge ---
+
       toast.success('Welcome back, ' + data.customer.name + '!');
       navigate('/home');
     } catch (err) {
