@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import ProductCard from '../components/ProductCard.jsx';
 import { productService, wishlistService, campaignService, cartService } from '../services/index.js';
 // personalised + guest section helpers (new methods on productService)
@@ -637,8 +638,14 @@ export default function Home({ isGuest = false }) {
   const { customer } = useAuth();
   const navigate = useNavigate();
 
+  const AUTH_ONLY_PATHS = ['/orders', '/order/', '/profile', '/notifications', '/complaints', '/checkout', '/buy-now', '/invoice/'];
+
   const guardedNav = (path) => {
-    if (isGuest && !path.startsWith('/campaigns/')) { navigate('/login'); return; }
+    if (isGuest && AUTH_ONLY_PATHS.some(p => path.startsWith(p))) {
+      toast.error('Please sign in to continue');
+      navigate('/login');
+      return;
+    }
     window.scrollTo(0, 0);
     navigate(path);
   };
@@ -679,6 +686,44 @@ export default function Home({ isGuest = false }) {
   useEffect(() => {
     const API = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081';
     // Advertisements are fetched inside AdBanner components
+  }, []);
+
+  // ── Ask for location on Home load (browser's native permission prompt, same as
+  //    flipkart.com) and cache the detected address so the Address Details form
+  //    (Profile/Checkout) can pre-fill itself with it later. Only asked once per
+  //    browser; if denied or unsupported, users continue to enter address manually
+  //    exactly as before — nothing else changes.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.navigator?.geolocation) return;
+    if (localStorage.getItem('holdkart_location_prompted')) return;
+    localStorage.setItem('holdkart_location_prompted', '1');
+
+    window.navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          const res = await fetch(
+            `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
+          );
+          const data = await res.json();
+          const pincode = data?.postcode;
+          const city = data?.city || data?.locality || '';
+          const state = data?.principalSubdivision || '';
+          const validPincode = pincode && /^[1-9][0-9]{5}$/.test(pincode);
+          if (validPincode || city || state) {
+            const detected = {
+              address: '',
+              city,
+              state,
+              pincode: validPincode ? pincode : '',
+            };
+            localStorage.setItem('holdkart_detected_address', JSON.stringify(detected));
+          }
+        } catch { /* reverse-geocoding failed — manual address entry remains available */ }
+      },
+      () => { /* user denied or location unavailable — manual address entry remains available */ },
+      { timeout: 8000 }
+    );
   }, []);
 
   useEffect(() => {

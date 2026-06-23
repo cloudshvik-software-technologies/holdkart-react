@@ -249,7 +249,6 @@ function ListProductCard({ product, alreadyJoined = false }) {
     e.stopPropagation();
     if (!isAuthenticated) {
       toast.error('Please sign in to add items to cart');
-      navigate('/login');
       return;
     }
     setCartLoading(true);
@@ -264,7 +263,7 @@ function ListProductCard({ product, alreadyJoined = false }) {
   /* Opens the join modal */
   const handleJoin = (e) => {
     e.stopPropagation();
-    if (!isAuthenticated) { toast.error('Please sign in to join the group deal'); navigate('/login'); return; }
+    if (!isAuthenticated) { toast.error('Please sign in to join the group deal'); return; }
     setShowJoinModal(true);
   };
 
@@ -288,7 +287,6 @@ function ListProductCard({ product, alreadyJoined = false }) {
     e.stopPropagation();
     if (!isAuthenticated) {
       toast.error('Please sign in to add to wishlist');
-      navigate('/login');
       return;
     }
     try {
@@ -417,6 +415,7 @@ function ListProductCard({ product, alreadyJoined = false }) {
    MAIN PAGE COMPONENT
 ════════════════════════════════════════════════════════════ */
 export default function Products() {
+  const { isAuthenticated } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [products, setProducts]       = useState([]);
@@ -441,8 +440,11 @@ export default function Products() {
     rating:   '',
   });
 
-  // Fetch joined campaigns to show correct button state on cards
+  // Fetch joined campaigns to show correct button state on cards.
+  // Guests have no "my campaigns" — skip the call entirely so the page
+  // (search, category filters, product grid) works before login.
   useEffect(() => {
+    if (!isAuthenticated) { setJoinedProductIds(new Set()); return; }
     campaignService.getMyCampaigns().then(mine => {
       if (Array.isArray(mine)) {
         // Only ACTIVE or PAUSED campaigns count as "joined" — exclude CANCELLED
@@ -450,7 +452,7 @@ export default function Products() {
         setJoinedProductIds(new Set(active.map(m => Number(m.product_id))));
       }
     }).catch(() => {});
-  }, []);
+  }, [isAuthenticated]);
 
   // Sync filters when URL searchParams change (e.g. search from Header)
   useEffect(() => {

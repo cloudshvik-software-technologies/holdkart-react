@@ -32,6 +32,7 @@ export default function Profile() {
   const [imgFile, setImgFile]       = useState(null);
   const [profileImg, setProfileImg] = useState('');
   const [uploading, setUploading]   = useState(false);
+  const [detectingLocation, setDetectingLocation] = useState(false);
 
   // Deactivate account flow (Flipkart-style: soft deactivation, reversible by logging back in)
   const [showDeactivateModal, setShowDeactivateModal] = useState(false);
@@ -45,13 +46,21 @@ export default function Profile() {
     profileService.getProfile()
       .then(p => {
         if (p) {
+          // If the profile has no saved address yet, pre-fill from the address
+          // detected via the Home page's location prompt (if the user allowed it).
+          // This never overwrites an existing saved address, and the user can still
+          // edit or clear these fields before saving — exactly like manual entry.
+          let detected = null;
+          if (!p.address && !p.city && !p.pincode) {
+            try { detected = JSON.parse(localStorage.getItem('holdkart_detected_address') || 'null'); } catch { /* ignore */ }
+          }
           setForm({
             name: p.name || '',
             mobile: p.mobile || '',
-            address: p.address || '',
-            city: p.city || '',
-            state: p.state || '',
-            pincode: p.pincode || '',
+            address: p.address || detected?.address || '',
+            city: p.city || detected?.city || '',
+            state: p.state || detected?.state || '',
+            pincode: p.pincode || detected?.pincode || '',
             gender: p.gender || '',
           });
           setProfileImg(p.profile_image || '');
@@ -73,6 +82,54 @@ export default function Profile() {
     } finally {
       setSaving(false);
     }
+  };
+
+  // Re-detect location on demand (same browser permission prompt as Home) and
+  // fill City/State/Pincode into the form. User can still edit before saving.
+  const handleUseCurrentLocation = () => {
+    if (typeof window === 'undefined' || !window.navigator?.geolocation) {
+      toast.error('Location is not supported on this browser');
+      return;
+    }
+    setDetectingLocation(true);
+    window.navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          const res = await fetch(
+            `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
+          );
+          const data = await res.json();
+          const pincode = data?.postcode;
+          const city = data?.city || data?.locality || '';
+          const state = data?.principalSubdivision || '';
+          const validPincode = pincode && /^[1-9][0-9]{5}$/.test(pincode);
+
+          if (validPincode || city || state) {
+            setForm(p => ({
+              ...p,
+              city: city || p.city,
+              state: state || p.state,
+              pincode: validPincode ? pincode : p.pincode,
+            }));
+            toast.success(
+              validPincode ? 'Location detected!' : 'Detected city/state — please enter pincode manually'
+            );
+          } else {
+            toast.error('Could not detect your location — please enter address manually');
+          }
+        } catch {
+          toast.error('Could not detect location right now');
+        } finally {
+          setDetectingLocation(false);
+        }
+      },
+      () => {
+        toast.error('Location permission denied');
+        setDetectingLocation(false);
+      },
+      { timeout: 8000 }
+    );
   };
 
   const handleImageUpload = async (file) => {
@@ -512,7 +569,31 @@ export default function Profile() {
 
               {/* Address section */}
               <div style={{ marginTop: 36 }}>
-                <div className="myn-section-head" style={{ marginBottom: 20 }}>Address Details</div>
+                <div className="myn-section-head" style={{ marginBottom: 12 }}>Address Details</div>
+                <button
+                  type="button"
+                  onClick={handleUseCurrentLocation}
+                  disabled={detectingLocation}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none',
+                    padding: '8px 0 16px', cursor: detectingLocation ? 'default' : 'pointer', textAlign: 'left',
+                    fontFamily: 'inherit', width: '100%',
+                  }}
+                >
+                  <span style={{
+                    width: 34, height: 34, borderRadius: '50%', background: '#eef2ff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    fontSize: '1.1rem',
+                  }}>📍</span>
+                  <span>
+                    <span style={{ display: 'block', color: MYNTRA_PINK, fontWeight: 700, fontSize: '0.92rem' }}>
+                      {detectingLocation ? 'Detecting location…' : 'Use my current location'}
+                    </span>
+                    <span style={{ display: 'block', color: '#6b7280', fontSize: '0.8rem', marginTop: 1 }}>
+                      Allow access to location
+                    </span>
+                  </span>
+                </button>
                 <div style={{ marginBottom: 16 }}>
                   <label className="myn-label">Street Address</label>
                   <textarea

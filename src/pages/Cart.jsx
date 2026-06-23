@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { cartService } from '../services/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { getGuestCart, updateGuestCartItem, removeGuestCartItem } from '../utils/guestCart.js';
 import toast from 'react-hot-toast';
 
 const FALLBACK_IMG =
@@ -22,6 +23,11 @@ export default function Cart() {
   const [dealRemoveItem, setDealRemoveItem] = useState(null); // item pending deal-removal confirmation
 
   const fetchCart = async () => {
+    if (!isAuthenticated) {
+      setCart(getGuestCart());
+      setLoading(false);
+      return;
+    }
     try {
       const data = await cartService.getCart();
       // Filter out any items without a name — these are deleted products whose
@@ -32,16 +38,24 @@ export default function Cart() {
   };
 
   useEffect(() => {
-    if (isAuthenticated) { fetchCart(); }
-    else { setLoading(false); }
+    fetchCart();
   }, [isAuthenticated]);
 
   const updateQty = async (cartId, qty) => {
+    if (!isAuthenticated) {
+      setCart(qty <= 0 ? removeGuestCartItem(cartId) : updateGuestCartItem(cartId, qty));
+      return;
+    }
     try { await cartService.updateCartItem({ cartId, quantity: qty }); fetchCart(); }
     catch(e) { toast.error(e?.response?.data?.message || 'Failed to update'); }
   };
 
   const remove = async (cartId) => {
+    if (!isAuthenticated) {
+      setCart(removeGuestCartItem(cartId));
+      toast.success('Item removed');
+      return;
+    }
     try { await cartService.removeFromCart({ cartId }); fetchCart(); toast.success('Item removed'); }
     catch { toast.error('Failed to remove'); }
   };
@@ -78,18 +92,6 @@ export default function Cart() {
     </div>
   );
 
-  if (!isAuthenticated) return (
-    <div style={page}>
-      <div style={{ ...inner, maxWidth: 480, paddingTop: 60, textAlign: 'center' }}>
-        <div style={{ fontSize: '4rem', marginBottom: 16 }}>🔒</div>
-        <h2 style={{ fontWeight: 700, color: '#0f1111', marginBottom: 8 }}>Sign in to view your cart</h2>
-        <p style={{ color: '#6b7280', marginBottom: 24, fontSize: '0.9rem' }}>Your cart is saved when you're signed in.</p>
-        <Link to="/login" style={{ display: 'inline-block', padding: '10px 32px', background: '#f0c14b', border: '1px solid #a88734', borderRadius: 20, fontWeight: 700, color: '#111', fontSize: '0.9rem', textDecoration: 'none' }}>Sign In</Link>
-        <p style={{ marginTop: 14, fontSize: '0.85rem', color: '#6b7280' }}>New customer? <Link to="/register" style={{ color: '#2a5298', textDecoration: 'underline' }}>Start here</Link></p>
-      </div>
-    </div>
-  );
-
   return (
     <div style={page}>
       <div style={inner}>
@@ -98,6 +100,13 @@ export default function Cart() {
         <h1 style={{ fontSize: '1.7rem', fontWeight: 400, color: '#0f1111', marginBottom: 16 }}>
           Shopping Cart
         </h1>
+
+        {!isAuthenticated && (
+          <div style={{ background: '#fff7e6', border: '1px solid #fde68a', borderRadius: 4, padding: '10px 16px', marginBottom: 16, fontSize: '0.85rem', color: '#92400e', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span>🔒 You're not signed in — sign in to save this cart and proceed to checkout.</span>
+            <Link to="/login" style={{ color: '#2a5298', fontWeight: 700, textDecoration: 'underline' }}>Sign In</Link>
+          </div>
+        )}
 
         {cart.length === 0 ? (
           /* ── Empty cart ── */

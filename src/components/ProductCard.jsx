@@ -4,6 +4,7 @@ import StarRating from './StarRating.jsx';
 import JoinDealModal from './JoinDealModal.jsx';
 import { cartService, wishlistService, campaignService } from '../services/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { addGuestCartItem } from '../utils/guestCart.js';
 import toast from 'react-hot-toast';
 
 const FALLBACK_IMG =
@@ -73,10 +74,13 @@ export default function ProductCard({ product, alreadyJoined = false }) {
 
   const handleCart = async (e) => {
     e.stopPropagation();
-    if (!isAuthenticated) { toast.error('Please sign in to add to cart'); navigate('/login'); return; }
     setCartLoading(true);
     try {
-      await cartService.addToCart({ productId: product.productId, quantity: 1 });
+      if (isAuthenticated) {
+        await cartService.addToCart({ productId: product.productId, quantity: 1 });
+      } else {
+        addGuestCartItem(product, 1);
+      }
       toast.success('Added to cart!');
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Failed to add to cart');
@@ -85,7 +89,7 @@ export default function ProductCard({ product, alreadyJoined = false }) {
 
   const handleWishlist = async (e) => {
     e.stopPropagation();
-    if (!isAuthenticated) { toast.error('Please sign in to add to wishlist'); navigate('/login'); return; }
+    if (!isAuthenticated) { toast.error('Please sign in to add to wishlist'); return; }
     try {
       if (wished) {
         await wishlistService.removeFromWishlist({ productId: product.productId });
@@ -129,7 +133,7 @@ export default function ProductCard({ product, alreadyJoined = false }) {
 
   const handleJoin = (e) => {
     e.stopPropagation();
-    if (!isAuthenticated) { toast.error('Please sign in to join the group deal'); navigate('/login'); return; }
+    if (!isAuthenticated) { toast.error('Please sign in to join the group deal'); return; }
     setShowJoinModal(true);
   };
 
