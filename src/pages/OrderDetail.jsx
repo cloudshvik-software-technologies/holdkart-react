@@ -10,6 +10,15 @@ const fmtDate = (d, short = false) => {
   return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
+/* Status metadata for cancelled/return-related states — mirrors the colors
+   used on the Orders list page so the indication is consistent site-wide */
+const CANCEL_LIKE_META = {
+  'Cancelled':              { color: '#c40000', label: 'Order Cancelled' },
+  'Cancellation Requested': { color: '#b7860b', label: 'Cancellation Requested' },
+  'Returned':               { color: '#666',    label: 'Order Returned' },
+  'Return Requested':       { color: '#b7860b', label: 'Return Requested' },
+};
+
 /* Build a timeline of tracking steps from order data */
 const buildTimeline = (order) => {
   const steps = [];
@@ -28,6 +37,16 @@ const buildTimeline = (order) => {
     const deliveredDate = order.delivered_date || order.updated_at;
     steps.push({ label: 'Out For Delivery', date: fmtDate(deliveredDate, true), time: '', done: true });
     steps.push({ label: 'Delivered', date: fmtDate(deliveredDate, true), time: new Date(deliveredDate || created).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }), done: true });
+  }
+  if (CANCEL_LIKE_META[status]) {
+    const cancelledDate = order.updated_at || created;
+    steps.push({
+      label: CANCEL_LIKE_META[status].label,
+      date: fmtDate(cancelledDate, true),
+      time: order.cancellation_reason ? `Reason: ${order.cancellation_reason}` : '',
+      done: true,
+      cancelled: true,
+    });
   }
   return steps;
 };
@@ -260,6 +279,7 @@ export default function OrderDetail() {
           color: #fff; font-size: 0.75rem; font-weight: 700;
           flex-shrink: 0;
         }
+        .od-tl-dot.cancelled { background: #c40000; }
         .od-tl-line {
           width: 2px; flex: 1; background: #16a34a;
           min-height: 16px; margin-top: 2px;
@@ -485,6 +505,16 @@ export default function OrderDetail() {
                   <div className="od-prod-name">{order.product_name}</div>
                   {order.variant && <div className="od-prod-variant">{order.variant}</div>}
                   {order.sellerName && <div className="od-prod-seller">Seller: {order.sellerName}</div>}
+                  {CANCEL_LIKE_META[order.order_status] && (
+                    <div style={{
+                      display: 'inline-block', marginBottom: 6, padding: '3px 10px',
+                      borderRadius: 20, fontSize: '0.78rem', fontWeight: 700,
+                      background: `${CANCEL_LIKE_META[order.order_status].color}1A`,
+                      color: CANCEL_LIKE_META[order.order_status].color,
+                    }}>
+                      {CANCEL_LIKE_META[order.order_status].label}
+                    </div>
+                  )}
                   <div className="od-prod-price">₹{grandTotal.toLocaleString('en-IN')}</div>
                 </div>
               </div>
@@ -533,11 +563,11 @@ export default function OrderDetail() {
                 {timeline.map((step, i) => (
                   <div key={i} className="od-tl-item">
                     <div className="od-tl-dot-wrap">
-                      <div className="od-tl-dot">✓</div>
+                      <div className={`od-tl-dot${step.cancelled ? ' cancelled' : ''}`}>{step.cancelled ? '✕' : '✓'}</div>
                       {i < timeline.length - 1 && <div className="od-tl-line" />}
                     </div>
                     <div>
-                      <div className="od-tl-label">{step.label}, {step.date}</div>
+                      <div className="od-tl-label" style={step.cancelled ? { color: '#c40000' } : undefined}>{step.label}, {step.date}</div>
                       {step.time && <div className="od-tl-date">{step.time}</div>}
                     </div>
                   </div>

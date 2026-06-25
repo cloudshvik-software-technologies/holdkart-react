@@ -1077,80 +1077,10 @@ export default function Home({ isGuest = false }) {
         </span>
       </div>
 
-      {/* ════════════ HERO BANNER AD — shows carousel of ads; falls back to original carousel if no active ads ════════════ */}
-      <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: 24 }}>
-      <HeroBannerAd>
-        {/* Original hero carousel (shown only when no hero_banner ad is active) */}
-        <div style={{ position: 'relative', background: slide.bg, overflow: 'hidden', height: 390, transition: 'background 0.5s ease' }}>
-
-          {slide.leftImg && (
-            <div
-              className={`hk-prod-img ${transitioning ? 'out' : 'in'}`}
-              style={{
-                position: 'absolute', left: 0, top: 0, width: '28%', height: '100%',
-                overflow: 'hidden', zIndex: 2, pointerEvents: 'none',
-                maskImage: 'linear-gradient(to right, transparent 0%, black 18%, black 72%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)',
-                WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 18%, black 72%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)',
-                maskComposite: 'intersect', WebkitMaskComposite: 'destination-in',
-              }}
-            >
-              <img src={slide.leftImg.src} alt={slide.leftImg.alt}
-                style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center', display: 'block', mixBlendMode: 'screen' }} />
-            </div>
-          )}
-
-          {slide.rightImg && (
-            <div
-              className={`hk-prod-img ${transitioning ? 'out' : 'in'}`}
-              style={{
-                position: 'absolute', right: 0, top: 0, width: '28%', height: '100%',
-                overflow: 'hidden', zIndex: 2, pointerEvents: 'none',
-                maskImage: 'linear-gradient(to left, transparent 0%, black 18%, black 72%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)',
-                WebkitMaskImage: 'linear-gradient(to left, transparent 0%, black 18%, black 72%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)',
-                maskComposite: 'intersect', WebkitMaskComposite: 'destination-in',
-              }}
-            >
-              <img src={slide.rightImg.src} alt={slide.rightImg.alt}
-                style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center', display: 'block', mixBlendMode: 'screen' }} />
-            </div>
-          )}
-
-          <div
-            className={`hk-banner-content ${transitioning ? 'out' : 'in'}`}
-            style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', zIndex: 10, width: 460 }}
-          >
-            <h1 style={{ fontSize: 'clamp(2.2rem, 4.5vw, 3.4rem)', fontWeight: 900, color: '#fff', lineHeight: 1.15, marginBottom: 10, textShadow: '0 2px 12px rgba(0,0,0,0.45)', whiteSpace: 'pre-line' }}>
-              {slide.headline}
-            </h1>
-            <p style={{ fontSize: '1.1rem', fontWeight: 500, color: 'rgba(255,255,255,0.88)', marginBottom: 16, textShadow: '0 1px 6px rgba(0,0,0,0.35)' }}>
-              {slide.sub}
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 14 }}>
-              {slide.brands.map(b => (
-                <span key={b} style={{ background: 'rgba(255,255,255,0.14)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', borderRadius: 3, padding: '3px 13px', fontSize: '0.75rem', fontWeight: 700 }}>{b}</span>
-              ))}
-            </div>
-            <div className="hk-promo-pill" style={{ background: slide.color1, color: '#fff', border: 'none', marginRight: 6 }}>
-              {slide.badge}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 6 }}>
-              <span style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.22)', color: 'rgba(255,255,255,0.82)', borderRadius: 3, padding: '5px 14px', fontSize: '0.75rem' }}>{slide.offer}</span>
-            </div>
-            <button className="hk-cta" onClick={() => guardedNav('/products')}>Shop Now</button>
-          </div>
-
-          <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 6, zIndex: 20 }}>
-            {SLIDES.map((_, i) => (
-              <button key={i} onClick={() => manualSlide(i)}
-                style={{ width: i === slideIdx ? 22 : 8, height: 8, borderRadius: 99, background: i === slideIdx ? slide.color1 : 'rgba(255,255,255,0.45)', border: 'none', cursor: 'pointer', transition: 'all 0.35s', padding: 0 }} />
-            ))}
-          </div>
-
-          <button className="hk-arrow left"  onClick={() => manualSlide((slideIdx - 1 + SLIDES.length) % SLIDES.length)}>‹</button>
-          <button className="hk-arrow right" onClick={() => manualSlide((slideIdx + 1) % SLIDES.length)}>›</button>
-        </div>
-      </HeroBannerAd>
-      </div>
+      {/* ════════════ HERO BANNER AD — shows carousel of ads; renders nothing if no ──
+           active ad exists, so the deal grid below becomes the top section right
+           under the accent bar instead of showing a fallback carousel ════════════ */}
+      <HeroBannerAd style={{ marginTop: 24 }} />
 
       {/* ════════════ MAIN CONTENT ════════════ */}
       <div style={{ maxWidth: 1500, margin: '0 auto', padding: '12px 12px 60px' }}>
@@ -1339,40 +1269,10 @@ export default function Home({ isGuest = false }) {
           title={!isGuest && personalizedCart.length > 0 ? 'Based on your cart' : "Today's Deals"}
         />
 
-        {/* ── Product Spotlight Ad — falls back to App promo banner if no active ads ── */}
-        <ProductSpotlightAd>
-          <div style={{ borderRadius: 8, overflow: 'hidden', marginBottom: 12, display: 'flex', minHeight: 200, background: 'linear-gradient(135deg, #7b1fa2, #ab47bc)' }}>
-            <div style={{ background: '#FF9800', minWidth: 200, padding: '28px 28px 28px 24px', display: 'flex', flexDirection: 'column', justifyContent: 'center', position: 'relative', flexShrink: 0 }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#5D3A00', marginBottom: 4, letterSpacing: 0.3 }}>Up to</div>
-              <div style={{ fontSize: '2.8rem', fontWeight: 900, color: '#4A148C', lineHeight: 1, marginBottom: 4, textShadow: '0 2px 0 rgba(255,255,255,0.3)' }}>35% OFF</div>
-              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#3E2700', marginBottom: 2 }}>on first order</div>
-              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#5D3A00', marginBottom: 16 }}>*Only on App</div>
-              <button onClick={() => guardedNav('/products')}
-                style={{ background: '#fff', border: 'none', borderRadius: 6, padding: '9px 18px', fontWeight: 800, fontSize: '0.85rem', color: '#333', cursor: 'pointer', alignSelf: 'flex-start', boxShadow: '0 2px 8px rgba(0,0,0,0.2)', letterSpacing: 0.3 }}>
-                Order Now
-              </button>
-              <div style={{ position: 'absolute', left: 8, bottom: 10, fontSize: '0.55rem', color: 'rgba(0,0,0,0.4)', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>T&amp;C Apply*</div>
-            </div>
-            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 0, padding: '18px 20px', alignItems: 'center' }}>
-              {[
-                { label: 'Trending Now',     img: 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?w=300&q=80' },
-                { label: 'Budget Buys',      img: 'https://images.unsplash.com/photo-1487222477894-8943e31ef7b2?w=300&q=80' },
-                { label: 'Top Rated Picks',  img: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=300&q=80' },
-                { label: 'Daily Essentials', img: 'https://images.unsplash.com/photo-1607631568010-a87245c0daf8?w=300&q=80' },
-              ].map((cat, idx) => (
-                <div key={idx} onClick={() => guardedNav('/products')}
-                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '0 8px' }}>
-                  <div style={{ width: '100%', maxWidth: 150, aspectRatio: '3/4', borderRadius: 16, overflow: 'hidden', border: '3px solid rgba(255,255,255,0.55)', position: 'relative', boxShadow: '0 6px 20px rgba(0,0,0,0.35)', background: '#ddd' }}>
-                    <img src={cat.img} alt={cat.label} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={e => { e.target.style.display = 'none'; }} />
-                  </div>
-                  <div style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)', borderRadius: 20, padding: '5px 14px', color: '#fff', fontWeight: 700, fontSize: '0.78rem', textAlign: 'center', whiteSpace: 'nowrap', border: '1px solid rgba(255,255,255,0.25)', letterSpacing: 0.2 }}>
-                    {cat.label}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </ProductSpotlightAd>
+        {/* ── Product Spotlight Ad — renders nothing if no active ads, so the next ──
+             section (Trending Now / Based on browsing history) moves up directly
+             instead of showing a dummy promo banner ── */}
+        <ProductSpotlightAd />
 
         {/* ── Based on your browsing history (logged in) / Trending Now (guest or new user) ── */}
         {isGuest

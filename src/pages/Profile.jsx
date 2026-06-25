@@ -4,6 +4,7 @@ import { profileService } from '../services/index.js';
 import { deleteProfileImage } from '../services/profile.service.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import toast from 'react-hot-toast';
+import DeactivateAccountModal from '../components/DeactivateAccountModal.jsx';
 
 const CUSTOMER_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081';
 
@@ -34,12 +35,8 @@ export default function Profile() {
   const [uploading, setUploading]   = useState(false);
   const [detectingLocation, setDetectingLocation] = useState(false);
 
-  // Deactivate account flow (Flipkart-style: soft deactivation, reversible by logging back in)
+  // Deactivate account flow (seller-style 3-step modal)
   const [showDeactivateModal, setShowDeactivateModal] = useState(false);
-  const [deactivatePassword, setDeactivatePassword]   = useState('');
-  const [deactivating, setDeactivating]                = useState(false);
-  const [deactivateWarnings, setDeactivateWarnings]    = useState(null);
-  const [loadingWarnings, setLoadingWarnings]          = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) { navigate('/login'); return; }
@@ -162,38 +159,10 @@ export default function Profile() {
     }
   };
 
-  const handleOpenDeactivateModal = async () => {
-    setLoadingWarnings(true);
-    setShowDeactivateModal(true);
-    try {
-      const warnings = await profileService.getDeactivationWarnings();
-      setDeactivateWarnings(warnings);
-    } catch {
-      setDeactivateWarnings({ pendingOrders: 0, activeDeals: 0 });
-    } finally {
-      setLoadingWarnings(false);
-    }
-  };
-
-  const handleDeactivate = async () => {
-    if (!deactivatePassword) {
-      toast.error('Please enter your password to confirm.');
-      return;
-    }
-    setDeactivating(true);
-    try {
-      await profileService.deactivateAccount(deactivatePassword);
-      toast.success('Your account has been deactivated.');
-      setShowDeactivateModal(false);
-      setDeactivateWarnings(null);
-      logout();
-      navigate('/login');
-    } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed to deactivate account');
-    } finally {
-      setDeactivating(false);
-      setDeactivatePassword('');
-    }
+  const handleDeactivateSuccess = () => {
+    setShowDeactivateModal(false);
+    logout();
+    navigate('/login');
   };
 
   const getImgUrl = (url) => {
@@ -710,112 +679,99 @@ export default function Profile() {
             </div>
           )}
           {/* DEACTIVATE ACCOUNT */}
-          {activeTab === 'deactivate' && (
-            <div>
-              <div className="myn-section-head">Deactivate Account</div>
-              <div style={{
-                border: '1px solid #fde2e2', background: '#fff8f8', borderRadius: 8,
-                padding: '20px 24px', maxWidth: 560,
-              }}>
-                <div style={{ fontWeight: 700, color: '#282c3f', marginBottom: 10 }}>
-                  What happens when you deactivate?
+          {activeTab === 'deactivate' && (() => {
+            const isDeactivationPending = customer?.deactivated && customer?.deactivatedAt;
+            const daysLeft = (() => {
+              if (!customer?.deactivatedAt) return 30;
+              const elapsed = (Date.now() - new Date(customer.deactivatedAt).getTime()) / 86400000;
+              return Math.max(0, Math.ceil(30 - elapsed));
+            })();
+
+            return (
+              <div>
+                <div className="myn-section-head">Deactivate Account</div>
+
+                {/* Recovery banner — shown when deactivation is already pending */}
+                {isDeactivationPending && (
+                  <div style={{
+                    background: 'linear-gradient(135deg,#fef3c7,#fde68a)',
+                    border: '2px solid #f59e0b',
+                    borderRadius: 12,
+                    padding: '16px 20px',
+                    marginBottom: 20,
+                    display: 'flex', alignItems: 'flex-start', gap: 14,
+                  }}>
+                    <span style={{ fontSize: 28, flexShrink: 0 }}>⏳</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 800, color: '#92400e', fontSize: '0.95rem', marginBottom: 4 }}>
+                        Account Deactivation In Progress
+                      </div>
+                      <div style={{ color: '#78350f', fontSize: '0.85rem', lineHeight: 1.6, marginBottom: 10 }}>
+                        Your account is scheduled for deactivation.
+                        You have <strong>{daysLeft} day{daysLeft === 1 ? '' : 's'}</strong> left to recover it
+                        before your data is permanently deleted.
+                      </div>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await profileService.reactivateAccount();
+                            updateCustomer({ deactivated: false, deactivatedAt: null });
+                            toast.success('Your account has been reactivated. Welcome back!');
+                          } catch (err) {
+                            toast.error(err?.response?.data?.message || 'Recovery failed. Please try again.');
+                          }
+                        }}
+                        style={{
+                          background: 'linear-gradient(135deg,#d97706,#b45309)',
+                          color: '#fff', border: 'none', padding: '9px 22px', borderRadius: 8,
+                          fontWeight: 700, fontSize: '0.87rem', cursor: 'pointer',
+                        }}
+                      >
+                        🔄 Recover My Account
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{
+                  border: '1px solid #fde2e2', background: '#fff8f8', borderRadius: 8,
+                  padding: '20px 24px', maxWidth: 560,
+                }}>
+                  <div style={{ fontWeight: 700, color: '#282c3f', marginBottom: 10 }}>
+                    What happens when you deactivate?
+                  </div>
+                  <ul style={{ color: '#555', fontSize: '0.88rem', lineHeight: 1.8, paddingLeft: 20, marginBottom: 16 }}>
+                    <li>Your profile, orders and wishlist are hidden — not deleted.</li>
+                    <li>A 30-day recovery window begins. Log back in anytime to recover.</li>
+                    <li>After 30 days, your account and personal data are permanently deleted.</li>
+                    <li>Pending orders will continue but you won't receive status updates.</li>
+                  </ul>
+                  <button
+                    type="button"
+                    onClick={() => setShowDeactivateModal(true)}
+                    disabled={isDeactivationPending}
+                    style={{
+                      background: '#fff', color: '#d92d20', border: '1px solid #d92d20',
+                      borderRadius: 4, padding: '10px 24px', fontSize: '0.88rem', fontWeight: 700,
+                      cursor: isDeactivationPending ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                      opacity: isDeactivationPending ? 0.5 : 1,
+                    }}
+                  >
+                    {isDeactivationPending ? '⏳ Deactivation Pending' : 'Deactivate My Account'}
+                  </button>
                 </div>
-                <ul style={{ color: '#555', fontSize: '0.88rem', lineHeight: 1.8, paddingLeft: 20, marginBottom: 16 }}>
-                  <li>Your profile, orders and wishlist are hidden — not deleted.</li>
-                  <li>You'll be logged out of all devices immediately.</li>
-                  <li>Simply log back in anytime to reactivate your account.</li>
-                </ul>
-                <button
-                  type="button"
-                  onClick={handleOpenDeactivateModal}
-                  style={{
-                    background: '#fff', color: '#d92d20', border: '1px solid #d92d20',
-                    borderRadius: 4, padding: '10px 24px', fontSize: '0.88rem', fontWeight: 700,
-                    cursor: 'pointer', fontFamily: 'inherit',
-                  }}
-                >
-                  Deactivate My Account
-                </button>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       </div>
 
-      {/* Deactivate confirmation modal */}
-      {showDeactivateModal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-        }}>
-          <div style={{ background: '#fff', borderRadius: 8, padding: '28px 30px', width: '100%', maxWidth: 420 }}>
-            <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#282c3f', marginBottom: 8 }}>
-              Deactivate your account?
-            </div>
-            <p style={{ color: '#666', fontSize: '0.86rem', lineHeight: 1.6, marginBottom: 18 }}>
-              Enter your password to confirm. You can reactivate anytime simply by logging back in.
-            </p>
-
-            {loadingWarnings ? (
-              <div style={{ color: '#999', fontSize: '0.84rem', marginBottom: 16 }}>Checking your account…</div>
-            ) : (
-              (deactivateWarnings?.pendingOrders > 0 || deactivateWarnings?.activeDeals > 0) && (
-                <div style={{
-                  background: '#fff8e1', border: '1px solid #fde68a', borderRadius: 6,
-                  padding: '12px 14px', marginBottom: 18, fontSize: '0.84rem', color: '#92660a', lineHeight: 1.6,
-                }}>
-                  <strong>Heads up —</strong>{' '}
-                  {deactivateWarnings.pendingOrders > 0 && (
-                    <>you have {deactivateWarnings.pendingOrders} order{deactivateWarnings.pendingOrders > 1 ? 's' : ''} still in progress</>
-                  )}
-                  {deactivateWarnings.pendingOrders > 0 && deactivateWarnings.activeDeals > 0 && <> and </>}
-                  {deactivateWarnings.activeDeals > 0 && (
-                    <>{deactivateWarnings.activeDeals} active group deal{deactivateWarnings.activeDeals > 1 ? 's' : ''} you've joined</>
-                  )}
-                  . These will continue running, but you won't get updates while deactivated.
-                </div>
-              )
-            )}
-
-            <label className="myn-label">Password</label>
-            <input
-              type="password"
-              className="myn-input"
-              placeholder="Enter your password"
-              value={deactivatePassword}
-              onChange={e => setDeactivatePassword(e.target.value)}
-              style={{ marginBottom: 20 }}
-            />
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-              <button
-                type="button"
-                onClick={() => { setShowDeactivateModal(false); setDeactivatePassword(''); setDeactivateWarnings(null); }}
-                disabled={deactivating}
-                style={{
-                  background: '#fff', color: '#333', border: '1px solid #d4d5d9',
-                  borderRadius: 4, padding: '10px 20px', fontSize: '0.86rem', fontWeight: 700,
-                  cursor: 'pointer', fontFamily: 'inherit',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDeactivate}
-                disabled={deactivating}
-                style={{
-                  background: '#d92d20', color: '#fff', border: 'none',
-                  borderRadius: 4, padding: '10px 20px', fontSize: '0.86rem', fontWeight: 700,
-                  cursor: deactivating ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-                  opacity: deactivating ? 0.7 : 1,
-                }}
-              >
-                {deactivating ? 'Deactivating…' : 'Yes, Deactivate'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Deactivation Modal */}
+      <DeactivateAccountModal
+        open={showDeactivateModal}
+        onClose={() => setShowDeactivateModal(false)}
+        onSuccess={handleDeactivateSuccess}
+      />
     </div>
   );
 }
