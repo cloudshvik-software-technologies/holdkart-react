@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { profileService } from '../services/index.js';
 import { deleteProfileImage } from '../services/profile.service.js';
@@ -10,6 +10,48 @@ const CUSTOMER_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081
 
 const MYNTRA_PINK = '#2a5298';
 const MYNTRA_HOVER = '#1e3c72';
+
+// Some popular city names differ from their official postal "District" name
+// (renamed cities, twin-city districts, etc). Without this, a perfectly valid
+// address (e.g. Kochi, which is in Ernakulam district) would be wrongly flagged
+// as a city/pincode mismatch.
+const CITY_DISTRICT_ALIASES = {
+  bengaluru: ['bangalore', 'bengaluru', 'bangalore urban', 'bengaluru urban'],
+  mysuru: ['mysore', 'mysuru'],
+  mangaluru: ['mangalore', 'dakshina kannada'],
+  belagavi: ['belgaum'],
+  kalaburagi: ['gulbarga'],
+  ballari: ['bellary'],
+  shivamogga: ['shimoga'],
+  hubballi: ['hubli', 'dharwad'],
+  tumkur: ['tumakuru', 'tumkur'],
+  gurgaon: ['gurugram'],
+  prayagraj: ['allahabad'],
+  kochi: ['ernakulam'],
+  tiruchirappalli: ['trichy'],
+  puducherry: ['pondicherry'],
+  mumbai: ['mumbai city', 'mumbai suburban'],
+  'navi mumbai': ['thane', 'raigad'],
+  'pimpri-chinchwad': ['pune'],
+  'vasai-virar': ['palghar'],
+  noida: ['gautam buddha nagar', 'gautam buddh nagar'],
+  'greater noida': ['gautam buddha nagar', 'gautam buddh nagar'],
+  'new delhi': ['delhi', 'central delhi', 'south delhi', 'north delhi', 'east delhi', 'west delhi', 'south west delhi', 'north west delhi', 'south east delhi', 'north east delhi', 'shahdara', 'new delhi'],
+  delhi: ['delhi', 'central delhi', 'south delhi', 'north delhi', 'east delhi', 'west delhi', 'south west delhi', 'north west delhi', 'south east delhi', 'north east delhi', 'shahdara', 'new delhi'],
+};
+const normalizeName = (s) => (s || '').toLowerCase().replace(/[^a-z]/g, '');
+function cityMatchesDistrict(cityInput, district) {
+  const cNorm = normalizeName(cityInput);
+  const dNorm = normalizeName(district);
+  if (!cNorm) return true;
+  if (dNorm.includes(cNorm) || cNorm.includes(dNorm)) return true;
+  const aliasKey = Object.keys(CITY_DISTRICT_ALIASES).find(k => normalizeName(k) === cNorm);
+  if (!aliasKey) return false;
+  return CITY_DISTRICT_ALIASES[aliasKey].some(alias => {
+    const aNorm = normalizeName(alias);
+    return aNorm === dNorm || dNorm.includes(aNorm) || aNorm.includes(dNorm);
+  });
+}
 
 const NAV_ITEMS = [
   { key: 'profile',    label: 'My Profile' },
@@ -28,6 +70,10 @@ export default function Profile() {
 
   const [activeTab, setActiveTab]   = useState('profile');
   const [form, setForm]             = useState({ name: '', mobile: '', address: '', city: '', state: '', pincode: '', gender: '' });
+  // Verifies the entered pincode actually belongs to the typed state/city —
+  // status: 'idle' | 'checking' | 'ok' | 'mismatch' | 'error'
+  const [pincodeCheck, setPincodeCheck] = useState({ status: 'idle', detectedState: '', detectedDistrict: '' });
+  const pincodeCheckSeqRef = useRef(0);
   const [loading, setLoading]       = useState(true);
   const [saving, setSaving]         = useState(false);
   const [imgFile, setImgFile]       = useState(null);
@@ -67,8 +113,44 @@ export default function Profile() {
       .finally(() => setLoading(false));
   }, [isAuthenticated]);
 
+  /* Verify the entered pincode actually belongs to the typed state/city —
+     prevents combinations like Tamil Nadu + a Karnataka pincode, or
+     Coimbatore + a Chennai pincode, from being saved. */
+  useEffect(() => {
+    const { pincode, state, city } = form;
+    if (!/^\d{6}$/.test(pincode) || !state.trim()) {
+      setPincodeCheck({ status: 'idle', detectedState: '', detectedDistrict: '' });
+      return;
+    }
+    const seq = ++pincodeCheckSeqRef.current;
+    setPincodeCheck(prev => ({ ...prev, status: 'checking' }));
+    const norm = (s) => (s || '').toLowerCase().replace(/[^a-z]/g, '');
+    (async () => {
+      try {
+        const res = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+        const data = await res.json();
+        if (seq !== pincodeCheckSeqRef.current) return; // a newer check has since started
+        const po = data?.[0]?.PostOffice?.[0];
+        if (!po) { setPincodeCheck({ status: 'error', detectedState: '', detectedDistrict: '' }); return; }
+        const stateMatches = norm(po.State) === norm(state);
+        const cityMatches = cityMatchesDistrict(city, po.District);
+        setPincodeCheck({
+          status: stateMatches && cityMatches ? 'ok' : 'mismatch',
+          detectedState: po.State || '',
+          detectedDistrict: po.District || '',
+        });
+      } catch {
+        if (seq === pincodeCheckSeqRef.current) setPincodeCheck({ status: 'error', detectedState: '', detectedDistrict: '' });
+      }
+    })();
+  }, [form.pincode, form.state, form.city]);
+
   const handleSave = async (e) => {
     e.preventDefault();
+    if (pincodeCheck.status === 'mismatch') {
+      toast.error(`That pincode belongs to ${pincodeCheck.detectedDistrict}, ${pincodeCheck.detectedState} — please match it with the city/state entered`);
+      return;
+    }
     setSaving(true);
     try {
       await profileService.updateProfile({ ...form });
@@ -586,7 +668,16 @@ export default function Profile() {
                   <div>
                     <label className="myn-label">Pincode</label>
                     <input className="myn-input" placeholder="6-digit code" value={form.pincode} maxLength={6}
-                      onChange={e => setForm(p => ({ ...p, pincode: e.target.value.replace(/\D/g, '') }))} />
+                      onChange={e => setForm(p => ({ ...p, pincode: e.target.value.replace(/\D/g, '') }))}
+                      style={pincodeCheck.status === 'mismatch' ? { borderColor: '#dc2626' } : undefined} />
+                    {pincodeCheck.status === 'checking' && (
+                      <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 4 }}>Checking pincode…</div>
+                    )}
+                    {pincodeCheck.status === 'mismatch' && (
+                      <div style={{ fontSize: '0.78rem', color: '#dc2626', marginTop: 4 }}>
+                        This pincode belongs to {pincodeCheck.detectedDistrict}, {pincodeCheck.detectedState} — it doesn't match the city/state entered.
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

@@ -666,7 +666,6 @@ export default function Home({ isGuest = false }) {
   const [dealSections, setDealSections]   = useState(DEAL_SECTIONS_STATIC);
   const [slideIdx, setSlideIdx]           = useState(0);
   const [transitioning, setTransitioning] = useState(false);
-  const [countdown, setCountdown]         = useState({ h: 2, m: 34, s: 59 });
   const timerRef = useRef(null);
   const slide = SLIDES[slideIdx];
 
@@ -910,17 +909,6 @@ export default function Home({ isGuest = false }) {
   }, [isGuest]);
 
   useEffect(() => {
-    const t = setInterval(() => {
-      setCountdown(c => {
-        let { h, m, s } = c;
-        s--; if (s < 0) { s = 59; m--; if (m < 0) { m = 59; h = Math.max(0, h - 1); } }
-        return { h, m, s };
-      });
-    }, 1000);
-    return () => clearInterval(t);
-  }, []);
-
-  useEffect(() => {
     if (isGuest) return;
     const handleCampaignJoined = async () => {
       try {
@@ -947,7 +935,6 @@ export default function Home({ isGuest = false }) {
   }, [slideIdx, goSlide]);
 
   const manualSlide = (i) => { clearInterval(timerRef.current); goSlide(i); };
-  const pad = (n) => String(n).padStart(2, '0');
 
   const isFetchingRef = useRef(false);
 
@@ -1042,8 +1029,6 @@ export default function Home({ isGuest = false }) {
         .hk-cta-blue { background:linear-gradient(180deg,#7ac6e6,#4ba3cc); border-color:#367c96; color:#fff; }
         .hk-cta-blue:hover { background:linear-gradient(180deg,#6ab8da,#3a95be); }
 
-        .hk-digit { background:#111; color:#fff; border-radius:4px; padding:6px 10px; font-size:1.15rem; font-weight:800; min-width:36px; text-align:center; display:inline-block; font-variant-numeric:tabular-nums; }
-
         .hk-brands-track { display:flex; animation:brandScroll 30s linear infinite; width:max-content; }
         .hk-brands-track:hover { animation-play-state:paused; }
         @keyframes brandScroll { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
@@ -1115,41 +1100,8 @@ export default function Home({ isGuest = false }) {
           ))}
         </div>
 
-        {/* ── Scroll Banner Ad — Flipkart-style 2.5 cards, above Hold Deals ── */}
-        <ScrollBannerAd>
-          <div style={{ background: '#fff', borderRadius: 4, padding: '12px 20px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap', border: '1px solid #ddd' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-              <span style={{ fontSize: '1.2rem' }}>⚡</span>
-              <span style={{ fontWeight: 800, fontSize: '1rem', color: '#c40000' }}>Flash Sale</span>
-              <span style={{ fontSize: '0.8rem', color: '#666', fontWeight: 500 }}>Ends in</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span className="hk-digit">{pad(countdown.h)}</span>
-              <span style={{ fontWeight: 800, color: '#c40000', fontSize: '1.2rem' }}>:</span>
-              <span className="hk-digit">{pad(countdown.m)}</span>
-              <span style={{ fontWeight: 800, color: '#c40000', fontSize: '1.2rem' }}>:</span>
-              <span className="hk-digit">{pad(countdown.s)}</span>
-            </div>
-            <div style={{ flex: 1, display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 2, alignItems: 'center' }}>
-              {!isGuest && [
-                { icon: '♡',  label: 'Wishlist',  val: wishlistCount,    link: '/wishlist',  c: '#c7511f' },
-                { icon: '🎯', label: 'Deals',     val: campaigns.length, link: '/campaigns', c: '#c40000' },
-              ].map(s => (
-                <div key={s.label} onClick={() => navigate(s.link)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f7f7f7', border: '1px solid #ddd', borderRadius: 3, padding: '6px 14px', cursor: 'pointer', flexShrink: 0, transition: 'all 0.15s' }}
-                  onMouseEnter={e => e.currentTarget.style.borderColor = s.c}
-                  onMouseLeave={e => e.currentTarget.style.borderColor = '#ddd'}>
-                  <span style={{ fontSize: '1rem' }}>{s.icon}</span>
-                  <div>
-                    <div style={{ fontWeight: 800, fontSize: '0.88rem', color: s.c, lineHeight: 1 }}>{s.val}</div>
-                    <div style={{ fontSize: '0.65rem', color: '#888', lineHeight: 1.3 }}>{s.label}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <button onClick={() => guardedNav('/products')} style={{ background: 'linear-gradient(180deg,#f7dfa5,#f0c14b)', border: '1px solid #a88734', borderRadius: 3, padding: '7px 18px', fontWeight: 700, fontSize: '0.82rem', color: '#111', flexShrink: 0, cursor: 'pointer' }}>See All Deals →</button>
-          </div>
-        </ScrollBannerAd>
+        {/* ── Scroll Banner Ad ── */}
+        <ScrollBannerAd />
 
         {/* ── Hold Deals ── */}
         {campaigns.length > 0 && (
