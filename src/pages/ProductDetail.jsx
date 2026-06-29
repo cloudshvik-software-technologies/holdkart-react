@@ -59,7 +59,7 @@ const S = {
   page: {
     background: '#f4f6fa',
     minHeight: '100vh',
-    paddingTop: 100,
+    paddingTop: 112,
     paddingBottom: 60,
   },
   inner: {
@@ -206,6 +206,34 @@ const S = {
     borderRadius: 6,
     padding: '10px 12px',
     marginBottom: 14,
+  },
+  fixedPriceBox: {
+    background: '#f0fdf4',
+    border: '1px solid #bbf7d0',
+    borderRadius: 6,
+    padding: '10px 12px',
+    marginBottom: 14,
+  },
+  fixedPriceHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  fixedPriceLabel: {
+    fontSize: '0.78rem',
+    fontWeight: 700,
+    color: '#15803d',
+    letterSpacing: '0.05em',
+    textTransform: 'uppercase',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  fixedPriceTag: {
+    fontSize: '0.78rem',
+    color: '#16a34a',
+    fontWeight: 600,
   },
   groupDealHeader: {
     display: 'flex',
@@ -1168,7 +1196,37 @@ export default function ProductDetail() {
 
   return (
     <React.Fragment>
-      <div style={S.page}>
+      <div className="hk-pd-page" style={S.page}>
+      {/* Responsive overrides (mobile/tablet) — additive only, does not change desktop layout */}
+      <style>{`
+        @media (max-width: 900px) {
+          .hk-pd-grid { grid-template-columns: 1fr !important; }
+          .hk-pd-similar-grid { grid-template-columns: repeat(3, 1fr) !important; }
+          /* Buy box and image col must not be sticky when columns stack */
+          .hk-pd-buy-box { position: static !important; top: auto !important; }
+          .hk-pd-img-col { position: static !important; top: auto !important; }
+        }
+        @media (max-width: 700px) {
+          .hk-pd-badge-grid { grid-template-columns: 1fr !important; }
+          .hk-pd-specs-grid { grid-template-columns: 1fr !important; }
+          .hk-pd-lightbox-body { flex-direction: column !important; }
+          .hk-pd-lightbox-panel { width: 100% !important; border-left: none !important; border-top: 1px solid #e5e7eb !important; max-height: 38vh !important; }
+        }
+        @media (max-width: 600px) {
+          .hk-pd-similar-grid { grid-template-columns: repeat(2, 1fr) !important; }
+        }
+        /* Recently Viewed & You May Also Like — 2 cards on mobile, 5 on desktop */
+        .hk-pd-rv-card, .hk-pd-ymal-card {
+          min-width: calc((100% - 48px) / 5) !important;
+          max-width: calc((100% - 48px) / 5) !important;
+        }
+        @media (max-width: 768px) {
+          .hk-pd-rv-card, .hk-pd-ymal-card {
+            min-width: calc((100% - 12px) / 2) !important;
+            max-width: calc((100% - 12px) / 2) !important;
+          }
+        }
+      `}</style>
       {/* Join modal — shared with Home/Products page cards */}
       {showJoinModal && hasGroupBuy && (
         <JoinDealModal
@@ -1209,7 +1267,7 @@ export default function ProductDetail() {
         </div>
 
         {/* ── 3-column product grid ── */}
-        <div style={{
+        <div className="hk-pd-grid" style={{
           display: 'grid',
           gridTemplateColumns: isNarrow ? '1fr' : '500px 1fr 280px',
           gap: 16,
@@ -1218,7 +1276,7 @@ export default function ProductDetail() {
         }}>
 
           {/* ── Col 1: Images ── */}
-          <div style={S.imageCol}>
+          <div className="hk-pd-img-col" style={S.imageCol}>
             <div
               style={{ position: 'relative', cursor: 'zoom-in' }}
               onClick={() => setProductLightbox({ index: product.images?.indexOf(mainImg) >= 0 ? product.images.indexOf(mainImg) : 0 })}
@@ -1288,7 +1346,7 @@ export default function ProductDetail() {
             </div>
 
             {/* Group Deal — center column box; Join button opens the shared modal */}
-            {hasGroupBuy && (
+            {hasGroupBuy ? (
               <GroupBuySection
                 product={product}
                 localHold={localHold}
@@ -1298,6 +1356,36 @@ export default function ProductDetail() {
                 joinLoading={joinLoading}
                 hasJoined={hasJoined}
               />
+            ) : (
+              <div style={S.fixedPriceBox}>
+                <div style={S.fixedPriceHeader}>
+                  <span style={S.fixedPriceLabel}>
+                    <span style={{ fontSize: '1rem' }}>✓</span> Fixed Price
+                  </span>
+                  <span style={S.fixedPriceTag}>Ready to ship</span>
+                </div>
+
+                <div style={S.progressTrack}>
+                  <div style={{ ...S.progressFill(100), background: '#16a34a' }} />
+                </div>
+
+                <div style={{ fontSize: '0.8rem', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                  <span style={{ fontWeight: 700, color: '#0f1111' }}>No group deal needed</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ background: '#16a34a', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: '0.75rem' }}>In stock</span>
+                  </div>
+                </div>
+
+                <div style={S.groupPriceRow}>
+                  <span style={{ ...S.groupDealPrice, color: '#15803d' }}>
+                    ₹{displayPrice.toLocaleString('en-IN')}
+                  </span>
+                </div>
+
+                <p style={{ fontSize: '0.82rem', color: '#166534', margin: 0 }}>
+                  This item is available at a fixed price — no group buy required, ships right away.
+                </p>
+              </div>
             )}
 
             {/* Feature bullets */}
@@ -1312,7 +1400,7 @@ export default function ProductDetail() {
           </div>
 
           {/* ── Col 3: Buy Box ── */}
-          <div style={S.buyBox}>
+          <div className="hk-pd-buy-box" style={S.buyBox}>
             <p style={S.buyBoxPrice}>
               <span style={{ fontSize: '1rem', verticalAlign: 'super' }}>₹</span>
               {displayPrice.toLocaleString('en-IN')}
@@ -1444,7 +1532,7 @@ export default function ProductDetail() {
             <div style={S.divider} />
 
             {/* Trust badges */}
-            <div style={S.badgeGrid}>
+            <div className="hk-pd-badge-grid" style={S.badgeGrid}>
               {[['📦', 'Quality Certified'], ['🔄', '7-Day Returns'], ['🛡️', 'Warranty'], ['🚚', 'Fast Delivery']].map(([icon, label]) => (
                 <div key={label} style={S.badgeItem}>
                   <span>{icon}</span>
@@ -1471,7 +1559,7 @@ export default function ProductDetail() {
               {product.specs && Object.keys(product.specs).length > 0 && (
                 <>
                   <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f1111', margin: '24px 0 16px' }}>Product Details</h2>
-                  <div style={S.specsGrid}>
+                  <div className="hk-pd-specs-grid" style={S.specsGrid}>
                     {Object.entries(product.specs)
                       .filter(([key, value]) => value !== '' && value != null && !key.toLowerCase().startsWith('ship'))
                       .map(([key, value]) => (
@@ -1843,7 +1931,7 @@ export default function ProductDetail() {
 
           // 5-per-row wrapping grid (no scroll, products wrap to next line)
           const renderGrid = (items) => (
-            <div style={{
+            <div className="hk-pd-similar-grid" style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(5, 1fr)',
               gap: 12,
@@ -1965,7 +2053,7 @@ export default function ProductDetail() {
                     const isTrending = item.reviewCount > 10;
                     const isBestseller = item.avgRating >= 4.5;
                     return (
-                      <div key={item.productId} onClick={() => goToProduct(item.productId)}
+                      <div key={item.productId} className="hk-pd-rv-card" onClick={() => goToProduct(item.productId)}
                         style={{ minWidth: CARD_W, maxWidth: CARD_W, flexShrink: 0,
                           background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
                           overflow: 'hidden', cursor: 'pointer',
@@ -2079,7 +2167,7 @@ export default function ProductDetail() {
                     const discPrice = hasDiscount ? Math.round(item.retailPrice * (1 - item.holdTarget / 100)) : item.retailPrice;
                     const discPct = hasDiscount ? item.holdTarget : 0;
                     return (
-                      <div key={item.productId} onClick={() => goToProduct(item.productId)}
+                      <div key={item.productId} className="hk-pd-ymal-card" onClick={() => goToProduct(item.productId)}
                         style={{ minWidth: CARD_W, maxWidth: CARD_W, flexShrink: 0,
                           background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
                           overflow: 'hidden', cursor: 'pointer',
@@ -2175,7 +2263,7 @@ export default function ProductDetail() {
             </div>
 
             {/* Body: main image left, info+thumbs right */}
-            <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+            <div className="hk-pd-lightbox-body" style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
               {/* Main image area */}
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 padding: '32px 40px', position: 'relative', background: '#fff', minWidth: 0 }}>
@@ -2221,7 +2309,7 @@ export default function ProductDetail() {
               </div>
 
               {/* Right panel: title + thumbnail grid */}
-              <div style={{ width: 320, borderLeft: '1px solid #e5e7eb', padding: '24px 20px',
+              <div className="hk-pd-lightbox-panel" style={{ width: 320, borderLeft: '1px solid #e5e7eb', padding: '24px 20px',
                 overflowY: 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <p style={{ fontSize: '1rem', color: '#0f1111', fontWeight: 500, lineHeight: 1.5, margin: 0 }}>
                   {product.name}

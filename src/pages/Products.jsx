@@ -311,12 +311,13 @@ function ListProductCard({ product, alreadyJoined = false }) {
       )}
 
       <div onClick={() => navigate(`/product/${product.productId}`)}
+        className="hk-list-card"
         style={{ display: 'flex', background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden', cursor: 'pointer', transition: 'box-shadow 0.2s' }}
         onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.1)'}
         onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}>
 
         {/* Image */}
-        <div style={{ width: 160, minWidth: 160, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', padding: 0 }}>
+        <div className="hk-list-card-img" style={{ width: 160, minWidth: 160, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', padding: 0 }}>
           <img src={imgSrc} alt={product.name} onError={() => setImgSrc(FALLBACK)}
             style={{ width: '100%', height: 140, objectFit: 'cover' }} />
         </div>
@@ -638,13 +639,24 @@ export default function Products() {
           .hk-mobile-filter-btn   { display: flex !important; }
           .hk-sort-scroll         { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
         }
+        @media (max-width: 480px) {
+          .hk-products-chips { padding: 8px 12px !important; }
+          .hk-products-body  { padding: 10px 12px 32px !important; }
+        }
+        @media (max-width: 600px) {
+          .hk-list-card-img { width: 110px !important; min-width: 110px !important; }
+        }
+        @media (max-width: 420px) {
+          .hk-list-card     { flex-direction: column !important; }
+          .hk-list-card-img { width: 100% !important; min-width: 0 !important; height: 160px !important; }
+        }
       `}</style>
 
       <div style={{ paddingTop: 112 }}>
 
       {/* ── Active filter chips strip (only shown when filters are active) ── */}
       {activeFilters.length > 0 && (
-        <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px' }}>
+        <div className="hk-products-chips" style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px' }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             {activeFilters.map(f => (
               <span key={f.key} className="hk-chip" onClick={() => removeFilter(f.key)}>
@@ -664,7 +676,7 @@ export default function Products() {
           MAIN BODY  — full width
       ══════════════════════════════════════ */}
       <div style={{ background: '#f4f6fa', minHeight: '80vh' }}>
-        <div style={{ padding: '14px 20px 48px' }}>
+        <div className="hk-products-body" style={{ padding: '14px 20px 48px' }}>
 
           {/* ── Sort / View bar ── */}
           <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', padding: '10px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>

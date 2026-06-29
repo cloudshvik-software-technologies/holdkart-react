@@ -94,10 +94,22 @@ export default function Cart() {
 
   return (
     <div style={page}>
+      {/* Responsive overrides (mobile/tablet) — does not affect desktop layout */}
+      <style>{`
+        @media (max-width: 768px) {
+          .hk-cart-layout { grid-template-columns: 1fr !important; }
+          .hk-cart-item { grid-template-columns: 90px 1fr !important; }
+          .hk-cart-item-price { grid-column: 1 / -1 !important; text-align: left !important; min-width: 0 !important; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e5e7eb; }
+        }
+        @media (max-width: 480px) {
+          .hk-cart-item { padding: 14px !important; gap: 10px !important; }
+          .hk-cart-page-title { font-size: 1.4rem !important; }
+        }
+      `}</style>
       <div style={inner}>
 
         {/* Page heading */}
-        <h1 style={{ fontSize: '1.7rem', fontWeight: 400, color: '#0f1111', marginBottom: 16 }}>
+        <h1 className="hk-cart-page-title" style={{ fontSize: '1.7rem', fontWeight: 400, color: '#0f1111', marginBottom: 16 }}>
           Shopping Cart
         </h1>
 
@@ -118,7 +130,7 @@ export default function Cart() {
           </div>
         ) : (
           /* ── Cart layout ── */
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 16, alignItems: 'flex-start' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 16, alignItems: 'flex-start' }} className="hk-cart-layout">
 
             {/* ── Left: item list ── */}
             <div>
@@ -139,6 +151,7 @@ export default function Cart() {
                   return (
                     <div
                       key={item.cartId}
+                      className="hk-cart-item"
                       style={{
                         display: 'grid',
                         gridTemplateColumns: '120px 1fr auto',
@@ -237,7 +250,7 @@ export default function Cart() {
                       </div>
 
                       {/* Price column */}
-                      <div style={{ textAlign: 'right', minWidth: 110 }}>
+                      <div className="hk-cart-item-price" style={{ textAlign: 'right', minWidth: 110 }}>
                         <p style={{ fontWeight: 700, fontSize: '1.1rem', color: '#0f1111', marginBottom: 2 }}>
                           ₹{itemTotal.toLocaleString('en-IN')}
                         </p>

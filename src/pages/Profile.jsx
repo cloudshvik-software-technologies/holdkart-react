@@ -1,14 +1,57 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { profileService } from '../services/index.js';
 import { deleteProfileImage } from '../services/profile.service.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import toast from 'react-hot-toast';
+import DeactivateAccountModal from '../components/DeactivateAccountModal.jsx';
 
 const CUSTOMER_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081';
 
 const MYNTRA_PINK = '#2a5298';
 const MYNTRA_HOVER = '#1e3c72';
+
+// Some popular city names differ from their official postal "District" name
+// (renamed cities, twin-city districts, etc). Without this, a perfectly valid
+// address (e.g. Kochi, which is in Ernakulam district) would be wrongly flagged
+// as a city/pincode mismatch.
+const CITY_DISTRICT_ALIASES = {
+  bengaluru: ['bangalore', 'bengaluru', 'bangalore urban', 'bengaluru urban'],
+  mysuru: ['mysore', 'mysuru'],
+  mangaluru: ['mangalore', 'dakshina kannada'],
+  belagavi: ['belgaum'],
+  kalaburagi: ['gulbarga'],
+  ballari: ['bellary'],
+  shivamogga: ['shimoga'],
+  hubballi: ['hubli', 'dharwad'],
+  tumkur: ['tumakuru', 'tumkur'],
+  gurgaon: ['gurugram'],
+  prayagraj: ['allahabad'],
+  kochi: ['ernakulam'],
+  tiruchirappalli: ['trichy'],
+  puducherry: ['pondicherry'],
+  mumbai: ['mumbai city', 'mumbai suburban'],
+  'navi mumbai': ['thane', 'raigad'],
+  'pimpri-chinchwad': ['pune'],
+  'vasai-virar': ['palghar'],
+  noida: ['gautam buddha nagar', 'gautam buddh nagar'],
+  'greater noida': ['gautam buddha nagar', 'gautam buddh nagar'],
+  'new delhi': ['delhi', 'central delhi', 'south delhi', 'north delhi', 'east delhi', 'west delhi', 'south west delhi', 'north west delhi', 'south east delhi', 'north east delhi', 'shahdara', 'new delhi'],
+  delhi: ['delhi', 'central delhi', 'south delhi', 'north delhi', 'east delhi', 'west delhi', 'south west delhi', 'north west delhi', 'south east delhi', 'north east delhi', 'shahdara', 'new delhi'],
+};
+const normalizeName = (s) => (s || '').toLowerCase().replace(/[^a-z]/g, '');
+function cityMatchesDistrict(cityInput, district) {
+  const cNorm = normalizeName(cityInput);
+  const dNorm = normalizeName(district);
+  if (!cNorm) return true;
+  if (dNorm.includes(cNorm) || cNorm.includes(dNorm)) return true;
+  const aliasKey = Object.keys(CITY_DISTRICT_ALIASES).find(k => normalizeName(k) === cNorm);
+  if (!aliasKey) return false;
+  return CITY_DISTRICT_ALIASES[aliasKey].some(alias => {
+    const aNorm = normalizeName(alias);
+    return aNorm === dNorm || dNorm.includes(aNorm) || aNorm.includes(dNorm);
+  });
+}
 
 const NAV_ITEMS = [
   { key: 'profile',    label: 'My Profile' },
@@ -27,6 +70,10 @@ export default function Profile() {
 
   const [activeTab, setActiveTab]   = useState('profile');
   const [form, setForm]             = useState({ name: '', mobile: '', address: '', city: '', state: '', pincode: '', gender: '' });
+  // Verifies the entered pincode actually belongs to the typed state/city —
+  // status: 'idle' | 'checking' | 'ok' | 'mismatch' | 'error'
+  const [pincodeCheck, setPincodeCheck] = useState({ status: 'idle', detectedState: '', detectedDistrict: '' });
+  const pincodeCheckSeqRef = useRef(0);
   const [loading, setLoading]       = useState(true);
   const [saving, setSaving]         = useState(false);
   const [imgFile, setImgFile]       = useState(null);
@@ -34,12 +81,8 @@ export default function Profile() {
   const [uploading, setUploading]   = useState(false);
   const [detectingLocation, setDetectingLocation] = useState(false);
 
-  // Deactivate account flow (Flipkart-style: soft deactivation, reversible by logging back in)
+  // Deactivate account flow (seller-style 3-step modal)
   const [showDeactivateModal, setShowDeactivateModal] = useState(false);
-  const [deactivatePassword, setDeactivatePassword]   = useState('');
-  const [deactivating, setDeactivating]                = useState(false);
-  const [deactivateWarnings, setDeactivateWarnings]    = useState(null);
-  const [loadingWarnings, setLoadingWarnings]          = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) { navigate('/login'); return; }
@@ -70,8 +113,44 @@ export default function Profile() {
       .finally(() => setLoading(false));
   }, [isAuthenticated]);
 
+  /* Verify the entered pincode actually belongs to the typed state/city —
+     prevents combinations like Tamil Nadu + a Karnataka pincode, or
+     Coimbatore + a Chennai pincode, from being saved. */
+  useEffect(() => {
+    const { pincode, state, city } = form;
+    if (!/^\d{6}$/.test(pincode) || !state.trim()) {
+      setPincodeCheck({ status: 'idle', detectedState: '', detectedDistrict: '' });
+      return;
+    }
+    const seq = ++pincodeCheckSeqRef.current;
+    setPincodeCheck(prev => ({ ...prev, status: 'checking' }));
+    const norm = (s) => (s || '').toLowerCase().replace(/[^a-z]/g, '');
+    (async () => {
+      try {
+        const res = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+        const data = await res.json();
+        if (seq !== pincodeCheckSeqRef.current) return; // a newer check has since started
+        const po = data?.[0]?.PostOffice?.[0];
+        if (!po) { setPincodeCheck({ status: 'error', detectedState: '', detectedDistrict: '' }); return; }
+        const stateMatches = norm(po.State) === norm(state);
+        const cityMatches = cityMatchesDistrict(city, po.District);
+        setPincodeCheck({
+          status: stateMatches && cityMatches ? 'ok' : 'mismatch',
+          detectedState: po.State || '',
+          detectedDistrict: po.District || '',
+        });
+      } catch {
+        if (seq === pincodeCheckSeqRef.current) setPincodeCheck({ status: 'error', detectedState: '', detectedDistrict: '' });
+      }
+    })();
+  }, [form.pincode, form.state, form.city]);
+
   const handleSave = async (e) => {
     e.preventDefault();
+    if (pincodeCheck.status === 'mismatch') {
+      toast.error(`That pincode belongs to ${pincodeCheck.detectedDistrict}, ${pincodeCheck.detectedState} — please match it with the city/state entered`);
+      return;
+    }
     setSaving(true);
     try {
       await profileService.updateProfile({ ...form });
@@ -162,38 +241,10 @@ export default function Profile() {
     }
   };
 
-  const handleOpenDeactivateModal = async () => {
-    setLoadingWarnings(true);
-    setShowDeactivateModal(true);
-    try {
-      const warnings = await profileService.getDeactivationWarnings();
-      setDeactivateWarnings(warnings);
-    } catch {
-      setDeactivateWarnings({ pendingOrders: 0, activeDeals: 0 });
-    } finally {
-      setLoadingWarnings(false);
-    }
-  };
-
-  const handleDeactivate = async () => {
-    if (!deactivatePassword) {
-      toast.error('Please enter your password to confirm.');
-      return;
-    }
-    setDeactivating(true);
-    try {
-      await profileService.deactivateAccount(deactivatePassword);
-      toast.success('Your account has been deactivated.');
-      setShowDeactivateModal(false);
-      setDeactivateWarnings(null);
-      logout();
-      navigate('/login');
-    } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed to deactivate account');
-    } finally {
-      setDeactivating(false);
-      setDeactivatePassword('');
-    }
+  const handleDeactivateSuccess = () => {
+    setShowDeactivateModal(false);
+    logout();
+    navigate('/login');
   };
 
   const getImgUrl = (url) => {
@@ -214,7 +265,7 @@ export default function Profile() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f4f4f5', fontFamily: "'Assistant', 'Segoe UI', sans-serif", paddingTop: 100 }}>
+    <div style={{ minHeight: '100vh', background: '#f4f4f5', fontFamily: "'Assistant', 'Segoe UI', sans-serif", paddingTop: 112 }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;500;600;700;800&display=swap');
         * { box-sizing: border-box; }
@@ -387,16 +438,75 @@ export default function Profile() {
           text-align: center;
           max-width: 280px;
         }
+        @media (max-width: 768px) {
+          .myn-main-grid { grid-template-columns: 1fr !important; padding-top: 16px !important; }
+          /* Sidebar → compact avatar row + horizontal tab strip on mobile */
+          .myn-sidebar-wrap { display: flex !important; flex-direction: column !important; }
+          .myn-sidebar-head {
+            display: flex !important;
+            align-items: center !important;
+            gap: 12px !important;
+            padding: 12px 16px !important;
+            border-bottom: none !important;
+            text-align: left !important;
+          }
+          .myn-sidebar-avatar-box {
+            width: 44px !important;
+            height: 44px !important;
+            margin: 0 !important;
+            flex-shrink: 0 !important;
+          }
+          .myn-sidebar-avatar-box img,
+          .myn-sidebar-avatar-box > div {
+            width: 44px !important;
+            height: 44px !important;
+            font-size: 1.1rem !important;
+          }
+          .myn-sidebar-name-group {
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+            min-width: 0 !important;
+          }
+          /* Nav → horizontal scrollable tab strip */
+          .myn-sidebar-nav {
+            display: flex !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            scrollbar-width: none !important;
+            border-top: 1px solid #eaeaec !important;
+          }
+          .myn-sidebar-nav::-webkit-scrollbar { display: none !important; }
+          .myn-nav-item {
+            border-left: none !important;
+            border-bottom: 3px solid transparent !important;
+            padding: 10px 14px !important;
+            white-space: nowrap !important;
+            flex-shrink: 0 !important;
+            font-size: 0.8rem !important;
+          }
+          .myn-nav-item.active {
+            border-left-color: transparent !important;
+            border-bottom-color: ${MYNTRA_PINK} !important;
+            background: #f9f7ff !important;
+          }
+          .myn-nav-icon { display: none !important; }
+          .myn-main-content { padding: 20px 16px !important; }
+        }
+        @media (max-width: 600px) {
+          .myn-form-row-2 { grid-template-columns: 1fr !important; }
+          .myn-form-row-3 { grid-template-columns: 1fr !important; }
+        }
       `}</style>
 
-      <div style={{ maxWidth: 1080, margin: '0 auto', padding: '24px 16px 60px', display: 'grid', gridTemplateColumns: '260px 1fr', gap: 20, alignItems: 'start' }}>
+      <div className="myn-main-grid" style={{ maxWidth: 1080, margin: '0 auto', padding: '24px 16px 60px', display: 'grid', gridTemplateColumns: '260px 1fr', gap: 20, alignItems: 'start' }}>
 
         {/* ─── LEFT SIDEBAR ─────────────────────────────── */}
-        <div style={{ background: '#fff', borderRadius: 4, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+        <div className="myn-sidebar-wrap" style={{ background: '#fff', borderRadius: 4, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
 
           {/* Profile mini-card */}
-          <div style={{ padding: '24px 20px 20px', borderBottom: '1px solid #eaeaec', textAlign: 'center' }}>
-            <div style={{ position: 'relative', width: 90, height: 90, margin: '0 auto 12px' }}>
+          <div className="myn-sidebar-head" style={{ padding: '24px 20px 20px', borderBottom: '1px solid #eaeaec', textAlign: 'center' }}>
+            <div className="myn-sidebar-avatar-box" style={{ position: 'relative', width: 90, height: 90, margin: '0 auto 12px' }}>
               {profileImg ? (
                 <img src={getImgUrl(profileImg)} alt="Profile"
                   style={{ width: 90, height: 90, borderRadius: '50%', objectFit: 'cover', border: '2px solid #f4f4f5' }} />
@@ -411,14 +521,16 @@ export default function Profile() {
                 </div>
               )}
             </div>
-            <div style={{ fontSize: '0.75rem', color: '#999', marginBottom: 2 }}>Hello,</div>
-            <div style={{ fontWeight: 800, fontSize: '0.98rem', color: '#282c3f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {form.name || customer?.email || 'User'}
+            <div className="myn-sidebar-name-group">
+              <div style={{ fontSize: '0.75rem', color: '#999', marginBottom: 2 }}>Hello,</div>
+              <div style={{ fontWeight: 800, fontSize: '0.98rem', color: '#282c3f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {form.name || customer?.email || 'User'}
+              </div>
             </div>
           </div>
 
           {/* Nav items */}
-          <nav>
+          <nav className="myn-sidebar-nav">
             {NAV_ITEMS.map(item => (
               <div
                 key={item.key}
@@ -437,7 +549,7 @@ export default function Profile() {
         </div>
 
         {/* ─── MAIN CONTENT ─────────────────────────────── */}
-        <div style={{ background: '#fff', borderRadius: 4, padding: '28px 32px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', minHeight: 480 }}>
+        <div className="myn-main-content" style={{ background: '#fff', borderRadius: 4, padding: '28px 32px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', minHeight: 480 }}>
 
           {/* MY PROFILE */}
           {activeTab === 'profile' && (
@@ -500,7 +612,7 @@ export default function Profile() {
                 </div>
 
                 {/* Name row */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+                <div className="myn-form-row-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
                   <div>
                     <label className="myn-label">First Name</label>
                     <input
@@ -539,7 +651,7 @@ export default function Profile() {
                 </div>
 
                 {/* Email & Mobile */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+                <div className="myn-form-row-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
                   <div>
                     <label className="myn-label">Email Address</label>
                     <input
@@ -605,7 +717,7 @@ export default function Profile() {
                     style={{ resize: 'vertical' }}
                   />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 160px', gap: 16 }}>
+                <div className="myn-form-row-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 160px', gap: 16 }}>
                   <div>
                     <label className="myn-label">City</label>
                     <input className="myn-input" placeholder="City" value={form.city} onChange={e => setForm(p => ({ ...p, city: e.target.value }))} />
@@ -617,7 +729,16 @@ export default function Profile() {
                   <div>
                     <label className="myn-label">Pincode</label>
                     <input className="myn-input" placeholder="6-digit code" value={form.pincode} maxLength={6}
-                      onChange={e => setForm(p => ({ ...p, pincode: e.target.value.replace(/\D/g, '') }))} />
+                      onChange={e => setForm(p => ({ ...p, pincode: e.target.value.replace(/\D/g, '') }))}
+                      style={pincodeCheck.status === 'mismatch' ? { borderColor: '#dc2626' } : undefined} />
+                    {pincodeCheck.status === 'checking' && (
+                      <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 4 }}>Checking pincode…</div>
+                    )}
+                    {pincodeCheck.status === 'mismatch' && (
+                      <div style={{ fontSize: '0.78rem', color: '#dc2626', marginTop: 4 }}>
+                        This pincode belongs to {pincodeCheck.detectedDistrict}, {pincodeCheck.detectedState} — it doesn't match the city/state entered.
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -710,112 +831,99 @@ export default function Profile() {
             </div>
           )}
           {/* DEACTIVATE ACCOUNT */}
-          {activeTab === 'deactivate' && (
-            <div>
-              <div className="myn-section-head">Deactivate Account</div>
-              <div style={{
-                border: '1px solid #fde2e2', background: '#fff8f8', borderRadius: 8,
-                padding: '20px 24px', maxWidth: 560,
-              }}>
-                <div style={{ fontWeight: 700, color: '#282c3f', marginBottom: 10 }}>
-                  What happens when you deactivate?
+          {activeTab === 'deactivate' && (() => {
+            const isDeactivationPending = customer?.deactivated && customer?.deactivatedAt;
+            const daysLeft = (() => {
+              if (!customer?.deactivatedAt) return 30;
+              const elapsed = (Date.now() - new Date(customer.deactivatedAt).getTime()) / 86400000;
+              return Math.max(0, Math.ceil(30 - elapsed));
+            })();
+
+            return (
+              <div>
+                <div className="myn-section-head">Deactivate Account</div>
+
+                {/* Recovery banner — shown when deactivation is already pending */}
+                {isDeactivationPending && (
+                  <div style={{
+                    background: 'linear-gradient(135deg,#fef3c7,#fde68a)',
+                    border: '2px solid #f59e0b',
+                    borderRadius: 12,
+                    padding: '16px 20px',
+                    marginBottom: 20,
+                    display: 'flex', alignItems: 'flex-start', gap: 14,
+                  }}>
+                    <span style={{ fontSize: 28, flexShrink: 0 }}>⏳</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 800, color: '#92400e', fontSize: '0.95rem', marginBottom: 4 }}>
+                        Account Deactivation In Progress
+                      </div>
+                      <div style={{ color: '#78350f', fontSize: '0.85rem', lineHeight: 1.6, marginBottom: 10 }}>
+                        Your account is scheduled for deactivation.
+                        You have <strong>{daysLeft} day{daysLeft === 1 ? '' : 's'}</strong> left to recover it
+                        before your data is permanently deleted.
+                      </div>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await profileService.reactivateAccount();
+                            updateCustomer({ deactivated: false, deactivatedAt: null });
+                            toast.success('Your account has been reactivated. Welcome back!');
+                          } catch (err) {
+                            toast.error(err?.response?.data?.message || 'Recovery failed. Please try again.');
+                          }
+                        }}
+                        style={{
+                          background: 'linear-gradient(135deg,#d97706,#b45309)',
+                          color: '#fff', border: 'none', padding: '9px 22px', borderRadius: 8,
+                          fontWeight: 700, fontSize: '0.87rem', cursor: 'pointer',
+                        }}
+                      >
+                        🔄 Recover My Account
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{
+                  border: '1px solid #fde2e2', background: '#fff8f8', borderRadius: 8,
+                  padding: '20px 24px', maxWidth: 560,
+                }}>
+                  <div style={{ fontWeight: 700, color: '#282c3f', marginBottom: 10 }}>
+                    What happens when you deactivate?
+                  </div>
+                  <ul style={{ color: '#555', fontSize: '0.88rem', lineHeight: 1.8, paddingLeft: 20, marginBottom: 16 }}>
+                    <li>Your profile, orders and wishlist are hidden — not deleted.</li>
+                    <li>A 30-day recovery window begins. Log back in anytime to recover.</li>
+                    <li>After 30 days, your account and personal data are permanently deleted.</li>
+                    <li>Pending orders will continue but you won't receive status updates.</li>
+                  </ul>
+                  <button
+                    type="button"
+                    onClick={() => setShowDeactivateModal(true)}
+                    disabled={isDeactivationPending}
+                    style={{
+                      background: '#fff', color: '#d92d20', border: '1px solid #d92d20',
+                      borderRadius: 4, padding: '10px 24px', fontSize: '0.88rem', fontWeight: 700,
+                      cursor: isDeactivationPending ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                      opacity: isDeactivationPending ? 0.5 : 1,
+                    }}
+                  >
+                    {isDeactivationPending ? '⏳ Deactivation Pending' : 'Deactivate My Account'}
+                  </button>
                 </div>
-                <ul style={{ color: '#555', fontSize: '0.88rem', lineHeight: 1.8, paddingLeft: 20, marginBottom: 16 }}>
-                  <li>Your profile, orders and wishlist are hidden — not deleted.</li>
-                  <li>You'll be logged out of all devices immediately.</li>
-                  <li>Simply log back in anytime to reactivate your account.</li>
-                </ul>
-                <button
-                  type="button"
-                  onClick={handleOpenDeactivateModal}
-                  style={{
-                    background: '#fff', color: '#d92d20', border: '1px solid #d92d20',
-                    borderRadius: 4, padding: '10px 24px', fontSize: '0.88rem', fontWeight: 700,
-                    cursor: 'pointer', fontFamily: 'inherit',
-                  }}
-                >
-                  Deactivate My Account
-                </button>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       </div>
 
-      {/* Deactivate confirmation modal */}
-      {showDeactivateModal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-        }}>
-          <div style={{ background: '#fff', borderRadius: 8, padding: '28px 30px', width: '100%', maxWidth: 420 }}>
-            <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#282c3f', marginBottom: 8 }}>
-              Deactivate your account?
-            </div>
-            <p style={{ color: '#666', fontSize: '0.86rem', lineHeight: 1.6, marginBottom: 18 }}>
-              Enter your password to confirm. You can reactivate anytime simply by logging back in.
-            </p>
-
-            {loadingWarnings ? (
-              <div style={{ color: '#999', fontSize: '0.84rem', marginBottom: 16 }}>Checking your account…</div>
-            ) : (
-              (deactivateWarnings?.pendingOrders > 0 || deactivateWarnings?.activeDeals > 0) && (
-                <div style={{
-                  background: '#fff8e1', border: '1px solid #fde68a', borderRadius: 6,
-                  padding: '12px 14px', marginBottom: 18, fontSize: '0.84rem', color: '#92660a', lineHeight: 1.6,
-                }}>
-                  <strong>Heads up —</strong>{' '}
-                  {deactivateWarnings.pendingOrders > 0 && (
-                    <>you have {deactivateWarnings.pendingOrders} order{deactivateWarnings.pendingOrders > 1 ? 's' : ''} still in progress</>
-                  )}
-                  {deactivateWarnings.pendingOrders > 0 && deactivateWarnings.activeDeals > 0 && <> and </>}
-                  {deactivateWarnings.activeDeals > 0 && (
-                    <>{deactivateWarnings.activeDeals} active group deal{deactivateWarnings.activeDeals > 1 ? 's' : ''} you've joined</>
-                  )}
-                  . These will continue running, but you won't get updates while deactivated.
-                </div>
-              )
-            )}
-
-            <label className="myn-label">Password</label>
-            <input
-              type="password"
-              className="myn-input"
-              placeholder="Enter your password"
-              value={deactivatePassword}
-              onChange={e => setDeactivatePassword(e.target.value)}
-              style={{ marginBottom: 20 }}
-            />
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-              <button
-                type="button"
-                onClick={() => { setShowDeactivateModal(false); setDeactivatePassword(''); setDeactivateWarnings(null); }}
-                disabled={deactivating}
-                style={{
-                  background: '#fff', color: '#333', border: '1px solid #d4d5d9',
-                  borderRadius: 4, padding: '10px 20px', fontSize: '0.86rem', fontWeight: 700,
-                  cursor: 'pointer', fontFamily: 'inherit',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDeactivate}
-                disabled={deactivating}
-                style={{
-                  background: '#d92d20', color: '#fff', border: 'none',
-                  borderRadius: 4, padding: '10px 20px', fontSize: '0.86rem', fontWeight: 700,
-                  cursor: deactivating ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-                  opacity: deactivating ? 0.7 : 1,
-                }}
-              >
-                {deactivating ? 'Deactivating…' : 'Yes, Deactivate'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Deactivation Modal */}
+      <DeactivateAccountModal
+        open={showDeactivateModal}
+        onClose={() => setShowDeactivateModal(false)}
+        onSuccess={handleDeactivateSuccess}
+      />
     </div>
   );
 }

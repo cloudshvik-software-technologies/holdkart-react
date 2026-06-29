@@ -95,6 +95,48 @@ function Field({ label, required, children }) {
   );
 }
 
+// Some popular city names differ from their official postal "District" name
+// (renamed cities, twin-city districts, etc). Without this, a perfectly valid
+// address (e.g. Kochi, which is in Ernakulam district) would be wrongly flagged
+// as a city/pincode mismatch.
+const CITY_DISTRICT_ALIASES = {
+  bengaluru: ['bangalore', 'bengaluru', 'bangalore urban', 'bengaluru urban'],
+  mysuru: ['mysore', 'mysuru'],
+  mangaluru: ['mangalore', 'dakshina kannada'],
+  belagavi: ['belgaum'],
+  kalaburagi: ['gulbarga'],
+  ballari: ['bellary'],
+  shivamogga: ['shimoga'],
+  hubballi: ['hubli', 'dharwad'],
+  tumkur: ['tumakuru', 'tumkur'],
+  gurgaon: ['gurugram'],
+  prayagraj: ['allahabad'],
+  kochi: ['ernakulam'],
+  tiruchirappalli: ['trichy'],
+  puducherry: ['pondicherry'],
+  mumbai: ['mumbai city', 'mumbai suburban'],
+  'navi mumbai': ['thane', 'raigad'],
+  'pimpri-chinchwad': ['pune'],
+  'vasai-virar': ['palghar'],
+  noida: ['gautam buddha nagar', 'gautam buddh nagar'],
+  'greater noida': ['gautam buddha nagar', 'gautam buddh nagar'],
+  'new delhi': ['delhi', 'central delhi', 'south delhi', 'north delhi', 'east delhi', 'west delhi', 'south west delhi', 'north west delhi', 'south east delhi', 'north east delhi', 'shahdara', 'new delhi'],
+  delhi: ['delhi', 'central delhi', 'south delhi', 'north delhi', 'east delhi', 'west delhi', 'south west delhi', 'north west delhi', 'south east delhi', 'north east delhi', 'shahdara', 'new delhi'],
+};
+const normalizeName = (s) => (s || '').toLowerCase().replace(/[^a-z]/g, '');
+function cityMatchesDistrict(cityInput, district) {
+  const cNorm = normalizeName(cityInput);
+  const dNorm = normalizeName(district);
+  if (!cNorm) return true;
+  if (dNorm.includes(cNorm) || cNorm.includes(dNorm)) return true;
+  const aliasKey = Object.keys(CITY_DISTRICT_ALIASES).find(k => normalizeName(k) === cNorm);
+  if (!aliasKey) return false;
+  return CITY_DISTRICT_ALIASES[aliasKey].some(alias => {
+    const aNorm = normalizeName(alias);
+    return aNorm === dNorm || dNorm.includes(aNorm) || aNorm.includes(dNorm);
+  });
+}
+
 const inputStyle = {
   width: '100%', padding: '9px 12px',
   border: '1px solid #d1d5db', borderRadius: 4,
@@ -128,6 +170,10 @@ export default function Checkout() {
     address: '', city: '', state: '', pincode: '', paymentMethod: 'COD',
   });
   const [focused, setFocused] = useState('');
+  // Verifies the entered pincode actually belongs to the selected state/city —
+  // status: 'idle' | 'checking' | 'ok' | 'mismatch' | 'error'
+  const [pincodeCheck, setPincodeCheck] = useState({ status: 'idle', detectedState: '', detectedDistrict: '' });
+  const pincodeCheckSeqRef = useRef(0);
 
   useEffect(() => {
     if (!isAuthenticated) { navigate('/login'); return; }
@@ -216,6 +262,38 @@ export default function Checkout() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address.pincode, address.paymentMethod, cart.length]);
+
+  /* Verify the entered pincode actually belongs to the selected state/city —
+     prevents combinations like Tamil Nadu + a Karnataka pincode, or
+     Coimbatore + a Chennai pincode, from being saved. */
+  useEffect(() => {
+    const { pincode, state, city } = address;
+    if (!/^\d{6}$/.test(pincode) || !state) {
+      setPincodeCheck({ status: 'idle', detectedState: '', detectedDistrict: '' });
+      return;
+    }
+    const seq = ++pincodeCheckSeqRef.current;
+    setPincodeCheck(prev => ({ ...prev, status: 'checking' }));
+    const norm = (s) => (s || '').toLowerCase().replace(/[^a-z]/g, '');
+    (async () => {
+      try {
+        const res = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+        const data = await res.json();
+        if (seq !== pincodeCheckSeqRef.current) return; // a newer check has since started
+        const po = data?.[0]?.PostOffice?.[0];
+        if (!po) { setPincodeCheck({ status: 'error', detectedState: '', detectedDistrict: '' }); return; }
+        const stateMatches = norm(po.State) === norm(state);
+        const cityMatches = cityMatchesDistrict(city, po.District);
+        setPincodeCheck({
+          status: stateMatches && cityMatches ? 'ok' : 'mismatch',
+          detectedState: po.State || '',
+          detectedDistrict: po.District || '',
+        });
+      } catch {
+        if (seq === pincodeCheckSeqRef.current) setPincodeCheck({ status: 'error', detectedState: '', detectedDistrict: '' });
+      }
+    })();
+  }, [address.pincode, address.state, address.city]);
 
   const set = (field, val) => setAddress(prev => ({ ...prev, [field]: val }));
 
@@ -342,6 +420,10 @@ export default function Checkout() {
       toast.error('Please fill all address fields'); return;
     }
     if (!/^\d{6}$/.test(address.pincode)) { toast.error('Enter a valid 6-digit pincode'); return; }
+    if (pincodeCheck.status === 'mismatch') {
+      toast.error(`That pincode belongs to ${pincodeCheck.detectedDistrict}, ${pincodeCheck.detectedState} — please match it with the selected city/state`);
+      return;
+    }
     setAddrExpanded(false);
   };
 
@@ -353,6 +435,10 @@ export default function Checkout() {
     }
     if (!/^\d{6}$/.test(address.pincode)) {
       toast.error('Enter a valid 6-digit pincode'); setAddrExpanded(true); return;
+    }
+    if (pincodeCheck.status === 'mismatch') {
+      toast.error(`That pincode belongs to ${pincodeCheck.detectedDistrict}, ${pincodeCheck.detectedState} — please match it with the selected city/state`);
+      setAddrExpanded(true); return;
     }
     const missingCourier = cart.some(i => !courierMap[i.cartId]?.selected);
     if (missingCourier) {
@@ -397,6 +483,17 @@ export default function Checkout() {
       <style>{`
         select:focus { border-color: #2a5298 !important; box-shadow: 0 0 0 3px rgba(42,82,152,0.12) !important; outline: none; }
         textarea:focus { border-color: #2a5298 !important; box-shadow: 0 0 0 3px rgba(42,82,152,0.12) !important; outline: none; }
+        @media (max-width: 768px) {
+          .hk-co-layout { grid-template-columns: 1fr !important; }
+          .hk-co-courier-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+        }
+        @media (max-width: 480px) {
+          .hk-co-addr-grid { grid-template-columns: 1fr !important; }
+          .hk-co-item-row { grid-template-columns: 52px 1fr !important; }
+          .hk-co-item-price { grid-column: 1 / -1 !important; text-align: left !important; margin-top: 6px; }
+          .hk-co-courier-wrap { margin-left: 0 !important; }
+          .hk-co-courier-grid { grid-template-columns: 1fr !important; }
+        }
       `}</style>
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 16px' }}>
 
@@ -423,7 +520,7 @@ export default function Checkout() {
             </button>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'flex-start' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'flex-start' }} className="hk-co-layout">
 
             {/* ══════════ LEFT COLUMN ══════════ */}
             <div>
@@ -481,7 +578,7 @@ export default function Checkout() {
                           style={{ ...inp('address'), resize: 'none' }}
                         />
                       </Field>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }} className="hk-co-addr-grid">
                         <Field label="State" required>
                           <select
                             required value={address.state}
@@ -521,8 +618,16 @@ export default function Checkout() {
                           value={address.pincode}
                           onChange={e => set('pincode', e.target.value.replace(/\D/g, '').slice(0, 6))}
                           onFocus={onF('pincode')} onBlur={onB}
-                          style={{ ...inp('pincode'), maxWidth: 180 }}
+                          style={{ ...inp('pincode'), maxWidth: 180, borderColor: pincodeCheck.status === 'mismatch' ? '#dc2626' : inp('pincode').borderColor }}
                         />
+                        {pincodeCheck.status === 'checking' && (
+                          <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 4 }}>Checking pincode…</div>
+                        )}
+                        {pincodeCheck.status === 'mismatch' && (
+                          <div style={{ fontSize: '0.78rem', color: '#dc2626', marginTop: 4 }}>
+                            This pincode belongs to {pincodeCheck.detectedDistrict}, {pincodeCheck.detectedState} — it doesn't match the selected city/state.
+                          </div>
+                        )}
                       </Field>
                       <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                         <button type="submit"
@@ -577,7 +682,7 @@ export default function Checkout() {
                         }}
                       >
                         {/* Product row */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: 14, alignItems: 'center' }}>
+                        <div className="hk-co-item-row" style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: 14, alignItems: 'center' }}>
                           <div style={{ border: '1px solid #e5e7eb', borderRadius: 4, overflow: 'hidden', background: '#f9fafb' }}>
                             <img
                               src={resolveImg(item.imageUrl)}
@@ -597,7 +702,7 @@ export default function Checkout() {
                               </span>
                             )}
                           </div>
-                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div className="hk-co-item-price" style={{ textAlign: 'right', flexShrink: 0 }}>
                             <p style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f1111', margin: '0 0 2px' }}>
                               ₹{lineAmt.toLocaleString('en-IN')}
                             </p>
@@ -611,7 +716,7 @@ export default function Checkout() {
 
                         {/* ── Courier selector for this item — inline cards, 3 per row ── */}
                         {addrDone && (
-                          <div style={{ marginTop: 14, marginLeft: 78 }}>
+                          <div className="hk-co-courier-wrap" style={{ marginTop: 14, marginLeft: 78 }}>
                             {courier?.loading && (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: '#6b7280' }}>
                                 <div style={{ width: 14, height: 14, border: '2px solid #e5e7eb', borderTopColor: '#2a5298', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
@@ -633,7 +738,7 @@ export default function Checkout() {
                                     Select Courier
                                   </p>
 
-                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+                                  <div className="hk-co-courier-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
                                     {courier.list.map((c) => {
                                       const isSelected = sel?.courierId === c.courierId;
                                       return (
@@ -951,4 +1056,3 @@ export default function Checkout() {
     </div>
   );
 }
-

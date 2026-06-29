@@ -191,7 +191,7 @@ export default function ProductCard({ product, alreadyJoined = false }) {
         </button>
 
         {/* Image */}
-        <div style={{ background: '#f9fafb', overflow: 'hidden', height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="hk-prodcard-img" style={{ background: '#f9fafb', overflow: 'hidden', height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <img
             src={imgSrc}
             alt={product.name}
@@ -222,31 +222,51 @@ export default function ProductCard({ product, alreadyJoined = false }) {
             ) : <span style={{ display: 'block' }} />}
           </div>
 
-          {/* Group Deal progress — only shown when deal exists */}
-          {hasGroupDeal && (
-            <div style={{ marginBottom: 5 }}>
-              <div style={{ height: 4, background: '#e5e7eb', borderRadius: 99, overflow: 'hidden', marginBottom: 3 }}>
+          {/* Group Deal progress (deal products) / stock & shipping info (non-deal products) —
+              same skeleton sizing in both cases so the Price/Buttons row stays aligned
+              across a grid row, whether or not that product has a running deal. */}
+          <div style={{ marginBottom: 5 }}>
+            <div style={{ height: 4, background: hasGroupDeal ? '#e5e7eb' : '#dcfce7', borderRadius: 99, overflow: 'hidden', marginBottom: 3 }}>
+              {hasGroupDeal ? (
                 <div style={{
                   height: '100%', width: `${progressPct}%`, borderRadius: 99,
                   background: progressPct >= 100 ? '#16a34a' : '#2a5298',
                   transition: 'width 0.4s ease',
                 }} />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-                <span style={{ fontSize: '0.68rem', color: '#6b7280' }}>
-                  <span style={{ fontWeight: 700, color: '#1e3c72' }}>{safeHold}/{product.holdTarget}</span> joined
-                </span>
-                <span style={{ fontSize: '0.68rem', color: '#6b7280' }}>Group Deal</span>
-              </div>
-              <div style={{ fontSize: '0.68rem', marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 5 }}>
-                <span style={{ color: '#0f1111', fontWeight: 700, fontSize: '0.67rem' }}>Best price on hold</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ color: '#dc2626', fontWeight: 800 }}>₹{bestGroupPrice.toLocaleString('en-IN')}</span>
-                  <span style={{ background: '#dc2626', color: '#fff', borderRadius: 3, padding: '1px 4px' }}>{maxDiscountPct}% off</span>
-                </div>
-              </div>
+              ) : (
+                <div style={{ height: '100%', width: '100%', borderRadius: 99, background: '#16a34a' }} />
+              )}
             </div>
-          )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+              {hasGroupDeal ? (
+                <>
+                  <span style={{ fontSize: '0.68rem', color: '#6b7280' }}>
+                    <span style={{ fontWeight: 700, color: '#1e3c72' }}>{safeHold}/{product.holdTarget}</span> joined
+                  </span>
+                  <span style={{ fontSize: '0.68rem', color: '#6b7280' }}>Group Deal</span>
+                </>
+              ) : (
+                <>
+                  <span style={{ fontSize: '0.68rem', color: '#15803d', fontWeight: 700 }}>✓ In Stock</span>
+                  <span style={{ fontSize: '0.68rem', color: '#6b7280' }}>Fixed Price</span>
+                </>
+              )}
+            </div>
+            <div style={{ fontSize: '0.68rem', marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 5 }}>
+              {hasGroupDeal ? (
+                <>
+                  <span style={{ color: '#0f1111', fontWeight: 700, fontSize: '0.67rem' }}>Best price on hold</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ color: '#dc2626', fontWeight: 800 }}>₹{bestGroupPrice.toLocaleString('en-IN')}</span>
+                    <span style={{ background: '#dc2626', color: '#fff', borderRadius: 3, padding: '1px 4px' }}>{maxDiscountPct}% off</span>
+                  </div>
+                </>
+              ) : (
+                <span style={{ color: '#6b7280', fontSize: '0.65rem' }}>Ready to ship — no group deal needed</span>
+              )}
+            </div>
+          </div>
+
 
           {/* Price */}
           <div style={{ marginBottom: 6, marginTop: 'auto' }}>

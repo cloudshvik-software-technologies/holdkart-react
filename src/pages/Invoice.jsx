@@ -48,6 +48,10 @@ export default function Invoice() {
 
       const el = invoiceRef.current;
 
+      // Temporarily reset CSS zoom so PDF is always full-size regardless of screen size
+      const prevZoom = el.style.zoom;
+      el.style.zoom = '1';
+
       // Capture the element as-is at 2× scale for sharp text
       const canvas = await window.html2canvas(el, {
         scale:       2,
@@ -85,6 +89,9 @@ export default function Invoice() {
       const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
       pdf.addImage(imgData, 'JPEG', MARGIN, MARGIN, pdfW, pdfH);
       pdf.save(`HoldKart-Invoice-${order.order_number}.pdf`);
+
+      // Restore zoom
+      el.style.zoom = prevZoom;
 
     } catch (e) {
       console.error('PDF generation failed:', e);
@@ -166,6 +173,21 @@ export default function Invoice() {
         .inv-btn-dl:disabled { opacity:.65; cursor:not-allowed; }
         .inv-card { max-width:870px; margin:0 auto; padding:0 16px; }
         @media print { .inv-toolbar{display:none} .inv-page{padding-top:0;background:#fff} .inv-doc{box-shadow:none!important} }
+
+        /* Mobile scaling — keeps invoice identical but smaller */
+        @media (max-width: 768px) {
+          .inv-card { padding: 0 8px; }
+          .inv-doc  { zoom: 0.87; }
+        }
+        @media (max-width: 600px) {
+          .inv-doc { zoom: 0.68; }
+        }
+        @media (max-width: 480px) {
+          .inv-doc { zoom: 0.53; }
+        }
+        @media (max-width: 390px) {
+          .inv-doc { zoom: 0.43; }
+        }
       `}</style>
 
       <div className="inv-page">
