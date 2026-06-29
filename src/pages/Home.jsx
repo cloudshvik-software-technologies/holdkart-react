@@ -129,11 +129,13 @@ const DEAL_SECTIONS_STATIC = [
 /* ─── SUGGESTED FOR YOU CAROUSEL ────────────────────────────────── */
 function SuggestedForYou({ items: itemsProp, loading, guardedNav, title = 'Suggested For You' }) {
   const trackRef = useRef(null);
+  const [canLeft,  setCanLeft]  = useState(false);
   const [canRight, setCanRight] = useState(true);
 
   const updateArrows = () => {
     const t = trackRef.current;
     if (!t) return;
+    setCanLeft(t.scrollLeft > 4);
     setCanRight(t.scrollLeft + t.clientWidth < t.scrollWidth - 4);
   };
 
@@ -170,6 +172,12 @@ function SuggestedForYou({ items: itemsProp, loading, guardedNav, title = 'Sugge
       </div>
 
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+        {canLeft && (
+          <button
+            onClick={() => scroll(-1)}
+            style={{ position: 'absolute', left: -12, zIndex: 10, width: 32, height: 80, background: '#fff', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
+          >‹</button>
+        )}
         <div
           ref={trackRef}
           onScroll={updateArrows}
@@ -223,6 +231,24 @@ function SuggestedForYou({ items: itemsProp, loading, guardedNav, title = 'Sugge
 
 /* ─── SHOP MORE GRID ─────────────────────────────────────────────── */
 function ShopMoreGrid({ items: itemsProp, allProducts, categories, loading, guardedNav }) {
+  const scrollRef = useRef(null);
+  const [smCanLeft,  setSmCanLeft]  = useState(false);
+  const [smCanRight, setSmCanRight] = useState(true);
+
+  const updateSmArrows = () => {
+    const t = scrollRef.current;
+    if (!t) return;
+    setSmCanLeft(t.scrollLeft > 4);
+    setSmCanRight(t.scrollLeft + t.clientWidth < t.scrollWidth - 4);
+  };
+
+  const smScroll = (dir) => {
+    const t = scrollRef.current;
+    if (!t) return;
+    t.scrollBy({ left: dir * 280, behavior: 'smooth' });
+    setTimeout(updateSmArrows, 400);
+  };
+
   // allProducts = full featured list used for padding; itemsProp = browsing-based priority list
   const pool = (allProducts && allProducts.length > 0) ? allProducts : (itemsProp || []);
   if (loading || pool.length === 0) return null;
@@ -340,7 +366,19 @@ function ShopMoreGrid({ items: itemsProp, allProducts, categories, loading, guar
   });
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 12 }}>
+    <div style={{ position: 'relative', marginBottom: 12 }}>
+      {smCanLeft && (
+        <button
+          onClick={() => smScroll(-1)}
+          style={{ position: 'absolute', left: -2, top: '50%', transform: 'translateY(-50%)', zIndex: 10, width: 32, height: 80, background: '#fff', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
+        >‹</button>
+      )}
+      <div
+        ref={scrollRef}
+        onScroll={updateSmArrows}
+        className="hk-shop-more-grid"
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}
+      >
       {cardData.map(({ cat, hero, thumbs }, si) => {
         if (!hero) return null;
         const heroImg = resolveImg(hero);
@@ -413,6 +451,13 @@ function ShopMoreGrid({ items: itemsProp, allProducts, categories, loading, guar
           </div>
         );
       })}
+      </div>
+      {smCanRight && (
+        <button
+          onClick={() => smScroll(1)}
+          style={{ position: 'absolute', right: -2, top: '50%', transform: 'translateY(-50%)', zIndex: 10, width: 32, height: 80, background: '#fff', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
+        >›</button>
+      )}
     </div>
   );
 }
@@ -664,6 +709,21 @@ export default function Home({ isGuest = false }) {
   const [wishlistCount, setWishlistCount] = useState(0);
   const [loading, setLoading]             = useState(true);
   const [dealSections, setDealSections]   = useState(DEAL_SECTIONS_STATIC);
+  const dealGridRef  = useRef(null);
+  const [dealCanLeft,  setDealCanLeft]  = useState(false);
+  const [dealCanRight, setDealCanRight] = useState(true);
+  const updateDealArrows = () => {
+    const t = dealGridRef.current;
+    if (!t) return;
+    setDealCanLeft(t.scrollLeft > 4);
+    setDealCanRight(t.scrollLeft + t.clientWidth < t.scrollWidth - 4);
+  };
+  const scrollDeal = (dir) => {
+    const t = dealGridRef.current;
+    if (!t) return;
+    t.scrollBy({ left: dir * (t.clientWidth - 20), behavior: 'smooth' });
+    setTimeout(updateDealArrows, 400);
+  };
   const [slideIdx, setSlideIdx]           = useState(0);
   const [transitioning, setTransitioning] = useState(false);
   const timerRef = useRef(null);
@@ -990,8 +1050,12 @@ export default function Home({ isGuest = false }) {
         .hk-prod-img.out { opacity: 0; }
         .hk-prod-img.in  { opacity: 1; }
 
-        .hk-deal-card { background:#fff; border-radius:4px; padding:16px; transition:box-shadow 0.2s; cursor:pointer; }
-        .hk-deal-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.18); }
+        .hk-deal-card { background:#fff; border-radius:6px; padding:16px; transition:box-shadow 0.2s, border-color 0.2s; cursor:pointer; border-color: #ddd; }
+        .hk-deal-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.18); border-color: #c0c0c0; }
+        .hk-deal-card h3 { font-size: 0.95rem; font-weight: 800; color: #0f1111; margin-bottom: 10px; line-height: 1.35; }
+        .hk-deal-card .hk-sub-item { border-radius: 6px; transition: transform 0.15s; }
+        .hk-deal-card .hk-sub-item:hover { transform: scale(1.02); }
+        .hk-deal-card .hk-sub-item > div:first-child { background: #f7f8fa !important; }
         .hk-sub-item { transition: opacity 0.15s; }
         .hk-sub-item:hover { opacity: 0.78; }
 
@@ -1053,10 +1117,115 @@ export default function Home({ isGuest = false }) {
         .hk-brand-item:nth-child(12n+0)  { background:linear-gradient(135deg,#fbe9e7,#fff3e0); border-color:#ffab91; }
         .hk-brand-item img { max-height:40px; max-width:110px; object-fit:contain; filter:grayscale(0.1); transition:filter 0.2s; }
         .hk-brand-item:hover img { filter:grayscale(0); }
+
+        /* ── 900px tablet: 3-col grids ── */
+        @media (max-width: 900px) {
+          .hk-camp-grid  { grid-template-columns: repeat(3,1fr) !important; }
+          .hk-feat-grid  { grid-template-columns: repeat(3,1fr) !important; }
+        }
+
+        /* ── 768px small tablet: collapse camp grid to 2-col, deal+shop more → scroll ── */
+        @media (max-width: 768px) {
+          .hk-camp-grid      { grid-template-columns: repeat(2,1fr) !important; }
+          .hk-feat-grid      { grid-template-columns: repeat(2,1fr) !important; }
+          /* Prevent any wide child from causing a body-level horizontal scrollbar */
+          .hk-home-main      { overflow-x: hidden !important; }
+
+          /* Deal grid → horizontal scroll, 1 card visible */
+          .hk-deal-grid {
+            display: flex !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            scroll-snap-type: x mandatory !important;
+            flex-wrap: nowrap !important;
+            gap: 10px !important;
+            padding-bottom: 8px !important;
+            scrollbar-width: none !important;
+          }
+          .hk-deal-grid::-webkit-scrollbar { display: none !important; }
+          .hk-deal-grid > .hk-deal-card {
+            min-width: calc(100% - 20px) !important;
+            max-width: calc(100% - 20px) !important;
+            flex-shrink: 0 !important;
+            scroll-snap-align: start !important;
+          }
+
+          /* Shop more grid → horizontal scroll, 1 card visible */
+          .hk-shop-more-grid {
+            display: flex !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            scroll-snap-type: x mandatory !important;
+            flex-wrap: nowrap !important;
+            gap: 10px !important;
+            padding-bottom: 8px !important;
+            scrollbar-width: none !important;
+          }
+          .hk-shop-more-grid::-webkit-scrollbar { display: none !important; }
+          .hk-shop-more-grid > div {
+            min-width: calc(80% - 10px) !important;
+            flex-shrink: 0 !important;
+            scroll-snap-align: start !important;
+          }
+        }
+
+        /* ── 600px phone: narrower cards, camp strip → horizontal scroll ── */
+        @media (max-width: 600px) {
+          .hk-deal-grid > .hk-deal-card {
+            min-width: calc(88% - 10px) !important;
+            max-width: calc(88% - 10px) !important;
+          }
+
+          /* Hold deals → sideways scroll strip */
+          .hk-camp-grid {
+            display: flex !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            scroll-snap-type: x mandatory !important;
+            flex-wrap: nowrap !important;
+            gap: 10px !important;
+            padding-bottom: 10px !important;
+            scrollbar-width: none !important;
+          }
+          .hk-camp-grid::-webkit-scrollbar { display: none !important; }
+          .hk-camp-grid > * {
+            min-width: 155px !important;
+            max-width: 170px !important;
+            flex-shrink: 0 !important;
+            scroll-snap-align: start !important;
+          }
+
+          .hk-shop-more-grid > div {
+            min-width: calc(85% - 10px) !important;
+          }
+
+          /* Trust badges → 2-per-row on phones */
+          .hk-trust-bar { gap: 14px !important; padding: 14px 12px !important; }
+          .hk-trust-bar > * { flex: 1 1 calc(50% - 7px) !important; }
+        }
+
+        /* ── Show deal-grid arrows only on mobile ── */
+        @media (max-width: 768px) {
+          .hk-deal-arrow { display: flex !important; }
+        }
+
+        /* ── Accent bar top offset — must match fixed header height ── */
+        .hk-accent-bar { margin-top: 112px; }
+        @media (max-width: 768px) {
+          /* Mobile header: 54px main row + ~44px search row = ~98px */
+          .hk-accent-bar { margin-top: 98px; }
+          .hk-home-main  { padding: 8px 8px 80px !important; }
+        }
+        @media (max-width: 480px) {
+          /* Small phone header: 50px main row + ~42px search row = ~92px */
+          .hk-accent-bar { margin-top: 92px; }
+          /* Shrink carousel arrows so they don't cover product image */
+          .hk-arrow { width: 28px !important; height: 48px !important; font-size: 1.2rem !important; }
+        }
       `}</style>
 
       {/* ════════════ TOP ACCENT BAR ════════════ */}
-      <div style={{ background: slide.accentBar, padding: '7px 0', textAlign: 'center', marginTop: 100 }}>
+      <div className="hk-accent-bar" style={{ background: slide.accentBar, padding: '7px 0', textAlign: 'center' }}>
         <span style={{ fontSize: '0.82rem', fontWeight: 700, color: slide.accentBar === '#febd69' ? '#111' : '#fff', letterSpacing: 0.3 }}>
           {slide.topLabel}
         </span>
@@ -1068,10 +1237,23 @@ export default function Home({ isGuest = false }) {
       <HeroBannerAd style={{ marginTop: 24 }} />
 
       {/* ════════════ MAIN CONTENT ════════════ */}
-      <div style={{ maxWidth: 1500, margin: '0 auto', padding: '12px 12px 60px' }}>
+      <div className="hk-home-main" style={{ maxWidth: 1500, margin: '0 auto', padding: '12px 12px 60px' }}>
 
         {/* ── 4-column deal grid ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 12 }}>
+        <div style={{ position: 'relative', marginBottom: 12 }}>
+          {dealCanLeft && (
+            <button
+              onClick={() => scrollDeal(-1)}
+              className="hk-deal-arrow hk-deal-arrow-left"
+              style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', zIndex: 10, width: 36, height: 90, background: 'rgba(255,255,255,0.95)', border: '1px solid #ddd', borderRadius: '0 4px 4px 0', cursor: 'pointer', display: 'none', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', color: '#333', boxShadow: '2px 0 8px rgba(0,0,0,0.12)' }}
+            >‹</button>
+          )}
+        <div
+          ref={dealGridRef}
+          onScroll={updateDealArrows}
+          className="hk-deal-grid"
+          style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}
+        >
           {dealSections.map((sec) => (
             <div key={sec.id} className="hk-deal-card" onClick={() => guardedNav(sec.link)} style={{ border: '1px solid #ddd' }}>
               <h3 style={{ fontWeight: 800, fontSize: '0.98rem', color: '#0f1111', marginBottom: 12, lineHeight: 1.3, minHeight: 42 }}>{sec.title}</h3>
@@ -1099,6 +1281,14 @@ export default function Home({ isGuest = false }) {
             </div>
           ))}
         </div>
+          {dealCanRight && (
+            <button
+              onClick={() => scrollDeal(1)}
+              className="hk-deal-arrow hk-deal-arrow-right"
+              style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', zIndex: 10, width: 36, height: 90, background: 'rgba(255,255,255,0.95)', border: '1px solid #ddd', borderRadius: '4px 0 0 4px', cursor: 'pointer', display: 'none', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', color: '#333', boxShadow: '-2px 0 8px rgba(0,0,0,0.12)' }}
+            >›</button>
+          )}
+        </div>
 
         {/* ── Scroll Banner Ad ── */}
         <ScrollBannerAd />
@@ -1111,7 +1301,7 @@ export default function Home({ isGuest = false }) {
                 <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#0f1111' }}>🎯 {isGuest ? 'Hold Deals — Group Buy & Save' : 'My Hold Deals'}</h2>
                 <button onClick={() => guardedNav('/campaigns')} className="hk-see-more" style={{ fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}>See all campaigns →</button>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 12 }}>
+              <div className="hk-camp-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 12 }}>
                 {campaigns.filter(c => !c.campaignStatus || c.campaignStatus === 'ACTIVE').map((c) => {
                   const rawCampaignId = String(c.campaign_id || c.id || '').split(':')[0];
                   const campaignId    = rawCampaignId ? parseInt(rawCampaignId, 10) || null : null;
@@ -1296,7 +1486,7 @@ export default function Home({ isGuest = false }) {
             <button onClick={() => guardedNav('/products')} className="hk-see-more" style={{ fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}>See all products →</button>
           </div>
           {loading ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
+            <div className="hk-feat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
               {[...Array(10)].map((_, i) => <div key={i} className="hk-skel" style={{ height: 280 }} />)}
             </div>
           ) : featured.length === 0 ? (
@@ -1306,7 +1496,7 @@ export default function Home({ isGuest = false }) {
             </div>
           ) : (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
+              <div className="hk-feat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
                 {featured.map((p, i) => (
                   <React.Fragment key={p.productId}>
                     {i === 4 && (
@@ -1336,7 +1526,7 @@ export default function Home({ isGuest = false }) {
         </div>
 
         {/* ── Trust badges ── */}
-        <div style={{ background: '#232f3e', borderRadius: 4, marginTop: 12, padding: '18px 28px', display: 'flex', justifyContent: 'center', gap: 40, flexWrap: 'wrap' }}>
+        <div className="hk-trust-bar" style={{ background: '#232f3e', borderRadius: 4, marginTop: 12, padding: '18px 28px', display: 'flex', justifyContent: 'center', gap: 40, flexWrap: 'wrap' }}>
           {[
             { icon: '✅', t: 'Quality Certified', s: 'Every item verified' },
             { icon: '🚚', t: 'Fast Delivery',      s: 'Pan India shipping' },

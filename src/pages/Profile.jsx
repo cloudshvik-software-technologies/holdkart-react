@@ -265,7 +265,7 @@ export default function Profile() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f4f4f5', fontFamily: "'Assistant', 'Segoe UI', sans-serif", paddingTop: 100 }}>
+    <div style={{ minHeight: '100vh', background: '#f4f4f5', fontFamily: "'Assistant', 'Segoe UI', sans-serif", paddingTop: 112 }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;500;600;700;800&display=swap');
         * { box-sizing: border-box; }
@@ -438,16 +438,75 @@ export default function Profile() {
           text-align: center;
           max-width: 280px;
         }
+        @media (max-width: 768px) {
+          .myn-main-grid { grid-template-columns: 1fr !important; padding-top: 16px !important; }
+          /* Sidebar → compact avatar row + horizontal tab strip on mobile */
+          .myn-sidebar-wrap { display: flex !important; flex-direction: column !important; }
+          .myn-sidebar-head {
+            display: flex !important;
+            align-items: center !important;
+            gap: 12px !important;
+            padding: 12px 16px !important;
+            border-bottom: none !important;
+            text-align: left !important;
+          }
+          .myn-sidebar-avatar-box {
+            width: 44px !important;
+            height: 44px !important;
+            margin: 0 !important;
+            flex-shrink: 0 !important;
+          }
+          .myn-sidebar-avatar-box img,
+          .myn-sidebar-avatar-box > div {
+            width: 44px !important;
+            height: 44px !important;
+            font-size: 1.1rem !important;
+          }
+          .myn-sidebar-name-group {
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+            min-width: 0 !important;
+          }
+          /* Nav → horizontal scrollable tab strip */
+          .myn-sidebar-nav {
+            display: flex !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            scrollbar-width: none !important;
+            border-top: 1px solid #eaeaec !important;
+          }
+          .myn-sidebar-nav::-webkit-scrollbar { display: none !important; }
+          .myn-nav-item {
+            border-left: none !important;
+            border-bottom: 3px solid transparent !important;
+            padding: 10px 14px !important;
+            white-space: nowrap !important;
+            flex-shrink: 0 !important;
+            font-size: 0.8rem !important;
+          }
+          .myn-nav-item.active {
+            border-left-color: transparent !important;
+            border-bottom-color: ${MYNTRA_PINK} !important;
+            background: #f9f7ff !important;
+          }
+          .myn-nav-icon { display: none !important; }
+          .myn-main-content { padding: 20px 16px !important; }
+        }
+        @media (max-width: 600px) {
+          .myn-form-row-2 { grid-template-columns: 1fr !important; }
+          .myn-form-row-3 { grid-template-columns: 1fr !important; }
+        }
       `}</style>
 
-      <div style={{ maxWidth: 1080, margin: '0 auto', padding: '24px 16px 60px', display: 'grid', gridTemplateColumns: '260px 1fr', gap: 20, alignItems: 'start' }}>
+      <div className="myn-main-grid" style={{ maxWidth: 1080, margin: '0 auto', padding: '24px 16px 60px', display: 'grid', gridTemplateColumns: '260px 1fr', gap: 20, alignItems: 'start' }}>
 
         {/* ─── LEFT SIDEBAR ─────────────────────────────── */}
-        <div style={{ background: '#fff', borderRadius: 4, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+        <div className="myn-sidebar-wrap" style={{ background: '#fff', borderRadius: 4, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
 
           {/* Profile mini-card */}
-          <div style={{ padding: '24px 20px 20px', borderBottom: '1px solid #eaeaec', textAlign: 'center' }}>
-            <div style={{ position: 'relative', width: 90, height: 90, margin: '0 auto 12px' }}>
+          <div className="myn-sidebar-head" style={{ padding: '24px 20px 20px', borderBottom: '1px solid #eaeaec', textAlign: 'center' }}>
+            <div className="myn-sidebar-avatar-box" style={{ position: 'relative', width: 90, height: 90, margin: '0 auto 12px' }}>
               {profileImg ? (
                 <img src={getImgUrl(profileImg)} alt="Profile"
                   style={{ width: 90, height: 90, borderRadius: '50%', objectFit: 'cover', border: '2px solid #f4f4f5' }} />
@@ -462,14 +521,16 @@ export default function Profile() {
                 </div>
               )}
             </div>
-            <div style={{ fontSize: '0.75rem', color: '#999', marginBottom: 2 }}>Hello,</div>
-            <div style={{ fontWeight: 800, fontSize: '0.98rem', color: '#282c3f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {form.name || customer?.email || 'User'}
+            <div className="myn-sidebar-name-group">
+              <div style={{ fontSize: '0.75rem', color: '#999', marginBottom: 2 }}>Hello,</div>
+              <div style={{ fontWeight: 800, fontSize: '0.98rem', color: '#282c3f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {form.name || customer?.email || 'User'}
+              </div>
             </div>
           </div>
 
           {/* Nav items */}
-          <nav>
+          <nav className="myn-sidebar-nav">
             {NAV_ITEMS.map(item => (
               <div
                 key={item.key}
@@ -488,7 +549,7 @@ export default function Profile() {
         </div>
 
         {/* ─── MAIN CONTENT ─────────────────────────────── */}
-        <div style={{ background: '#fff', borderRadius: 4, padding: '28px 32px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', minHeight: 480 }}>
+        <div className="myn-main-content" style={{ background: '#fff', borderRadius: 4, padding: '28px 32px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', minHeight: 480 }}>
 
           {/* MY PROFILE */}
           {activeTab === 'profile' && (
@@ -551,7 +612,7 @@ export default function Profile() {
                 </div>
 
                 {/* Name row */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+                <div className="myn-form-row-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
                   <div>
                     <label className="myn-label">First Name</label>
                     <input
@@ -590,7 +651,7 @@ export default function Profile() {
                 </div>
 
                 {/* Email & Mobile */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+                <div className="myn-form-row-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
                   <div>
                     <label className="myn-label">Email Address</label>
                     <input
@@ -656,7 +717,7 @@ export default function Profile() {
                     style={{ resize: 'vertical' }}
                   />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 160px', gap: 16 }}>
+                <div className="myn-form-row-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 160px', gap: 16 }}>
                   <div>
                     <label className="myn-label">City</label>
                     <input className="myn-input" placeholder="City" value={form.city} onChange={e => setForm(p => ({ ...p, city: e.target.value }))} />

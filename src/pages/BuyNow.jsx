@@ -386,7 +386,7 @@ export default function BuyNow() {
 
   /* ── Price Details panel — mirrors Checkout.jsx's Order Summary layout ── */
   const PricePanel = () => (
-    <div style={{ position: 'sticky', top: 96 }}>
+    <div className="hk-bn-price-col" style={{ position: 'sticky', top: 96 }}>
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, overflow: 'hidden' }}>
 
         {/* Header */}
@@ -520,10 +520,14 @@ export default function BuyNow() {
         select:focus { border-color: #2a5298 !important; box-shadow: 0 0 0 3px rgba(42,82,152,0.12) !important; outline: none; }
         textarea:focus { border-color: #2a5298 !important; box-shadow: 0 0 0 3px rgba(42,82,152,0.12) !important; outline: none; }
         @keyframes spin { to { transform: rotate(360deg); } }
+        @media (max-width: 768px) {
+          .hk-bn-layout { grid-template-columns: 1fr !important; }
+          .hk-bn-price-col { position: static !important; }
+        }
       `}</style>
 
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 16px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'flex-start' }}>
+        <div className="hk-bn-layout" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'flex-start' }}>
 
           {/* ══════════ LEFT COLUMN ══════════ */}
           <div>

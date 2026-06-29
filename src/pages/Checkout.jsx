@@ -483,6 +483,17 @@ export default function Checkout() {
       <style>{`
         select:focus { border-color: #2a5298 !important; box-shadow: 0 0 0 3px rgba(42,82,152,0.12) !important; outline: none; }
         textarea:focus { border-color: #2a5298 !important; box-shadow: 0 0 0 3px rgba(42,82,152,0.12) !important; outline: none; }
+        @media (max-width: 768px) {
+          .hk-co-layout { grid-template-columns: 1fr !important; }
+          .hk-co-courier-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+        }
+        @media (max-width: 480px) {
+          .hk-co-addr-grid { grid-template-columns: 1fr !important; }
+          .hk-co-item-row { grid-template-columns: 52px 1fr !important; }
+          .hk-co-item-price { grid-column: 1 / -1 !important; text-align: left !important; margin-top: 6px; }
+          .hk-co-courier-wrap { margin-left: 0 !important; }
+          .hk-co-courier-grid { grid-template-columns: 1fr !important; }
+        }
       `}</style>
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 16px' }}>
 
@@ -509,7 +520,7 @@ export default function Checkout() {
             </button>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'flex-start' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'flex-start' }} className="hk-co-layout">
 
             {/* ══════════ LEFT COLUMN ══════════ */}
             <div>
@@ -567,7 +578,7 @@ export default function Checkout() {
                           style={{ ...inp('address'), resize: 'none' }}
                         />
                       </Field>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }} className="hk-co-addr-grid">
                         <Field label="State" required>
                           <select
                             required value={address.state}
@@ -671,7 +682,7 @@ export default function Checkout() {
                         }}
                       >
                         {/* Product row */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: 14, alignItems: 'center' }}>
+                        <div className="hk-co-item-row" style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: 14, alignItems: 'center' }}>
                           <div style={{ border: '1px solid #e5e7eb', borderRadius: 4, overflow: 'hidden', background: '#f9fafb' }}>
                             <img
                               src={resolveImg(item.imageUrl)}
@@ -691,7 +702,7 @@ export default function Checkout() {
                               </span>
                             )}
                           </div>
-                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div className="hk-co-item-price" style={{ textAlign: 'right', flexShrink: 0 }}>
                             <p style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f1111', margin: '0 0 2px' }}>
                               ₹{lineAmt.toLocaleString('en-IN')}
                             </p>
@@ -705,7 +716,7 @@ export default function Checkout() {
 
                         {/* ── Courier selector for this item — inline cards, 3 per row ── */}
                         {addrDone && (
-                          <div style={{ marginTop: 14, marginLeft: 78 }}>
+                          <div className="hk-co-courier-wrap" style={{ marginTop: 14, marginLeft: 78 }}>
                             {courier?.loading && (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: '#6b7280' }}>
                                 <div style={{ width: 14, height: 14, border: '2px solid #e5e7eb', borderTopColor: '#2a5298', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
@@ -727,7 +738,7 @@ export default function Checkout() {
                                     Select Courier
                                   </p>
 
-                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+                                  <div className="hk-co-courier-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
                                     {courier.list.map((c) => {
                                       const isSelected = sel?.courierId === c.courierId;
                                       return (

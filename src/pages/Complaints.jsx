@@ -193,18 +193,35 @@ export default function Complaints() {
   };
 
   return (
-    <div style={{
+    <div className="hk-cmp-root" style={{
       background: '#F7F8FA', minHeight: '100vh',
-      paddingTop: 88, fontFamily: "'Inter', sans-serif",
+      paddingTop: 112, fontFamily: "'Inter', sans-serif",
     }}>
+      <style>{`
+        @media (max-width: 768px) {
+          .hk-cmp-two-col { grid-template-columns: 1fr !important; }
+          .hk-cmp-root { padding-top: 98px !important; }
+          .hk-cmp-hero { padding: 28px 16px !important; }
+          .hk-cmp-hero-row {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 16px !important;
+          }
+          .hk-cmp-body { padding: 24px 16px 60px !important; }
+        }
+        @media (max-width: 480px) {
+          .hk-cmp-root { padding-top: 92px !important; }
+          .hk-cmp-hero { padding: 20px 12px !important; }
+        }
+      `}</style>
 
       {/* ── HERO ── */}
-      <div style={{
+      <div className="hk-cmp-hero" style={{
         background: '#fff',
         borderBottom: '1px solid #EBEBEB',
         padding: '52px 24px',
       }}>
-        <div style={{ maxWidth: 1080, margin: '0 auto', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24, flexWrap: 'wrap' }}>
+        <div className="hk-cmp-hero-row" style={{ maxWidth: 1080, margin: '0 auto', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24, flexWrap: 'wrap' }}>
           <div style={{ borderLeft: '3px solid #FF6B00', paddingLeft: 24 }}>
             <p style={{ margin: '0 0 6px', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#FF6B00' }}>
               Support Center
@@ -236,7 +253,7 @@ export default function Complaints() {
         </div>
       </div>
 
-      <div style={{ maxWidth: 1080, margin: '0 auto', padding: '40px 24px 80px' }}>
+      <div className="hk-cmp-body" style={{ maxWidth: 1080, margin: '0 auto', padding: '40px 24px 80px' }}>
 
         {/* ── QUICK LINKS ── */}
         <div style={{
@@ -272,7 +289,7 @@ export default function Complaints() {
         </div>
 
         {/* ── TWO-COL: FAQ + CONTACT ── */}
-        <div style={{
+        <div className="hk-cmp-two-col" style={{
           display: 'grid', gridTemplateColumns: '3fr 2fr',
           gap: 32, alignItems: 'start', marginBottom: 48,
         }}>
