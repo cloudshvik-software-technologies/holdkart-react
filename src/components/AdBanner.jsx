@@ -72,6 +72,7 @@ export function HeroBannerAd({ style = {}, children }) {
   const ad = ads[idx];
   const imgEl = (
     <img
+      className="hk-hero-img"
       src={ad.imageUrl}
       alt={ad.title || 'Advertisement'}
       style={{ width: 1200, height: 300, objectFit: 'fill', display: 'block',
@@ -81,11 +82,21 @@ export function HeroBannerAd({ style = {}, children }) {
   );
 
   return (
-    <div style={{ width: 1200, maxWidth: '100%', overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '0 auto', ...style }}>
+    <div className="hk-hero-wrap" style={{ width: 1200, maxWidth: '100%', overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '0 auto', ...style }}>
       <style>{`
         .hk-hero-dots { display:flex; gap:6px; justify-content:center; margin-top:6px; }
         .hk-hero-dot  { width:8px; height:8px; border-radius:50%; background:rgba(0,0,0,0.22); border:none; cursor:pointer; padding:0; transition:all 0.3s; }
         .hk-hero-dot.active { background:#1a73e8; width:22px; border-radius:4px; }
+        /* ── Mobile/responsive only: scale the fixed 1200×300 banner image down to
+             fit its shrunk wrapper instead of being clipped by overflow:hidden.
+             Also leave a little side space (matching the rest of the page layout)
+             and give it slightly more height instead of looking too thin/cropped. ── */
+        @media (max-width: 768px) {
+          .hk-hero-wrap { width: calc(100% - 8px) !important; margin: 8px auto 0 !important; border-radius: 6px; }
+          .hk-hero-img  { width: 100% !important; height: auto !important; aspect-ratio: 1200 / 680 !important; }
+          .hk-hero-dot  { width: 6px !important; height: 6px !important; }
+          .hk-hero-dot.active { width: 16px !important; }
+        }
       `}</style>
       {ad.redirectUrl
         ? <a href={ad.redirectUrl} target="_blank" rel="noopener noreferrer" style={{ display:'block', textDecoration:'none' }}>{imgEl}</a>
@@ -134,7 +145,10 @@ export function ScrollBannerAd({ style = {}, children }) {
       const track = trackRef.current;
       if (!track) return;
 
-      const cardWidth  = 600;
+      // Read the actual rendered card width (responsive-aware) instead of a
+      // hardcoded desktop value, so the slide step is correct at any screen size.
+      const firstCard = track.querySelector('.hk-sb-card');
+      const cardWidth  = firstCard ? firstCard.offsetWidth : 600;
       const gap        = 8;
       const step       = cardWidth + gap;
 
@@ -216,6 +230,13 @@ export function ScrollBannerAd({ style = {}, children }) {
           transition: all 0.3s;
         }
         .hk-sb-dot.active { background: #2874f0; width: 22px; border-radius: 4px; }
+
+        /* ── Mobile/responsive only: shrink the fixed 600px scroll-banner cards
+             so they fit the screen instead of overflowing almost entirely off it ── */
+        @media (max-width: 768px) {
+          .hk-sb-card     { width: 86vw !important; }
+          .hk-sb-card img { width: 100% !important; height: auto !important; aspect-ratio: 600 / 360 !important; }
+        }
       `}</style>
 
       <div className="hk-sb-outer">
@@ -273,7 +294,7 @@ export function SidebarBoxAd({ style = {} }) {
   }, [ads]);
 
   if (!ads.length) return (
-    <div style={{
+    <div className="hk-sidebar-ad-box" style={{
       width: 300, marginTop: 16, borderRadius: 6,
       overflow: 'hidden', border: '1px dashed #d1d5db',
       background: 'linear-gradient(135deg,#f0f4ff,#e8f0fe)',
@@ -286,12 +307,18 @@ export function SidebarBoxAd({ style = {} }) {
       <div style={{ fontSize: '2rem' }}>📢</div>
       <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#2a5298' }}>Your Ad Here</div>
       <div style={{ fontSize: '0.72rem', color: '#6b7280', textAlign: 'center', padding: '0 16px' }}>300 × 250 px · Sidebar Box</div>
+      <style>{`
+        @media (max-width: 768px) {
+          .hk-sidebar-ad-box { width: 100% !important; max-width: 300px !important; height: auto !important; aspect-ratio: 300 / 190 !important; }
+        }
+      `}</style>
     </div>
   );
 
   const ad = ads[idx];
   const imgEl = (
     <img
+      className="hk-sidebar-ad-img"
       src={ad.imageUrl}
       alt={ad.title || 'Advertisement'}
       style={{
@@ -306,7 +333,7 @@ export function SidebarBoxAd({ style = {} }) {
   );
 
   return (
-    <div style={{
+    <div className="hk-sidebar-ad-box" style={{
       width: 300, marginTop: 16, borderRadius: 6,
       overflow: 'hidden', border: '1px solid #e5e7eb',
       position: 'relative', background: '#f9f9f9',
@@ -341,6 +368,12 @@ export function SidebarBoxAd({ style = {} }) {
           ))}
         </div>
       )}
+      <style>{`
+        @media (max-width: 768px) {
+          .hk-sidebar-ad-box { width: 100% !important; max-width: 300px !important; }
+          .hk-sidebar-ad-img { width: 100% !important; height: auto !important; aspect-ratio: 300 / 190 !important; }
+        }
+      `}</style>
     </div>
   );
 }
@@ -350,6 +383,9 @@ export function ProductSpotlightAd({ style = {}, children }) {
   const [ads,    setAds]    = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [tick,   setTick]   = useState(0);
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== 'undefined' ? window.innerWidth <= 768 : false
+  );
   const trackRef  = useRef(null);
   const posRef    = useRef(0);   // current page index (0-based)
   const animating = useRef(false);
@@ -358,12 +394,24 @@ export function ProductSpotlightAd({ style = {}, children }) {
     fetchAds('product_spotlight').then(result => { setAds(result); setLoaded(true); });
   }, []);
 
+  // Track viewport so mobile (1-per-page / 3s) vs desktop (3-per-page / 5s)
+  // behavior stays correct across resizes, without affecting desktop logic.
   useEffect(() => {
-    if (ads.length <= 3) return;
+    const mq = window.matchMedia('(max-width: 768px)');
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
 
-    const INTERVAL = 5000;
+  const groupSize = isMobile ? 1 : 3;
+
+  useEffect(() => {
+    if (ads.length <= groupSize) return;
+
+    const INTERVAL = isMobile ? 3000 : 5000;
     const DURATION = 500;
-    const GAP      = 8;
+
     // page width = container width; each page is exactly containerWidth px
     function getStep() {
       const track = trackRef.current;
@@ -376,7 +424,7 @@ export function ProductSpotlightAd({ style = {}, children }) {
       const track = trackRef.current;
       if (!track) return;
 
-      const totalPages = Math.ceil(ads.length / 3);
+      const totalPages = Math.ceil(ads.length / groupSize);
       posRef.current += 1;
       animating.current = true;
       setTick(t => t + 1);
@@ -397,14 +445,14 @@ export function ProductSpotlightAd({ style = {}, children }) {
 
     const timer = setInterval(slide, INTERVAL);
     return () => clearInterval(timer);
-  }, [ads]);
+  }, [ads, groupSize, isMobile]);
 
   if (!loaded) return null;
   if (!ads.length) return children ?? null;
 
-  const totalPages  = Math.ceil(ads.length / 3);
+  const totalPages  = Math.ceil(ads.length / groupSize);
   const pages       = Array.from({ length: totalPages }, (_, p) =>
-    [0, 1, 2].map(offset => ads[(p * 3 + offset) % ads.length])
+    Array.from({ length: groupSize }, (_, offset) => ads[(p * groupSize + offset) % ads.length])
   );
   const loopPages   = [...pages, pages[0]];
   const currentPage = posRef.current % totalPages;
@@ -417,6 +465,7 @@ export function ProductSpotlightAd({ style = {}, children }) {
             {page.map((ad, i) => {
               const imgEl = (
                 <img
+                  className="hk-spotlight-img"
                   src={ad.imageUrl}
                   alt={ad.title || 'Advertisement'}
                   style={{ width: 400, height: 400, objectFit: 'fill', display: 'block', imageRendering: 'auto' }}
@@ -424,7 +473,7 @@ export function ProductSpotlightAd({ style = {}, children }) {
                 />
               );
               return (
-                <div key={i} style={{ width: 400, height: 400, borderRadius: 6, overflow: 'hidden', flexShrink: 0 }}>
+                <div key={i} className="hk-spotlight-box" style={{ width: 400, height: 400, borderRadius: 6, overflow: 'hidden', flexShrink: 0 }}>
                   {ad.redirectUrl
                     ? <a href={ad.redirectUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textDecoration: 'none' }}>{imgEl}</a>
                     : imgEl}
@@ -434,6 +483,12 @@ export function ProductSpotlightAd({ style = {}, children }) {
           </div>
         ))}
       </div>
+      <style>{`
+        @media (max-width: 768px) {
+          .hk-spotlight-box { width: ${100 / (pages[0]?.length || 1)}% !important; height: auto !important; aspect-ratio: 1 / 0.82 !important; }
+          .hk-spotlight-img { width: 100% !important; height: auto !important; aspect-ratio: 1 / 0.82 !important; }
+        }
+      `}</style>
 
       {totalPages > 1 && (
         <div style={{ display: 'flex', gap: 6, justifyContent: 'center', paddingBottom: 8 }}>
@@ -527,16 +582,23 @@ export function PopupAd() {
         {ad.redirectUrl ? (
           <a href={ad.redirectUrl} target="_blank" rel="noopener noreferrer"
             style={{ display: 'block', textDecoration: 'none' }} onClick={close}>
-            <img src={ad.imageUrl} alt={ad.title || 'Advertisement'}
+            <img className="hk-popup-img" src={ad.imageUrl} alt={ad.title || 'Advertisement'}
               style={{ width: 600, height: 500, display: 'block', objectFit: 'fill', imageRendering: 'auto' }}
               onError={close} />
           </a>
         ) : (
-          <img src={ad.imageUrl} alt={ad.title || 'Advertisement'}
+          <img className="hk-popup-img" src={ad.imageUrl} alt={ad.title || 'Advertisement'}
             style={{ width: 600, height: 500, display: 'block', objectFit: 'fill', imageRendering: 'auto' }}
             onError={close} />
         )}
       </div>
+      <style>{`
+        /* ── Mobile/responsive only: scale the fixed 600×500 popup image down so
+             it doesn't fill almost the entire screen height ── */
+        @media (max-width: 768px) {
+          .hk-popup-img { width: 100% !important; height: auto !important; aspect-ratio: 600 / 500 !important; }
+        }
+      `}</style>
     </>
   );
 }

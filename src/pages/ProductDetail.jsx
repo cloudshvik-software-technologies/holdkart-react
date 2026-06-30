@@ -513,10 +513,12 @@ const S = {
     fontWeight: active ? 700 : 400,
     fontSize: '0.9rem',
     color: active ? '#0f1111' : '#6b7280',
+    borderTop: 'none',
+    borderLeft: 'none',
+    borderRight: 'none',
     borderBottom: active ? '2px solid #2a5298' : '2px solid transparent',
     marginBottom: -2,
     background: 'none',
-    border: 'none',
     cursor: 'pointer',
     transition: 'color 0.15s',
   }),
@@ -1213,7 +1215,17 @@ export default function ProductDetail() {
           .hk-pd-lightbox-panel { width: 100% !important; border-left: none !important; border-top: 1px solid #e5e7eb !important; max-height: 38vh !important; }
         }
         @media (max-width: 600px) {
-          .hk-pd-similar-grid { grid-template-columns: repeat(2, 1fr) !important; }
+          .hk-pd-similar-grid {
+            display: flex !important;
+            grid-template-columns: none !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+            scroll-snap-type: x mandatory;
+          }
+          .hk-pd-similar-grid > div {
+            flex: 0 0 calc((100% - 12px) / 2) !important;
+            scroll-snap-align: start;
+          }
         }
         /* Recently Viewed & You May Also Like — 2 cards on mobile, 5 on desktop */
         .hk-pd-rv-card, .hk-pd-ymal-card {
@@ -1225,6 +1237,7 @@ export default function ProductDetail() {
             min-width: calc((100% - 12px) / 2) !important;
             max-width: calc((100% - 12px) / 2) !important;
           }
+          .hk-pd-scroll-arrow { display: none !important; }
         }
       `}</style>
       {/* Join modal — shared with Home/Products page cards */}
@@ -2030,6 +2043,7 @@ export default function ProductDetail() {
               <div style={{ position: 'relative' }}>
                 {/* Left arrow */}
                 <button
+                  className="hk-pd-scroll-arrow"
                   onClick={() => document.getElementById(rvScrollId)?.scrollBy({ left: -SCROLL_AMT, behavior: 'smooth' })}
                   style={{ position: 'absolute', left: -18, top: '42%', transform: 'translateY(-50%)',
                     width: 36, height: 36, borderRadius: '50%', background: '#fff', border: '1px solid #d1d5db',
@@ -2118,6 +2132,7 @@ export default function ProductDetail() {
 
                 {/* Right arrow */}
                 <button
+                  className="hk-pd-scroll-arrow"
                   onClick={() => document.getElementById(rvScrollId)?.scrollBy({ left: SCROLL_AMT, behavior: 'smooth' })}
                   style={{ position: 'absolute', right: -18, top: '42%', transform: 'translateY(-50%)',
                     width: 36, height: 36, borderRadius: '50%', background: '#fff', border: '1px solid #d1d5db',
@@ -2147,6 +2162,7 @@ export default function ProductDetail() {
               <div style={{ position: 'relative' }}>
                 {/* Left arrow */}
                 <button
+                  className="hk-pd-scroll-arrow"
                   onClick={() => document.getElementById(ymalScrollId)?.scrollBy({ left: -SCROLL_AMT, behavior: 'smooth' })}
                   style={{ position: 'absolute', left: -18, top: '42%', transform: 'translateY(-50%)',
                     width: 36, height: 36, borderRadius: '50%', background: '#fff', border: '1px solid #d1d5db',
@@ -2217,6 +2233,7 @@ export default function ProductDetail() {
 
                 {/* Right arrow */}
                 <button
+                  className="hk-pd-scroll-arrow"
                   onClick={() => document.getElementById(ymalScrollId)?.scrollBy({ left: SCROLL_AMT, behavior: 'smooth' })}
                   style={{ position: 'absolute', right: -18, top: '42%', transform: 'translateY(-50%)',
                     width: 36, height: 36, borderRadius: '50%', background: '#fff', border: '1px solid #d1d5db',
@@ -2251,7 +2268,7 @@ export default function ProductDetail() {
             {/* Header: IMAGES tab only + close */}
             <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #e5e7eb', padding: '0 24px', flexShrink: 0 }}>
               <button style={{ padding: '16px 20px', fontWeight: 700, fontSize: '0.95rem', color: '#0f1111',
-                background: 'none', border: 'none', cursor: 'default', borderBottom: '2.5px solid #0f1111', marginBottom: -1 }}>
+                background: 'none', borderTop: 'none', borderLeft: 'none', borderRight: 'none', cursor: 'default', borderBottom: '2.5px solid #0f1111', marginBottom: -1 }}>
                 IMAGES
               </button>
               <button

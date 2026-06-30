@@ -252,13 +252,13 @@ export default function ProductCard({ product, alreadyJoined = false }) {
                 </>
               )}
             </div>
-            <div style={{ fontSize: '0.68rem', marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 5 }}>
+            <div style={{ fontSize: '0.68rem', marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 5, minHeight: '2.3em' }}>
               {hasGroupDeal ? (
                 <>
                   <span style={{ color: '#0f1111', fontWeight: 700, fontSize: '0.67rem' }}>Best price on hold</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <span style={{ color: '#dc2626', fontWeight: 800 }}>₹{bestGroupPrice.toLocaleString('en-IN')}</span>
-                    <span style={{ background: '#dc2626', color: '#fff', borderRadius: 3, padding: '1px 4px' }}>{maxDiscountPct}% off</span>
+                    <span className="hk-discount-badge" style={{ background: '#dc2626', color: '#fff', borderRadius: 3, padding: '1px 4px', whiteSpace: 'nowrap', flexShrink: 0 }}>{maxDiscountPct}% off</span>
                   </div>
                 </>
               ) : (
@@ -279,25 +279,28 @@ export default function ProductCard({ product, alreadyJoined = false }) {
           </div>
 
           {/* Buttons */}
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div className="hk-card-btn-row" style={{ display: 'flex', gap: 6, minWidth: 0 }}>
             {hasGroupDeal && (
               hasJoined ? (
-                <button disabled style={{
-                  flex: 1, padding: '6px 0',
+                <button disabled className="hk-card-btn" style={{
+                  flex: 1, padding: '6px 8px', whiteSpace: 'nowrap',
                   background: '#d1fae5', border: '1px solid #6ee7b7',
                   borderRadius: 4, fontWeight: 700, fontSize: '0.78rem',
                   color: '#065f46', cursor: 'default',
+                  minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
                 }}>
                   ✓ Joined
                 </button>
               ) : (
                 <button
                   onClick={handleJoin}
+                  className="hk-card-btn"
                   style={{
-                    flex: 1, padding: '6px 0',
+                    flex: 1, padding: '6px 8px', whiteSpace: 'nowrap',
                     background: '#f0c14b', border: '1px solid #a88734',
                     borderRadius: 4, fontWeight: 700, fontSize: '0.78rem',
                     color: '#111', cursor: 'pointer',
+                    minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
                   }}
                 >
                   Join
@@ -307,18 +310,37 @@ export default function ProductCard({ product, alreadyJoined = false }) {
             <button
               onClick={handleCart}
               disabled={cartLoading}
+              className="hk-card-btn"
               style={{
-                flex: 1, padding: '6px 0',
+                flex: 1, padding: hasGroupDeal ? '6px 8px' : '6px 0', whiteSpace: 'nowrap',
                 background: cartLoading ? '#e5e7eb' : 'linear-gradient(135deg, #2a5298, #1e3c72)',
                 border: 'none', borderRadius: 4,
                 fontWeight: 700, fontSize: '0.78rem',
                 color: cartLoading ? '#9ca3af' : '#fff',
                 cursor: cartLoading ? 'not-allowed' : 'pointer',
+                minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
               }}
             >
               {cartLoading ? '…' : 'Add to Cart'}
             </button>
           </div>
+
+          <style>{`
+            /* ── Shrink deal-product action buttons on narrow/responsive screens so
+                 Join + Add to Cart never get cut off / overflow the card width ── */
+            @media (max-width: 768px) {
+              .hk-card-btn-row { gap: 4px !important; }
+              .hk-card-btn { padding: 6px 4px !important; font-size: 0.7rem !important; }
+              .hk-discount-badge { padding: 1px 3px !important; font-size: 0.62rem !important; }
+            }
+            @media (max-width: 480px) {
+              .hk-card-btn { padding: 6px 3px !important; font-size: 0.66rem !important; }
+              .hk-discount-badge { font-size: 0.6rem !important; }
+            }
+            @media (max-width: 360px) {
+              .hk-card-btn { padding: 5px 2px !important; font-size: 0.6rem !important; }
+            }
+          `}</style>
         </div>
       </div>
     </>
