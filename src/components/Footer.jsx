@@ -141,12 +141,12 @@ export default function Footer() {
         /* ── Very small phones (≤ 360px) ── */
         @media (max-width: 360px) {
           .hk-footer-grid {
-            grid-template-columns: 1fr;
-            gap: 20px;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
             padding: 20px 14px 14px;
           }
           .hk-footer-brand-col {
-            grid-column: auto;
+            grid-column: 1 / -1;
           }
           .hk-footer-bottom {
             padding: 12px 14px;

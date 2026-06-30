@@ -174,6 +174,7 @@ function SuggestedForYou({ items: itemsProp, loading, guardedNav, title = 'Sugge
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
         {canLeft && (
           <button
+            className="hk-arrow"
             onClick={() => scroll(-1)}
             style={{ position: 'absolute', left: -12, zIndex: 10, width: 32, height: 80, background: '#fff', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
           >‹</button>
@@ -220,6 +221,7 @@ function SuggestedForYou({ items: itemsProp, loading, guardedNav, title = 'Sugge
 
         {canRight && (
           <button
+            className="hk-arrow"
             onClick={() => scroll(1)}
             style={{ position: 'absolute', right: -12, zIndex: 10, width: 32, height: 80, background: '#fff', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
           >›</button>
@@ -369,6 +371,7 @@ function ShopMoreGrid({ items: itemsProp, allProducts, categories, loading, guar
     <div style={{ position: 'relative', marginBottom: 12 }}>
       {smCanLeft && (
         <button
+          className="hk-arrow"
           onClick={() => smScroll(-1)}
           style={{ position: 'absolute', left: -2, top: '50%', transform: 'translateY(-50%)', zIndex: 10, width: 32, height: 80, background: '#fff', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
         >‹</button>
@@ -454,6 +457,7 @@ function ShopMoreGrid({ items: itemsProp, allProducts, categories, loading, guar
       </div>
       {smCanRight && (
         <button
+          className="hk-arrow"
           onClick={() => smScroll(1)}
           style={{ position: 'absolute', right: -2, top: '50%', transform: 'translateY(-50%)', zIndex: 10, width: 32, height: 80, background: '#fff', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
         >›</button>
@@ -490,14 +494,15 @@ function BrowsingHistoryCarousel({ items: itemsProp, loading, guardedNav, joined
 
   return (
     <div style={{ background: '#fff', borderRadius: 4, border: '1px solid #ddd', padding: '16px', marginBottom: 12, position: 'relative' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+      <div className="hk-bh-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#0f1111' }}>{title}</h2>
-        <span style={{ fontSize: '0.78rem', color: '#565959' }}>Page 1 of {Math.ceil(itemsProp.length / 7)}</span>
+        <span className="hk-bh-page" style={{ fontSize: '0.78rem', color: '#565959', whiteSpace: 'nowrap', flexShrink: 0 }}>Page 1 of {Math.ceil(itemsProp.length / 7)}</span>
       </div>
 
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
         {/* Left arrow */}
         <button
+          className="hk-arrow"
           onClick={() => scroll(-1)}
           disabled={!canLeft}
           style={{
@@ -516,6 +521,7 @@ function BrowsingHistoryCarousel({ items: itemsProp, loading, guardedNav, joined
         <div
           ref={trackRef}
           onScroll={updateArrows}
+          className="hk-bh-track"
           style={{
             display: 'flex', gap: 12, overflowX: 'auto', scrollBehavior: 'smooth',
             scrollbarWidth: 'none', msOverflowStyle: 'none',
@@ -537,13 +543,14 @@ function BrowsingHistoryCarousel({ items: itemsProp, loading, guardedNav, joined
             return (
               <div
                 key={p.productId}
+                className="hk-bh-card"
                 onClick={() => guardedNav(`/product/${p.productId}`)}
                 style={{
                   flexShrink: 0, width: 168, cursor: 'pointer',
                   display: 'flex', flexDirection: 'column', gap: 6,
                 }}
               >
-                <div style={{ width: 168, height: 168, background: '#f7f7f7', borderRadius: 4, overflow: 'hidden', border: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div className="hk-bh-card-img" style={{ width: 168, height: 168, background: '#f7f7f7', borderRadius: 4, overflow: 'hidden', border: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {imgSrc
                     ? <img src={imgSrc} alt={p.name || p.productName} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} onError={e => { e.target.style.display = 'none'; }} />
                     : <div style={{ fontSize: '2rem', color: '#ccc' }}>📦</div>
@@ -570,6 +577,7 @@ function BrowsingHistoryCarousel({ items: itemsProp, loading, guardedNav, joined
 
         {/* Right arrow */}
         <button
+          className="hk-arrow"
           onClick={() => scroll(1)}
           disabled={!canRight}
           style={{
@@ -632,7 +640,9 @@ function BasedOnCartCarousel({ items: itemsProp, loading, guardedNav, title = 'B
 
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
         {canLeft && (
-          <button onClick={() => scroll(-1)}
+          <button
+            className="hk-arrow"
+            onClick={() => scroll(-1)}
             style={{ position: 'absolute', left: -12, zIndex: 10, width: 32, height: 80, background: '#fff', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
           >‹</button>
         )}
@@ -670,7 +680,9 @@ function BasedOnCartCarousel({ items: itemsProp, loading, guardedNav, title = 'B
         </div>
 
         {canRight && (
-          <button onClick={() => scroll(1)}
+          <button
+            className="hk-arrow"
+            onClick={() => scroll(1)}
             style={{ position: 'absolute', right: -12, zIndex: 10, width: 32, height: 80, background: '#fff', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
           >›</button>
         )}
@@ -1130,6 +1142,8 @@ export default function Home({ isGuest = false }) {
           .hk-feat-grid      { grid-template-columns: repeat(2,1fr) !important; }
           /* Prevent any wide child from causing a body-level horizontal scrollbar */
           .hk-home-main      { overflow-x: hidden !important; }
+          /* Sidebar ad slot shrinks to fit its grid cell on mobile instead of staying fixed at 300px */
+          .hk-sidebar-ad-wrap { width: 100% !important; height: auto !important; }
 
           /* Deal grid → horizontal scroll, 1 card visible */
           .hk-deal-grid {
@@ -1144,8 +1158,8 @@ export default function Home({ isGuest = false }) {
           }
           .hk-deal-grid::-webkit-scrollbar { display: none !important; }
           .hk-deal-grid > .hk-deal-card {
-            min-width: calc(100% - 20px) !important;
-            max-width: calc(100% - 20px) !important;
+            min-width: 100% !important;
+            max-width: 100% !important;
             flex-shrink: 0 !important;
             scroll-snap-align: start !important;
           }
@@ -1163,7 +1177,7 @@ export default function Home({ isGuest = false }) {
           }
           .hk-shop-more-grid::-webkit-scrollbar { display: none !important; }
           .hk-shop-more-grid > div {
-            min-width: calc(80% - 10px) !important;
+            min-width: 100% !important;
             flex-shrink: 0 !important;
             scroll-snap-align: start !important;
           }
@@ -1172,11 +1186,11 @@ export default function Home({ isGuest = false }) {
         /* ── 600px phone: narrower cards, camp strip → horizontal scroll ── */
         @media (max-width: 600px) {
           .hk-deal-grid > .hk-deal-card {
-            min-width: calc(88% - 10px) !important;
-            max-width: calc(88% - 10px) !important;
+            min-width: 100% !important;
+            max-width: 100% !important;
           }
 
-          /* Hold deals → sideways scroll strip */
+          /* Hold deals → sideways scroll strip, 2 full cards visible at a time */
           .hk-camp-grid {
             display: flex !important;
             overflow-x: auto !important;
@@ -1189,14 +1203,14 @@ export default function Home({ isGuest = false }) {
           }
           .hk-camp-grid::-webkit-scrollbar { display: none !important; }
           .hk-camp-grid > * {
-            min-width: 155px !important;
-            max-width: 170px !important;
+            min-width: calc(50% - 5px) !important;
+            max-width: calc(50% - 5px) !important;
             flex-shrink: 0 !important;
             scroll-snap-align: start !important;
           }
 
           .hk-shop-more-grid > div {
-            min-width: calc(85% - 10px) !important;
+            min-width: 100% !important;
           }
 
           /* Trust badges → 2-per-row on phones */
@@ -1204,13 +1218,15 @@ export default function Home({ isGuest = false }) {
           .hk-trust-bar > * { flex: 1 1 calc(50% - 7px) !important; }
         }
 
-        /* ── Show deal-grid arrows only on mobile ── */
+        /* ── Hide all carousel side-scroll arrows on mobile/tablet — users can
+             swipe/scroll the strips directly, so the buttons are unnecessary ── */
         @media (max-width: 768px) {
-          .hk-deal-arrow { display: flex !important; }
+          .hk-arrow,
+          .hk-deal-arrow { display: none !important; }
         }
 
         /* ── Accent bar top offset — must match fixed header height ── */
-        .hk-accent-bar { margin-top: 112px; }
+        .hk-accent-bar { margin-top: 101px; }
         @media (max-width: 768px) {
           /* Mobile header: 54px main row + ~44px search row = ~98px */
           .hk-accent-bar { margin-top: 98px; }
@@ -1221,6 +1237,11 @@ export default function Home({ isGuest = false }) {
           .hk-accent-bar { margin-top: 92px; }
           /* Shrink carousel arrows so they don't cover product image */
           .hk-arrow { width: 28px !important; height: 48px !important; font-size: 1.2rem !important; }
+          /* Based on your browsing history: stack header, drop page count, fit 2 cards cleanly */
+          .hk-bh-header   { flex-wrap: wrap !important; }
+          .hk-bh-page     { display: none !important; }
+          .hk-bh-card     { width: calc((100% - 12px) / 2) !important; }
+          .hk-bh-card-img { width: 100% !important; height: auto !important; aspect-ratio: 1 / 1 !important; }
         }
       `}</style>
 
@@ -1501,7 +1522,7 @@ export default function Home({ isGuest = false }) {
                   <React.Fragment key={p.productId}>
                     {i === 4 && (
                       <div style={{ borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9f9f9', minHeight: 250 }}>
-                        <div style={{ width: 300, height: 250, flexShrink: 0, overflow: 'hidden' }}>
+                        <div className="hk-sidebar-ad-wrap" style={{ width: 300, height: 250, flexShrink: 0, overflow: 'hidden' }}>
                           <SidebarBoxAd style={{ marginTop: 0, marginLeft: 0, marginRight: 0 }} />
                         </div>
                       </div>

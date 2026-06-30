@@ -319,7 +319,7 @@ function ListProductCard({ product, alreadyJoined = false }) {
         {/* Image */}
         <div className="hk-list-card-img" style={{ width: 160, minWidth: 160, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', padding: 0 }}>
           <img src={imgSrc} alt={product.name} onError={() => setImgSrc(FALLBACK)}
-            style={{ width: '100%', height: 140, objectFit: 'cover' }} />
+            style={{ width: '100%', height: 140, objectFit: 'contain' }} />
         </div>
 
         {/* Details */}
@@ -642,6 +642,9 @@ export default function Products() {
         @media (max-width: 480px) {
           .hk-products-chips { padding: 8px 12px !important; }
           .hk-products-body  { padding: 10px 12px 32px !important; }
+          .hk-grid-view       { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px !important; }
+          .hk-sort-label      { display: none !important; }
+          .hk-sort-scroll     { display: none !important; }
         }
         @media (max-width: 600px) {
           .hk-list-card-img { width: 110px !important; min-width: 110px !important; }
@@ -691,7 +694,7 @@ export default function Products() {
                 Filters
               </button>
 
-              <span style={{ fontSize: '0.82rem', color: '#6b7280', fontWeight: 500, flexShrink: 0 }}>Sort by:</span>
+              <span className="hk-sort-label" style={{ fontSize: '0.82rem', color: '#6b7280', fontWeight: 500, flexShrink: 0 }}>Sort by:</span>
 
               <div className="hk-sort-scroll" style={{ display: 'flex', gap: 6, flex: 1, minWidth: 0 }}>
                 {SORT_OPTIONS.map(o => (
@@ -766,7 +769,7 @@ export default function Products() {
             <div style={{ flex: 1, minWidth: 0 }}>
 
               {loading && products.length === 0 ? (
-                <div style={{ display: 'grid', gridTemplateColumns: view === 'list' ? '1fr' : 'repeat(auto-fill,minmax(195px,1fr))', gap: 12 }}>
+                <div className="hk-grid-view" style={{ display: 'grid', gridTemplateColumns: view === 'list' ? '1fr' : 'repeat(auto-fill,minmax(195px,1fr))', gap: 12 }}>
                   {[...Array(12)].map((_, i) => <Skeleton key={i} />)}
                 </div>
 
@@ -784,7 +787,7 @@ export default function Products() {
                 </div>
 
               ) : view === 'grid' ? (
-                <div ref={gridRef} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(195px,1fr))', gap: 12 }}>
+                <div ref={gridRef} className="hk-grid-view" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(195px,1fr))', gap: 12 }}>
                   {products.flatMap((p, i) => {
                     const card = (
                       <div key={p.productId} className="hk-product-item"

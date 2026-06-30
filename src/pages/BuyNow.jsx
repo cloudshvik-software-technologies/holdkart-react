@@ -370,7 +370,15 @@ export default function BuyNow() {
       toast.error(`That pincode belongs to ${pincodeCheck.detectedDistrict}, ${pincodeCheck.detectedState} — please match it with the selected city/state`);
       setAddrExpanded(true); return;
     }
-    // require courier selection only when couriers have loaded
+    // BUG FIX: previously this only blocked submission when the courier list had
+    // already loaded (`courier.list.length > 0`). If the user clicked "Place Order"
+    // while couriers were still being fetched, `list` was still empty, the check
+    // was skipped entirely, and the order went through with courier.selected = null
+    // — so customer_courier_id / customer_courier_name were stored as NULL.
+    if (courier.loading) {
+      toast.error('Please wait — fetching available couriers for your address');
+      return;
+    }
     if (courier.list.length > 0 && !courier.selected) {
       toast.error('Please select a courier'); return;
     }
@@ -523,6 +531,13 @@ export default function BuyNow() {
         @media (max-width: 768px) {
           .hk-bn-layout { grid-template-columns: 1fr !important; }
           .hk-bn-price-col { position: static !important; }
+          .hk-bn-courier-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+        }
+        @media (max-width: 480px) {
+          .hk-bn-item-row { grid-template-columns: 52px 1fr !important; }
+          .hk-bn-item-price { grid-column: 1 / -1 !important; text-align: left !important; margin-top: 6px; }
+          .hk-bn-courier-wrap { margin-left: 0 !important; }
+          .hk-bn-courier-grid { grid-template-columns: 1fr !important; }
         }
       `}</style>
 
@@ -670,7 +685,7 @@ export default function BuyNow() {
               <div style={{ padding: '16px 0' }}>
 
               {/* Product row */}
-              <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: 14, alignItems: 'center' }}>
+              <div className="hk-bn-item-row" style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: 14, alignItems: 'center' }}>
                 <div style={{ border: '1px solid #e5e7eb', borderRadius: 4, overflow: 'hidden', background: '#f9fafb' }}>
                   <img
                     src={resolveImg(item.imageUrl)} alt={item.name}
@@ -693,7 +708,7 @@ export default function BuyNow() {
                     </span>
                   )}
                 </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <div className="hk-bn-item-price" style={{ textAlign: 'right', flexShrink: 0 }}>
                   <p style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f1111', margin: '0 0 2px' }}>
                     ₹{lineTotal.toLocaleString('en-IN')}
                   </p>
@@ -707,7 +722,7 @@ export default function BuyNow() {
 
               {/* ── Courier selector — inline cards, 3 per row, same as Checkout ── */}
               {addrDone && (
-                <div style={{ marginTop: 14, marginLeft: 78 }}>
+                <div className="hk-bn-courier-wrap" style={{ marginTop: 14, marginLeft: 78 }}>
                   {courier.loading && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: '#6b7280' }}>
                       <div style={{ width: 14, height: 14, border: '2px solid #e5e7eb', borderTopColor: '#2a5298', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
@@ -729,7 +744,7 @@ export default function BuyNow() {
                           Select Courier
                         </p>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+                        <div className="hk-bn-courier-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
                           {courier.list.map((c) => {
                             const isSelected = sel?.courierId === c.courierId;
                             return (

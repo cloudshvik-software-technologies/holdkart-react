@@ -62,10 +62,11 @@ export default function LoginNudge() {
       left: 0,
       right: 0,
       zIndex: 990,
+      padding: '0 8px',
       transform: visible ? 'translateY(0)' : 'translateY(-110%)',
       transition: 'transform 0.38s cubic-bezier(0.16, 1, 0.3, 1)',
     }}>
-      <div style={{
+      <div className="hk-nudge-card" style={{
         margin: '0 auto',
         maxWidth: 860,
         background: '#fff',
@@ -73,17 +74,28 @@ export default function LoginNudge() {
         boxShadow: '0 8px 32px rgba(0,0,0,0.13)',
         overflow: 'hidden',
       }}>
+        <style>{`
+          @media (max-width: 600px) {
+            .hk-nudge-row { flex-wrap: wrap !important; padding: 12px 14px !important; gap: 10px !important; }
+            .hk-nudge-text { flex-basis: 100% !important; order: 1; }
+            .hk-nudge-text span:last-child { white-space: normal !important; overflow: visible !important; text-overflow: unset !important; }
+            .hk-nudge-divider { display: none !important; }
+            .hk-nudge-actions { order: 2; flex-basis: 100% !important; justify-content: flex-start !important; flex-wrap: wrap; }
+            .hk-nudge-actions button { flex: 1 1 auto; }
+            .hk-nudge-close { order: 0; margin-left: auto; }
+          }
+        `}</style>
         {/* top accent line */}
         <div style={{ height: 3, background: 'linear-gradient(90deg, #FF6B00 0%, #2a5298 100%)' }} />
 
-        <div style={{
+        <div className="hk-nudge-row" style={{
           display: 'flex',
           alignItems: 'center',
           gap: 16,
           padding: '14px 20px',
         }}>
           {/* Left: label + message */}
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="hk-nudge-text" style={{ flex: 1, minWidth: 0 }}>
             <span style={{
               fontSize: '0.65rem', fontWeight: 800,
               letterSpacing: '0.1em', color: '#FF6B00',
@@ -104,10 +116,10 @@ export default function LoginNudge() {
           </div>
 
           {/* Divider */}
-          <div style={{ width: 1, height: 32, background: '#E5E7EB', flexShrink: 0 }} />
+          <div className="hk-nudge-divider" style={{ width: 1, height: 32, background: '#E5E7EB', flexShrink: 0 }} />
 
           {/* Actions */}
-          <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
+          <div className="hk-nudge-actions" style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
             <button
               onClick={() => disappear(DISMISS_WAIT)}
               style={{
@@ -156,6 +168,7 @@ export default function LoginNudge() {
 
           {/* Close */}
           <button
+            className="hk-nudge-close"
             onClick={() => disappear(DISMISS_WAIT)}
             style={{
               background: 'none', border: 'none', cursor: 'pointer',

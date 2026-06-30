@@ -199,10 +199,16 @@ export default function OrderDetail() {
         .od-summary-meta { font-size: 0.85rem; color: var(--muted); }
         .od-summary-meta b { color: var(--text); font-weight: 600; }
         .od-summary-meta .sep { margin: 0 8px; color: #d1d5db; }
+        @media (max-width: 600px) {
+          .od-summary-meta { display: flex; flex-direction: column; gap: 4px; }
+          .od-summary-meta .sep { display: none; }
+          .od-summary-meta-item { white-space: nowrap; }
+        }
         .od-summary-invoice {
           background: none; border: none; color: var(--blue); font-weight: 600;
-          font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; gap: 4px;
+          font-size: 0.85rem; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;
         }
+        .od-summary-invoice svg { position: relative; top: 1px; flex-shrink: 0; }
         .od-summary-card {
           background: #fff; border-radius: 10px;
           box-shadow: 0 2px 10px rgba(0,0,0,0.07);
@@ -523,12 +529,15 @@ export default function OrderDetail() {
           {/* Order summary — Ship to / Payment method / Order Summary */}
           <div className="od-summary-top">
             <div className="od-summary-meta">
-              Order placed {fmtDate(order.created_date || order.created_at)}
+              <span className="od-summary-meta-item">Order placed {fmtDate(order.created_date || order.created_at)}</span>
               <span className="sep">|</span>
-              Order number <b>{order.sub_order_number || order.order_number}</b>
+              <span className="od-summary-meta-item">Order number <b>{order.sub_order_number || order.order_number}</b></span>
             </div>
             <button className="od-summary-invoice" onClick={() => navigate(`/invoice/${id}`)}>
-              Invoice ⌄
+              Invoice
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
             </button>
           </div>
 
