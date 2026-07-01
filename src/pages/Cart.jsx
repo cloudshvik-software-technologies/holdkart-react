@@ -188,6 +188,11 @@ export default function Cart() {
                         {item.category && (
                           <p style={{ fontSize: '0.78rem', color: '#6b7280', marginBottom: 8 }}>{item.category}</p>
                         )}
+                        {(item.color || item.size) && (
+                          <p style={{ fontSize: '0.78rem', color: '#374151', fontWeight: 600, marginBottom: 8 }}>
+                            {[item.color, item.size].filter(Boolean).join(' / ')}
+                          </p>
+                        )}
 
                         {/* Group deal tag — only shown when item was added via a completed group deal */}
                         {item.hasGroupDeal ? (

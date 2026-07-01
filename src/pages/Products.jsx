@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import ProductCard from '../components/ProductCard.jsx';
-import JoinDealModal from '../components/JoinDealModal.jsx';
 import AdBanner from '../components/AdBanner.jsx';
+import JoinDealModal from '../components/JoinDealModal.jsx';
 import { productService, cartService, wishlistService, campaignService } from '../services/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import toast from 'react-hot-toast';
@@ -210,7 +210,7 @@ function SidebarContent({ categories, filters, setFilters, minCustom, maxCustom,
   );
 }
 
-/* ── List-view product row — uses shared JoinDealModal ── */
+/* ── List-view product row — Join navigates to the product detail page ── */
 function ListProductCard({ product, alreadyJoined = false }) {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
@@ -260,26 +260,39 @@ function ListProductCard({ product, alreadyJoined = false }) {
     } finally { setCartLoading(false); }
   };
 
-  /* Opens the join modal */
-  const handleJoin = (e) => {
+  /* Variant products go to the detail page to pick a variant first;
+     non-variant products join the deal immediately, right from this card.
+     We re-verify against the live variants list (not just the hasVariants
+     flag, which can go stale) before deciding to navigate. */
+  const handleJoin = async (e) => {
     e.stopPropagation();
     if (!isAuthenticated) { toast.error('Please sign in to join the group deal'); return; }
+    if (product.hasVariants) {
+      try {
+        const list = await productService.getVariants(product.productId);
+        if (Array.isArray(list) && list.length > 0) {
+          navigate(`/product/${product.productId}`);
+          return;
+        }
+      } catch {
+        navigate(`/product/${product.productId}`);
+        return;
+      }
+    }
     setShowJoinModal(true);
   };
 
-  /* Called by JoinDealModal after successful join/payment */
   const handleJoinSuccess = (qty) => {
     setShowJoinModal(false);
-    const next = localHold + qty;
-    setLocalHold(Math.min(next, product.holdTarget));
     setHasJoined(true);
+    const optimisticHold = Math.min(localHold + qty, product.holdTarget);
+    setLocalHold(optimisticHold);
     window.dispatchEvent(new CustomEvent('campaignJoined', { detail: { productId: product.productId } }));
-    if (next >= product.holdTarget) {
-      cartService.addToCart({ productId: product.productId, quantity: qty }).catch(() => {});
-      toast.success('🎉 Target reached! Product added to your cart.', { duration: 4000 });
-      setTimeout(() => navigate('/cart'), 2500);
+    if (optimisticHold >= product.holdTarget) {
+      toast.success('🎉 Target reached! Redirecting to your cart…', { duration: 3000 });
+      setTimeout(() => navigate('/cart'), 2000);
     } else {
-      toast.success('Joined the deal! It will move to your cart once the target is reached.');
+      toast.success(`Joined with ${qty} unit${qty > 1 ? 's' : ''}! You'll be redirected to cart once the target is reached.`);
     }
   };
 
@@ -299,7 +312,7 @@ function ListProductCard({ product, alreadyJoined = false }) {
 
   return (
     <>
-      {showJoinModal && hasGroupDeal && (
+      {showJoinModal && (
         <JoinDealModal
           product={product}
           bestGroupPrice={bestGroupPrice}
@@ -309,7 +322,6 @@ function ListProductCard({ product, alreadyJoined = false }) {
           onJoinSuccess={handleJoinSuccess}
         />
       )}
-
       <div onClick={() => navigate(`/product/${product.productId}`)}
         className="hk-list-card"
         style={{ display: 'flex', background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden', cursor: 'pointer', transition: 'box-shadow 0.2s' }}

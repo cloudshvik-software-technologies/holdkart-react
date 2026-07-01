@@ -212,6 +212,11 @@ export default function CampaignDetail() {
                 <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1f2937', marginBottom: 4 }}>
                   {campaign.product_name}
                 </h1>
+                {(campaign.variant_color || campaign.variant_size) && (
+                  <div style={{ fontSize: '0.82rem', color: '#374151', fontWeight: 600, marginBottom: 4 }}>
+                    {[campaign.variant_color, campaign.variant_size].filter(Boolean).join(' / ')}
+                  </div>
+                )}
                 {campaign.sellerName && (
                   <div style={{ fontSize: '0.78rem', color: '#9ca3af', marginBottom: 16 }}>by {campaign.sellerName}</div>
                 )}

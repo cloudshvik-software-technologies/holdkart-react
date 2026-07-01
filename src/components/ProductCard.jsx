@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import StarRating from './StarRating.jsx';
 import JoinDealModal from './JoinDealModal.jsx';
-import { cartService, wishlistService, campaignService } from '../services/index.js';
+import { cartService, wishlistService, campaignService, productService } from '../services/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { addGuestCartItem } from '../utils/guestCart.js';
 import toast from 'react-hot-toast';
@@ -105,36 +105,41 @@ export default function ProductCard({ product, alreadyJoined = false }) {
     }
   };
 
-  const handleJoinSuccess = async (qty) => {
+  const handleJoin = async (e) => {
+    e.stopPropagation();
+    if (!isAuthenticated) { toast.error('Please sign in to join the group deal'); return; }
+    if (product.hasVariants) {
+      // Confirm the product actually still has variant options configured
+      // (the hasVariants flag can be stale) before sending the shopper to
+      // the detail page. If it turns out there are none, join immediately.
+      try {
+        const list = await productService.getVariants(product.productId);
+        if (Array.isArray(list) && list.length > 0) {
+          navigate(`/product/${product.productId}`);
+          return;
+        }
+      } catch {
+        navigate(`/product/${product.productId}`);
+        return;
+      }
+    }
+    setShowJoinModal(true);
+  };
+
+  const handleJoinSuccess = (qty) => {
     setShowJoinModal(false);
     setHasJoined(true);
-    setLocalHold(prev => Math.min(prev + qty, product.holdTarget));
-
-    let realHold = localHold + qty;
-    try {
-      const campaigns = await campaignService.listCampaigns();
-      if (Array.isArray(campaigns)) {
-        const campaign = campaigns.find(c => Number(c.product_id) === Number(product.productId));
-        if (campaign) { realHold = Number(campaign.current_hold); setLocalHold(realHold); }
-      }
-    } catch { /* keep optimistic */ }
-
+    const optimisticHold = Math.min(localHold + qty, product.holdTarget);
+    setLocalHold(optimisticHold);
     window.dispatchEvent(new CustomEvent('campaignJoined', { detail: { productId: product.productId } }));
 
-    if (realHold >= product.holdTarget) {
-      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    if (optimisticHold >= product.holdTarget) {
       toast.success('🎉 Target reached! Redirecting to your cart…', { duration: 3000 });
       setTimeout(() => navigate('/cart'), 2000);
     } else {
       toast.success(`Joined with ${qty} unit${qty > 1 ? 's' : ''}! You'll be redirected to cart once the target is reached.`);
       startPolling(product.productId, product.holdTarget);
     }
-  };
-
-  const handleJoin = (e) => {
-    e.stopPropagation();
-    if (!isAuthenticated) { toast.error('Please sign in to join the group deal'); return; }
-    setShowJoinModal(true);
   };
 
   const hasGroupDeal   = product.holdTarget > 0;
@@ -153,12 +158,11 @@ export default function ProductCard({ product, alreadyJoined = false }) {
           product={product}
           bestGroupPrice={bestGroupPrice}
           maxDiscountPct={maxDiscountPct}
-          remainingSlots={product.holdTarget - localHold}
+          remainingSlots={Math.max(0, product.holdTarget - localHold)}
           onClose={() => setShowJoinModal(false)}
           onJoinSuccess={handleJoinSuccess}
         />
       )}
-
       <div
         onClick={handleCardClick}
         style={{
