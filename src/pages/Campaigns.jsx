@@ -138,6 +138,15 @@ function CampaignRow({ item, leaving, onLeave }) {
           <StatusBadge status={status} />
         </div>
 
+        {/* Colour / size this customer actually joined the deal with */}
+        {(item.variant_color || item.variant_size || item.variant_label) && (
+          <div style={{ fontSize: '0.78rem', color: '#374151', fontWeight: 600, marginBottom: 6 }}>
+            {item.variant_color || item.variant_size
+              ? [item.variant_color, item.variant_size].filter(Boolean).join(' / ')
+              : item.variant_label}
+          </div>
+        )}
+
         {/* Price row */}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: '1.1rem', fontWeight: 700, color: '#b12704' }}>
@@ -249,7 +258,7 @@ export default function Campaigns() {
 
   /* ── Not signed in ── */
   if (!isAuthenticated) return (
-    <div style={{ background: '#f4f6fa', minHeight: '100vh', paddingTop: 100, paddingBottom: 60 }}>
+    <div style={{ background: '#f4f6fa', minHeight: '100vh', paddingTop: 112, paddingBottom: 60 }}>
       <div style={{ maxWidth: 480, margin: '60px auto', textAlign: 'center', padding: '0 16px' }}>
         <div style={{ fontSize: '3.5rem', marginBottom: 16 }}>🔒</div>
         <h2 style={{ fontWeight: 700, color: '#0f1111', marginBottom: 8 }}>Sign in to view your deals</h2>
@@ -267,7 +276,15 @@ export default function Campaigns() {
   );
 
   return (
-    <div style={{ background: '#f4f6fa', minHeight: '100vh', paddingTop: 100, paddingBottom: 60 }}>
+    <div style={{ background: '#f4f6fa', minHeight: '100vh', paddingTop: 112, paddingBottom: 60 }}>
+      <style>{`
+        @media (max-width: 480px) {
+          .hk-camp-summary-grid { gap: 8px !important; }
+          .hk-camp-stat { padding: 10px 8px !important; flex-direction: column !important; gap: 4px !important; align-items: flex-start !important; }
+          .hk-camp-stat-icon { display: none !important; }
+          .hk-camp-stat-val { font-size: 1.1rem !important; }
+        }
+      `}</style>
       <div style={{ maxWidth: 1000, margin: '0 auto', padding: '0 16px' }}>
 
         {/* ── Page header ── */}
@@ -282,16 +299,16 @@ export default function Campaigns() {
 
         {/* ── Summary cards ── */}
         {!loading && mine.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+          <div className="hk-camp-summary-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
             {[
               { label: 'Total Joined', value: mine.length,      icon: '', color: '#2a5298' },
               { label: 'Active Deals', value: activeCount,       icon: '', color: '#007600' },
               { label: 'Cancelled',    value: cancelledCount,    icon: '', color: '#991b1b' },
             ].map(s => (
-              <div key={s.label} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
-                <span style={{ fontSize: '1.6rem' }}>{s.icon}</span>
+              <div key={s.label} className="hk-camp-stat" style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
+                <span className="hk-camp-stat-icon" style={{ fontSize: '1.6rem' }}>{s.icon}</span>
                 <div>
-                  <p style={{ fontSize: '1.4rem', fontWeight: 700, color: s.color, lineHeight: 1 }}>{s.value}</p>
+                  <p className="hk-camp-stat-val" style={{ fontSize: '1.4rem', fontWeight: 700, color: s.color, lineHeight: 1 }}>{s.value}</p>
                   <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: 2 }}>{s.label}</p>
                 </div>
               </div>
@@ -301,7 +318,7 @@ export default function Campaigns() {
 
         {/* ── Filter tabs ── */}
         {!loading && mine.length > 0 && (
-          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '4px 4px 0 0', borderBottom: 'none', display: 'flex', padding: '0 20px', gap: 0 }}>
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '4px 4px 0 0', borderBottom: 'none', display: 'flex', padding: '0 20px', gap: 0, overflowX: 'auto' }}>
             {filters.map(f => {
               const count = f.key === 'ALL' ? mine.length : mine.filter(m => m.campaignStatus === f.key).length;
               const active = filter === f.key;

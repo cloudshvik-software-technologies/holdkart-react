@@ -24,11 +24,26 @@ import Notifications from './pages/Notifications.jsx';
 import Complaints    from './pages/Complaints.jsx';
 import Campaigns     from './pages/Campaigns.jsx';
 import CampaignDetail from './pages/CampaignDetail.jsx';
+import DeactivatedAccount from './pages/DeactivatedAccount.jsx';
 
 function ProtectedRoute() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, customer } = useAuth();
   if (isLoading) return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', color: '#6b7280' }}>Loading…</div>;
-  return isAuthenticated ? <Outlet /> : <Navigate to="/login" replace />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  // A deactivated account must not see any other page — every protected
+  // route bounces here until the customer explicitly reactivates.
+  if (customer?.deactivated) return <Navigate to="/deactivated" replace />;
+  return <Outlet />;
+}
+
+// Guards the locked screen itself: only a deactivated customer should see
+// it, and a reactivated/normal customer is sent back into the app.
+function DeactivatedRoute() {
+  const { isAuthenticated, isLoading, customer } = useAuth();
+  if (isLoading) return null;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (!customer?.deactivated) return <Navigate to="/home" replace />;
+  return <Outlet />;
 }
 
 function GuestRoute() {
@@ -68,6 +83,7 @@ function AppRoutes() {
           <Route path="/" element={<Home isGuest />} />
           <Route path="/products"    element={<Products />} />
           <Route path="/product/:id" element={<ProductDetail />} />
+          <Route path="/cart"        element={<Cart />} />
         </Route>
 
         <Route element={<AppLayout />}>
@@ -84,7 +100,6 @@ function AppRoutes() {
             <Route path="/home"           element={<Home />} />
             <Route path="/campaigns"      element={<Campaigns />} />
             <Route path="/campaigns/:id"  element={<CampaignDetail />} />
-            <Route path="/cart"           element={<Cart />} />
             <Route path="/checkout"       element={<Checkout />} />
             <Route path="/buy-now"        element={<BuyNow />} />
             <Route path="/orders"         element={<Orders />} />
@@ -95,6 +110,10 @@ function AppRoutes() {
             <Route path="/notifications"  element={<Notifications />} />
             <Route path="/complaints"     element={<Complaints />} />
           </Route>
+        </Route>
+
+        <Route element={<DeactivatedRoute />}>
+          <Route path="/deactivated" element={<DeactivatedAccount />} />
         </Route>
 
         <Route path="/dashboard" element={<Navigate to="/home" replace />} />

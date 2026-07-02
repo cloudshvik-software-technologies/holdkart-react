@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import ProductCard from '../components/ProductCard.jsx';
 import { productService, wishlistService, campaignService, cartService } from '../services/index.js';
 // personalised + guest section helpers (new methods on productService)
@@ -128,11 +129,13 @@ const DEAL_SECTIONS_STATIC = [
 /* ─── SUGGESTED FOR YOU CAROUSEL ────────────────────────────────── */
 function SuggestedForYou({ items: itemsProp, loading, guardedNav, title = 'Suggested For You' }) {
   const trackRef = useRef(null);
+  const [canLeft,  setCanLeft]  = useState(false);
   const [canRight, setCanRight] = useState(true);
 
   const updateArrows = () => {
     const t = trackRef.current;
     if (!t) return;
+    setCanLeft(t.scrollLeft > 4);
     setCanRight(t.scrollLeft + t.clientWidth < t.scrollWidth - 4);
   };
 
@@ -169,6 +172,13 @@ function SuggestedForYou({ items: itemsProp, loading, guardedNav, title = 'Sugge
       </div>
 
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+        {canLeft && (
+          <button
+            className="hk-arrow"
+            onClick={() => scroll(-1)}
+            style={{ position: 'absolute', left: -12, zIndex: 10, width: 32, height: 80, background: '#fff', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
+          >‹</button>
+        )}
         <div
           ref={trackRef}
           onScroll={updateArrows}
@@ -201,7 +211,7 @@ function SuggestedForYou({ items: itemsProp, loading, guardedNav, title = 'Sugge
                 </div>
                 {upiPrice > 0 && price > 0 && (
                   <div style={{ fontSize: '0.72rem', color: '#2874f0', fontWeight: 600 }}>
-                    ₹{upiPrice.toLocaleString('en-IN')} <span style={{ fontWeight: 400 }}>with UPI offer + more</span>
+                    ₹{upiPrice.toLocaleString('en-IN')} <span style={{ fontWeight: 400 }}>with deal + more</span>
                   </div>
                 )}
               </div>
@@ -211,6 +221,7 @@ function SuggestedForYou({ items: itemsProp, loading, guardedNav, title = 'Sugge
 
         {canRight && (
           <button
+            className="hk-arrow"
             onClick={() => scroll(1)}
             style={{ position: 'absolute', right: -12, zIndex: 10, width: 32, height: 80, background: '#fff', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
           >›</button>
@@ -222,6 +233,24 @@ function SuggestedForYou({ items: itemsProp, loading, guardedNav, title = 'Sugge
 
 /* ─── SHOP MORE GRID ─────────────────────────────────────────────── */
 function ShopMoreGrid({ items: itemsProp, allProducts, categories, loading, guardedNav }) {
+  const scrollRef = useRef(null);
+  const [smCanLeft,  setSmCanLeft]  = useState(false);
+  const [smCanRight, setSmCanRight] = useState(true);
+
+  const updateSmArrows = () => {
+    const t = scrollRef.current;
+    if (!t) return;
+    setSmCanLeft(t.scrollLeft > 4);
+    setSmCanRight(t.scrollLeft + t.clientWidth < t.scrollWidth - 4);
+  };
+
+  const smScroll = (dir) => {
+    const t = scrollRef.current;
+    if (!t) return;
+    t.scrollBy({ left: dir * 280, behavior: 'smooth' });
+    setTimeout(updateSmArrows, 400);
+  };
+
   // allProducts = full featured list used for padding; itemsProp = browsing-based priority list
   const pool = (allProducts && allProducts.length > 0) ? allProducts : (itemsProp || []);
   if (loading || pool.length === 0) return null;
@@ -339,7 +368,20 @@ function ShopMoreGrid({ items: itemsProp, allProducts, categories, loading, guar
   });
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 12 }}>
+    <div style={{ position: 'relative', marginBottom: 12 }}>
+      {smCanLeft && (
+        <button
+          className="hk-arrow"
+          onClick={() => smScroll(-1)}
+          style={{ position: 'absolute', left: -2, top: '50%', transform: 'translateY(-50%)', zIndex: 10, width: 32, height: 80, background: '#fff', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
+        >‹</button>
+      )}
+      <div
+        ref={scrollRef}
+        onScroll={updateSmArrows}
+        className="hk-shop-more-grid"
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}
+      >
       {cardData.map(({ cat, hero, thumbs }, si) => {
         if (!hero) return null;
         const heroImg = resolveImg(hero);
@@ -412,6 +454,14 @@ function ShopMoreGrid({ items: itemsProp, allProducts, categories, loading, guar
           </div>
         );
       })}
+      </div>
+      {smCanRight && (
+        <button
+          className="hk-arrow"
+          onClick={() => smScroll(1)}
+          style={{ position: 'absolute', right: -2, top: '50%', transform: 'translateY(-50%)', zIndex: 10, width: 32, height: 80, background: '#fff', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
+        >›</button>
+      )}
     </div>
   );
 }
@@ -444,14 +494,15 @@ function BrowsingHistoryCarousel({ items: itemsProp, loading, guardedNav, joined
 
   return (
     <div style={{ background: '#fff', borderRadius: 4, border: '1px solid #ddd', padding: '16px', marginBottom: 12, position: 'relative' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+      <div className="hk-bh-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#0f1111' }}>{title}</h2>
-        <span style={{ fontSize: '0.78rem', color: '#565959' }}>Page 1 of {Math.ceil(itemsProp.length / 7)}</span>
+        <span className="hk-bh-page" style={{ fontSize: '0.78rem', color: '#565959', whiteSpace: 'nowrap', flexShrink: 0 }}>Page 1 of {Math.ceil(itemsProp.length / 7)}</span>
       </div>
 
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
         {/* Left arrow */}
         <button
+          className="hk-arrow"
           onClick={() => scroll(-1)}
           disabled={!canLeft}
           style={{
@@ -470,6 +521,7 @@ function BrowsingHistoryCarousel({ items: itemsProp, loading, guardedNav, joined
         <div
           ref={trackRef}
           onScroll={updateArrows}
+          className="hk-bh-track"
           style={{
             display: 'flex', gap: 12, overflowX: 'auto', scrollBehavior: 'smooth',
             scrollbarWidth: 'none', msOverflowStyle: 'none',
@@ -491,13 +543,14 @@ function BrowsingHistoryCarousel({ items: itemsProp, loading, guardedNav, joined
             return (
               <div
                 key={p.productId}
+                className="hk-bh-card"
                 onClick={() => guardedNav(`/product/${p.productId}`)}
                 style={{
                   flexShrink: 0, width: 168, cursor: 'pointer',
                   display: 'flex', flexDirection: 'column', gap: 6,
                 }}
               >
-                <div style={{ width: 168, height: 168, background: '#f7f7f7', borderRadius: 4, overflow: 'hidden', border: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div className="hk-bh-card-img" style={{ width: 168, height: 168, background: '#f7f7f7', borderRadius: 4, overflow: 'hidden', border: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {imgSrc
                     ? <img src={imgSrc} alt={p.name || p.productName} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} onError={e => { e.target.style.display = 'none'; }} />
                     : <div style={{ fontSize: '2rem', color: '#ccc' }}>📦</div>
@@ -524,6 +577,7 @@ function BrowsingHistoryCarousel({ items: itemsProp, loading, guardedNav, joined
 
         {/* Right arrow */}
         <button
+          className="hk-arrow"
           onClick={() => scroll(1)}
           disabled={!canRight}
           style={{
@@ -586,7 +640,9 @@ function BasedOnCartCarousel({ items: itemsProp, loading, guardedNav, title = 'B
 
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
         {canLeft && (
-          <button onClick={() => scroll(-1)}
+          <button
+            className="hk-arrow"
+            onClick={() => scroll(-1)}
             style={{ position: 'absolute', left: -12, zIndex: 10, width: 32, height: 80, background: '#fff', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
           >‹</button>
         )}
@@ -624,7 +680,9 @@ function BasedOnCartCarousel({ items: itemsProp, loading, guardedNav, title = 'B
         </div>
 
         {canRight && (
-          <button onClick={() => scroll(1)}
+          <button
+            className="hk-arrow"
+            onClick={() => scroll(1)}
             style={{ position: 'absolute', right: -12, zIndex: 10, width: 32, height: 80, background: '#fff', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
           >›</button>
         )}
@@ -637,8 +695,14 @@ export default function Home({ isGuest = false }) {
   const { customer } = useAuth();
   const navigate = useNavigate();
 
+  const AUTH_ONLY_PATHS = ['/orders', '/order/', '/profile', '/notifications', '/complaints', '/checkout', '/buy-now', '/invoice/'];
+
   const guardedNav = (path) => {
-    if (isGuest && !path.startsWith('/campaigns/')) { navigate('/login'); return; }
+    if (isGuest && AUTH_ONLY_PATHS.some(p => path.startsWith(p))) {
+      toast.error('Please sign in to continue');
+      navigate('/login');
+      return;
+    }
     window.scrollTo(0, 0);
     navigate(path);
   };
@@ -657,9 +721,23 @@ export default function Home({ isGuest = false }) {
   const [wishlistCount, setWishlistCount] = useState(0);
   const [loading, setLoading]             = useState(true);
   const [dealSections, setDealSections]   = useState(DEAL_SECTIONS_STATIC);
+  const dealGridRef  = useRef(null);
+  const [dealCanLeft,  setDealCanLeft]  = useState(false);
+  const [dealCanRight, setDealCanRight] = useState(true);
+  const updateDealArrows = () => {
+    const t = dealGridRef.current;
+    if (!t) return;
+    setDealCanLeft(t.scrollLeft > 4);
+    setDealCanRight(t.scrollLeft + t.clientWidth < t.scrollWidth - 4);
+  };
+  const scrollDeal = (dir) => {
+    const t = dealGridRef.current;
+    if (!t) return;
+    t.scrollBy({ left: dir * (t.clientWidth - 20), behavior: 'smooth' });
+    setTimeout(updateDealArrows, 400);
+  };
   const [slideIdx, setSlideIdx]           = useState(0);
   const [transitioning, setTransitioning] = useState(false);
-  const [countdown, setCountdown]         = useState({ h: 2, m: 34, s: 59 });
   const timerRef = useRef(null);
   const slide = SLIDES[slideIdx];
 
@@ -679,6 +757,44 @@ export default function Home({ isGuest = false }) {
   useEffect(() => {
     const API = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081';
     // Advertisements are fetched inside AdBanner components
+  }, []);
+
+  // ── Ask for location on Home load (browser's native permission prompt, same as
+  //    flipkart.com) and cache the detected address so the Address Details form
+  //    (Profile/Checkout) can pre-fill itself with it later. Only asked once per
+  //    browser; if denied or unsupported, users continue to enter address manually
+  //    exactly as before — nothing else changes.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.navigator?.geolocation) return;
+    if (localStorage.getItem('holdkart_location_prompted')) return;
+    localStorage.setItem('holdkart_location_prompted', '1');
+
+    window.navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          const res = await fetch(
+            `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
+          );
+          const data = await res.json();
+          const pincode = data?.postcode;
+          const city = data?.city || data?.locality || '';
+          const state = data?.principalSubdivision || '';
+          const validPincode = pincode && /^[1-9][0-9]{5}$/.test(pincode);
+          if (validPincode || city || state) {
+            const detected = {
+              address: '',
+              city,
+              state,
+              pincode: validPincode ? pincode : '',
+            };
+            localStorage.setItem('holdkart_detected_address', JSON.stringify(detected));
+          }
+        } catch { /* reverse-geocoding failed — manual address entry remains available */ }
+      },
+      () => { /* user denied or location unavailable — manual address entry remains available */ },
+      { timeout: 8000 }
+    );
   }, []);
 
   useEffect(() => {
@@ -865,17 +981,6 @@ export default function Home({ isGuest = false }) {
   }, [isGuest]);
 
   useEffect(() => {
-    const t = setInterval(() => {
-      setCountdown(c => {
-        let { h, m, s } = c;
-        s--; if (s < 0) { s = 59; m--; if (m < 0) { m = 59; h = Math.max(0, h - 1); } }
-        return { h, m, s };
-      });
-    }, 1000);
-    return () => clearInterval(t);
-  }, []);
-
-  useEffect(() => {
     if (isGuest) return;
     const handleCampaignJoined = async () => {
       try {
@@ -902,7 +1007,6 @@ export default function Home({ isGuest = false }) {
   }, [slideIdx, goSlide]);
 
   const manualSlide = (i) => { clearInterval(timerRef.current); goSlide(i); };
-  const pad = (n) => String(n).padStart(2, '0');
 
   const isFetchingRef = useRef(false);
 
@@ -958,8 +1062,12 @@ export default function Home({ isGuest = false }) {
         .hk-prod-img.out { opacity: 0; }
         .hk-prod-img.in  { opacity: 1; }
 
-        .hk-deal-card { background:#fff; border-radius:4px; padding:16px; transition:box-shadow 0.2s; cursor:pointer; }
-        .hk-deal-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.18); }
+        .hk-deal-card { background:#fff; border-radius:6px; padding:16px; transition:box-shadow 0.2s, border-color 0.2s; cursor:pointer; border-color: #ddd; }
+        .hk-deal-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.18); border-color: #c0c0c0; }
+        .hk-deal-card h3 { font-size: 0.95rem; font-weight: 800; color: #0f1111; margin-bottom: 10px; line-height: 1.35; }
+        .hk-deal-card .hk-sub-item { border-radius: 6px; transition: transform 0.15s; }
+        .hk-deal-card .hk-sub-item:hover { transform: scale(1.02); }
+        .hk-deal-card .hk-sub-item > div:first-child { background: #f7f8fa !important; }
         .hk-sub-item { transition: opacity 0.15s; }
         .hk-sub-item:hover { opacity: 0.78; }
 
@@ -997,8 +1105,6 @@ export default function Home({ isGuest = false }) {
         .hk-cta-blue { background:linear-gradient(180deg,#7ac6e6,#4ba3cc); border-color:#367c96; color:#fff; }
         .hk-cta-blue:hover { background:linear-gradient(180deg,#6ab8da,#3a95be); }
 
-        .hk-digit { background:#111; color:#fff; border-radius:4px; padding:6px 10px; font-size:1.15rem; font-weight:800; min-width:36px; text-align:center; display:inline-block; font-variant-numeric:tabular-nums; }
-
         .hk-brands-track { display:flex; animation:brandScroll 30s linear infinite; width:max-content; }
         .hk-brands-track:hover { animation-play-state:paused; }
         @keyframes brandScroll { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
@@ -1023,95 +1129,152 @@ export default function Home({ isGuest = false }) {
         .hk-brand-item:nth-child(12n+0)  { background:linear-gradient(135deg,#fbe9e7,#fff3e0); border-color:#ffab91; }
         .hk-brand-item img { max-height:40px; max-width:110px; object-fit:contain; filter:grayscale(0.1); transition:filter 0.2s; }
         .hk-brand-item:hover img { filter:grayscale(0); }
+
+        /* ── 900px tablet: 3-col grids ── */
+        @media (max-width: 900px) {
+          .hk-camp-grid  { grid-template-columns: repeat(3,1fr) !important; }
+          .hk-feat-grid  { grid-template-columns: repeat(3,1fr) !important; }
+        }
+
+        /* ── 768px small tablet: collapse camp grid to 2-col, deal+shop more → scroll ── */
+        @media (max-width: 768px) {
+          .hk-camp-grid      { grid-template-columns: repeat(2,1fr) !important; }
+          .hk-feat-grid      { grid-template-columns: repeat(2,1fr) !important; }
+          /* Prevent any wide child from causing a body-level horizontal scrollbar */
+          .hk-home-main      { overflow-x: hidden !important; }
+          /* Sidebar ad slot shrinks to fit its grid cell on mobile instead of staying fixed at 300px */
+          .hk-sidebar-ad-wrap { width: 100% !important; height: auto !important; }
+
+          /* Deal grid → horizontal scroll, 1 card visible */
+          .hk-deal-grid {
+            display: flex !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            scroll-snap-type: x mandatory !important;
+            flex-wrap: nowrap !important;
+            gap: 10px !important;
+            padding-bottom: 8px !important;
+            scrollbar-width: none !important;
+          }
+          .hk-deal-grid::-webkit-scrollbar { display: none !important; }
+          .hk-deal-grid > .hk-deal-card {
+            min-width: 100% !important;
+            max-width: 100% !important;
+            flex-shrink: 0 !important;
+            scroll-snap-align: start !important;
+          }
+
+          /* Shop more grid → horizontal scroll, 1 card visible */
+          .hk-shop-more-grid {
+            display: flex !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            scroll-snap-type: x mandatory !important;
+            flex-wrap: nowrap !important;
+            gap: 10px !important;
+            padding-bottom: 8px !important;
+            scrollbar-width: none !important;
+          }
+          .hk-shop-more-grid::-webkit-scrollbar { display: none !important; }
+          .hk-shop-more-grid > div {
+            min-width: 100% !important;
+            flex-shrink: 0 !important;
+            scroll-snap-align: start !important;
+          }
+        }
+
+        /* ── 600px phone: narrower cards, camp strip → horizontal scroll ── */
+        @media (max-width: 600px) {
+          .hk-deal-grid > .hk-deal-card {
+            min-width: 100% !important;
+            max-width: 100% !important;
+          }
+
+          /* Hold deals → sideways scroll strip, 2 full cards visible at a time */
+          .hk-camp-grid {
+            display: flex !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            scroll-snap-type: x mandatory !important;
+            flex-wrap: nowrap !important;
+            gap: 10px !important;
+            padding-bottom: 10px !important;
+            scrollbar-width: none !important;
+          }
+          .hk-camp-grid::-webkit-scrollbar { display: none !important; }
+          .hk-camp-grid > * {
+            min-width: calc(50% - 5px) !important;
+            max-width: calc(50% - 5px) !important;
+            flex-shrink: 0 !important;
+            scroll-snap-align: start !important;
+          }
+
+          .hk-shop-more-grid > div {
+            min-width: 100% !important;
+          }
+
+          /* Trust badges → 2-per-row on phones */
+          .hk-trust-bar { gap: 14px !important; padding: 14px 12px !important; }
+          .hk-trust-bar > * { flex: 1 1 calc(50% - 7px) !important; }
+        }
+
+        /* ── Hide all carousel side-scroll arrows on mobile/tablet — users can
+             swipe/scroll the strips directly, so the buttons are unnecessary ── */
+        @media (max-width: 768px) {
+          .hk-arrow,
+          .hk-deal-arrow { display: none !important; }
+        }
+
+        /* ── Accent bar top offset — must match fixed header height ── */
+        .hk-accent-bar { margin-top: 101px; }
+        @media (max-width: 768px) {
+          /* Mobile header: 54px main row + ~44px search row = ~98px */
+          .hk-accent-bar { margin-top: 98px; }
+          .hk-home-main  { padding: 8px 8px 80px !important; }
+        }
+        @media (max-width: 480px) {
+          /* Small phone header: 50px main row + ~42px search row = ~92px */
+          .hk-accent-bar { margin-top: 92px; }
+          /* Shrink carousel arrows so they don't cover product image */
+          .hk-arrow { width: 28px !important; height: 48px !important; font-size: 1.2rem !important; }
+          /* Based on your browsing history: stack header, drop page count, fit 2 cards cleanly */
+          .hk-bh-header   { flex-wrap: wrap !important; }
+          .hk-bh-page     { display: none !important; }
+          .hk-bh-card     { width: calc((100% - 12px) / 2) !important; }
+          .hk-bh-card-img { width: 100% !important; height: auto !important; aspect-ratio: 1 / 1 !important; }
+        }
       `}</style>
 
       {/* ════════════ TOP ACCENT BAR ════════════ */}
-      <div style={{ background: slide.accentBar, padding: '7px 0', textAlign: 'center', marginTop: 100 }}>
+      <div className="hk-accent-bar" style={{ background: slide.accentBar, padding: '7px 0', textAlign: 'center' }}>
         <span style={{ fontSize: '0.82rem', fontWeight: 700, color: slide.accentBar === '#febd69' ? '#111' : '#fff', letterSpacing: 0.3 }}>
           {slide.topLabel}
         </span>
       </div>
 
-      {/* ════════════ HERO BANNER AD — shows carousel of ads; falls back to original carousel if no active ads ════════════ */}
-      <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: 24 }}>
-      <HeroBannerAd>
-        {/* Original hero carousel (shown only when no hero_banner ad is active) */}
-        <div style={{ position: 'relative', background: slide.bg, overflow: 'hidden', height: 390, transition: 'background 0.5s ease' }}>
-
-          {slide.leftImg && (
-            <div
-              className={`hk-prod-img ${transitioning ? 'out' : 'in'}`}
-              style={{
-                position: 'absolute', left: 0, top: 0, width: '28%', height: '100%',
-                overflow: 'hidden', zIndex: 2, pointerEvents: 'none',
-                maskImage: 'linear-gradient(to right, transparent 0%, black 18%, black 72%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)',
-                WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 18%, black 72%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)',
-                maskComposite: 'intersect', WebkitMaskComposite: 'destination-in',
-              }}
-            >
-              <img src={slide.leftImg.src} alt={slide.leftImg.alt}
-                style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center', display: 'block', mixBlendMode: 'screen' }} />
-            </div>
-          )}
-
-          {slide.rightImg && (
-            <div
-              className={`hk-prod-img ${transitioning ? 'out' : 'in'}`}
-              style={{
-                position: 'absolute', right: 0, top: 0, width: '28%', height: '100%',
-                overflow: 'hidden', zIndex: 2, pointerEvents: 'none',
-                maskImage: 'linear-gradient(to left, transparent 0%, black 18%, black 72%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)',
-                WebkitMaskImage: 'linear-gradient(to left, transparent 0%, black 18%, black 72%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)',
-                maskComposite: 'intersect', WebkitMaskComposite: 'destination-in',
-              }}
-            >
-              <img src={slide.rightImg.src} alt={slide.rightImg.alt}
-                style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center', display: 'block', mixBlendMode: 'screen' }} />
-            </div>
-          )}
-
-          <div
-            className={`hk-banner-content ${transitioning ? 'out' : 'in'}`}
-            style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', zIndex: 10, width: 460 }}
-          >
-            <h1 style={{ fontSize: 'clamp(2.2rem, 4.5vw, 3.4rem)', fontWeight: 900, color: '#fff', lineHeight: 1.15, marginBottom: 10, textShadow: '0 2px 12px rgba(0,0,0,0.45)', whiteSpace: 'pre-line' }}>
-              {slide.headline}
-            </h1>
-            <p style={{ fontSize: '1.1rem', fontWeight: 500, color: 'rgba(255,255,255,0.88)', marginBottom: 16, textShadow: '0 1px 6px rgba(0,0,0,0.35)' }}>
-              {slide.sub}
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 14 }}>
-              {slide.brands.map(b => (
-                <span key={b} style={{ background: 'rgba(255,255,255,0.14)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', borderRadius: 3, padding: '3px 13px', fontSize: '0.75rem', fontWeight: 700 }}>{b}</span>
-              ))}
-            </div>
-            <div className="hk-promo-pill" style={{ background: slide.color1, color: '#fff', border: 'none', marginRight: 6 }}>
-              {slide.badge}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 6 }}>
-              <span style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.22)', color: 'rgba(255,255,255,0.82)', borderRadius: 3, padding: '5px 14px', fontSize: '0.75rem' }}>{slide.offer}</span>
-            </div>
-            <button className="hk-cta" onClick={() => guardedNav('/products')}>Shop Now</button>
-          </div>
-
-          <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 6, zIndex: 20 }}>
-            {SLIDES.map((_, i) => (
-              <button key={i} onClick={() => manualSlide(i)}
-                style={{ width: i === slideIdx ? 22 : 8, height: 8, borderRadius: 99, background: i === slideIdx ? slide.color1 : 'rgba(255,255,255,0.45)', border: 'none', cursor: 'pointer', transition: 'all 0.35s', padding: 0 }} />
-            ))}
-          </div>
-
-          <button className="hk-arrow left"  onClick={() => manualSlide((slideIdx - 1 + SLIDES.length) % SLIDES.length)}>‹</button>
-          <button className="hk-arrow right" onClick={() => manualSlide((slideIdx + 1) % SLIDES.length)}>›</button>
-        </div>
-      </HeroBannerAd>
-      </div>
+      {/* ════════════ HERO BANNER AD — shows carousel of ads; renders nothing if no ──
+           active ad exists, so the deal grid below becomes the top section right
+           under the accent bar instead of showing a fallback carousel ════════════ */}
+      <HeroBannerAd style={{ marginTop: 24 }} />
 
       {/* ════════════ MAIN CONTENT ════════════ */}
-      <div style={{ maxWidth: 1500, margin: '0 auto', padding: '12px 12px 60px' }}>
+      <div className="hk-home-main" style={{ maxWidth: 1500, margin: '0 auto', padding: '12px 12px 60px' }}>
 
         {/* ── 4-column deal grid ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 12 }}>
+        <div style={{ position: 'relative', marginBottom: 12 }}>
+          {dealCanLeft && (
+            <button
+              onClick={() => scrollDeal(-1)}
+              className="hk-deal-arrow hk-deal-arrow-left"
+              style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', zIndex: 10, width: 36, height: 90, background: 'rgba(255,255,255,0.95)', border: '1px solid #ddd', borderRadius: '0 4px 4px 0', cursor: 'pointer', display: 'none', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', color: '#333', boxShadow: '2px 0 8px rgba(0,0,0,0.12)' }}
+            >‹</button>
+          )}
+        <div
+          ref={dealGridRef}
+          onScroll={updateDealArrows}
+          className="hk-deal-grid"
+          style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}
+        >
           {dealSections.map((sec) => (
             <div key={sec.id} className="hk-deal-card" onClick={() => guardedNav(sec.link)} style={{ border: '1px solid #ddd' }}>
               <h3 style={{ fontWeight: 800, fontSize: '0.98rem', color: '#0f1111', marginBottom: 12, lineHeight: 1.3, minHeight: 42 }}>{sec.title}</h3>
@@ -1139,42 +1302,17 @@ export default function Home({ isGuest = false }) {
             </div>
           ))}
         </div>
+          {dealCanRight && (
+            <button
+              onClick={() => scrollDeal(1)}
+              className="hk-deal-arrow hk-deal-arrow-right"
+              style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', zIndex: 10, width: 36, height: 90, background: 'rgba(255,255,255,0.95)', border: '1px solid #ddd', borderRadius: '4px 0 0 4px', cursor: 'pointer', display: 'none', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', color: '#333', boxShadow: '-2px 0 8px rgba(0,0,0,0.12)' }}
+            >›</button>
+          )}
+        </div>
 
-        {/* ── Scroll Banner Ad — Flipkart-style 2.5 cards, above Hold Deals ── */}
-        <ScrollBannerAd>
-          <div style={{ background: '#fff', borderRadius: 4, padding: '12px 20px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap', border: '1px solid #ddd' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-              <span style={{ fontSize: '1.2rem' }}>⚡</span>
-              <span style={{ fontWeight: 800, fontSize: '1rem', color: '#c40000' }}>Flash Sale</span>
-              <span style={{ fontSize: '0.8rem', color: '#666', fontWeight: 500 }}>Ends in</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span className="hk-digit">{pad(countdown.h)}</span>
-              <span style={{ fontWeight: 800, color: '#c40000', fontSize: '1.2rem' }}>:</span>
-              <span className="hk-digit">{pad(countdown.m)}</span>
-              <span style={{ fontWeight: 800, color: '#c40000', fontSize: '1.2rem' }}>:</span>
-              <span className="hk-digit">{pad(countdown.s)}</span>
-            </div>
-            <div style={{ flex: 1, display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 2, alignItems: 'center' }}>
-              {!isGuest && [
-                { icon: '♡',  label: 'Wishlist',  val: wishlistCount,    link: '/wishlist',  c: '#c7511f' },
-                { icon: '🎯', label: 'Deals',     val: campaigns.length, link: '/campaigns', c: '#c40000' },
-              ].map(s => (
-                <div key={s.label} onClick={() => navigate(s.link)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f7f7f7', border: '1px solid #ddd', borderRadius: 3, padding: '6px 14px', cursor: 'pointer', flexShrink: 0, transition: 'all 0.15s' }}
-                  onMouseEnter={e => e.currentTarget.style.borderColor = s.c}
-                  onMouseLeave={e => e.currentTarget.style.borderColor = '#ddd'}>
-                  <span style={{ fontSize: '1rem' }}>{s.icon}</span>
-                  <div>
-                    <div style={{ fontWeight: 800, fontSize: '0.88rem', color: s.c, lineHeight: 1 }}>{s.val}</div>
-                    <div style={{ fontSize: '0.65rem', color: '#888', lineHeight: 1.3 }}>{s.label}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <button onClick={() => guardedNav('/products')} style={{ background: 'linear-gradient(180deg,#f7dfa5,#f0c14b)', border: '1px solid #a88734', borderRadius: 3, padding: '7px 18px', fontWeight: 700, fontSize: '0.82rem', color: '#111', flexShrink: 0, cursor: 'pointer' }}>See All Deals →</button>
-          </div>
-        </ScrollBannerAd>
+        {/* ── Scroll Banner Ad ── */}
+        <ScrollBannerAd />
 
         {/* ── Hold Deals ── */}
         {campaigns.length > 0 && (
@@ -1184,7 +1322,7 @@ export default function Home({ isGuest = false }) {
                 <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#0f1111' }}>🎯 {isGuest ? 'Hold Deals — Group Buy & Save' : 'My Hold Deals'}</h2>
                 <button onClick={() => guardedNav('/campaigns')} className="hk-see-more" style={{ fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}>See all campaigns →</button>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 12 }}>
+              <div className="hk-camp-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 12 }}>
                 {campaigns.filter(c => !c.campaignStatus || c.campaignStatus === 'ACTIVE').map((c) => {
                   const rawCampaignId = String(c.campaign_id || c.id || '').split(':')[0];
                   const campaignId    = rawCampaignId ? parseInt(rawCampaignId, 10) || null : null;
@@ -1294,40 +1432,10 @@ export default function Home({ isGuest = false }) {
           title={!isGuest && personalizedCart.length > 0 ? 'Based on your cart' : "Today's Deals"}
         />
 
-        {/* ── Product Spotlight Ad — falls back to App promo banner if no active ads ── */}
-        <ProductSpotlightAd>
-          <div style={{ borderRadius: 8, overflow: 'hidden', marginBottom: 12, display: 'flex', minHeight: 200, background: 'linear-gradient(135deg, #7b1fa2, #ab47bc)' }}>
-            <div style={{ background: '#FF9800', minWidth: 200, padding: '28px 28px 28px 24px', display: 'flex', flexDirection: 'column', justifyContent: 'center', position: 'relative', flexShrink: 0 }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#5D3A00', marginBottom: 4, letterSpacing: 0.3 }}>Up to</div>
-              <div style={{ fontSize: '2.8rem', fontWeight: 900, color: '#4A148C', lineHeight: 1, marginBottom: 4, textShadow: '0 2px 0 rgba(255,255,255,0.3)' }}>35% OFF</div>
-              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#3E2700', marginBottom: 2 }}>on first order</div>
-              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#5D3A00', marginBottom: 16 }}>*Only on App</div>
-              <button onClick={() => guardedNav('/products')}
-                style={{ background: '#fff', border: 'none', borderRadius: 6, padding: '9px 18px', fontWeight: 800, fontSize: '0.85rem', color: '#333', cursor: 'pointer', alignSelf: 'flex-start', boxShadow: '0 2px 8px rgba(0,0,0,0.2)', letterSpacing: 0.3 }}>
-                Order Now
-              </button>
-              <div style={{ position: 'absolute', left: 8, bottom: 10, fontSize: '0.55rem', color: 'rgba(0,0,0,0.4)', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>T&amp;C Apply*</div>
-            </div>
-            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 0, padding: '18px 20px', alignItems: 'center' }}>
-              {[
-                { label: 'Trending Now',     img: 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?w=300&q=80' },
-                { label: 'Budget Buys',      img: 'https://images.unsplash.com/photo-1487222477894-8943e31ef7b2?w=300&q=80' },
-                { label: 'Top Rated Picks',  img: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=300&q=80' },
-                { label: 'Daily Essentials', img: 'https://images.unsplash.com/photo-1607631568010-a87245c0daf8?w=300&q=80' },
-              ].map((cat, idx) => (
-                <div key={idx} onClick={() => guardedNav('/products')}
-                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '0 8px' }}>
-                  <div style={{ width: '100%', maxWidth: 150, aspectRatio: '3/4', borderRadius: 16, overflow: 'hidden', border: '3px solid rgba(255,255,255,0.55)', position: 'relative', boxShadow: '0 6px 20px rgba(0,0,0,0.35)', background: '#ddd' }}>
-                    <img src={cat.img} alt={cat.label} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={e => { e.target.style.display = 'none'; }} />
-                  </div>
-                  <div style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)', borderRadius: 20, padding: '5px 14px', color: '#fff', fontWeight: 700, fontSize: '0.78rem', textAlign: 'center', whiteSpace: 'nowrap', border: '1px solid rgba(255,255,255,0.25)', letterSpacing: 0.2 }}>
-                    {cat.label}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </ProductSpotlightAd>
+        {/* ── Product Spotlight Ad — renders nothing if no active ads, so the next ──
+             section (Trending Now / Based on browsing history) moves up directly
+             instead of showing a dummy promo banner ── */}
+        <ProductSpotlightAd />
 
         {/* ── Based on your browsing history (logged in) / Trending Now (guest or new user) ── */}
         {isGuest
@@ -1399,7 +1507,7 @@ export default function Home({ isGuest = false }) {
             <button onClick={() => guardedNav('/products')} className="hk-see-more" style={{ fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}>See all products →</button>
           </div>
           {loading ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
+            <div className="hk-feat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
               {[...Array(10)].map((_, i) => <div key={i} className="hk-skel" style={{ height: 280 }} />)}
             </div>
           ) : featured.length === 0 ? (
@@ -1409,12 +1517,12 @@ export default function Home({ isGuest = false }) {
             </div>
           ) : (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
+              <div className="hk-feat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
                 {featured.map((p, i) => (
                   <React.Fragment key={p.productId}>
                     {i === 4 && (
                       <div style={{ borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9f9f9', minHeight: 250 }}>
-                        <div style={{ width: 300, height: 250, flexShrink: 0, overflow: 'hidden' }}>
+                        <div className="hk-sidebar-ad-wrap" style={{ width: 300, height: 250, flexShrink: 0, overflow: 'hidden' }}>
                           <SidebarBoxAd style={{ marginTop: 0, marginLeft: 0, marginRight: 0 }} />
                         </div>
                       </div>
@@ -1439,7 +1547,7 @@ export default function Home({ isGuest = false }) {
         </div>
 
         {/* ── Trust badges ── */}
-        <div style={{ background: '#232f3e', borderRadius: 4, marginTop: 12, padding: '18px 28px', display: 'flex', justifyContent: 'center', gap: 40, flexWrap: 'wrap' }}>
+        <div className="hk-trust-bar" style={{ background: '#232f3e', borderRadius: 4, marginTop: 12, padding: '18px 28px', display: 'flex', justifyContent: 'center', gap: 40, flexWrap: 'wrap' }}>
           {[
             { icon: '✅', t: 'Quality Certified', s: 'Every item verified' },
             { icon: '🚚', t: 'Fast Delivery',      s: 'Pan India shipping' },

@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import ProductCard from '../components/ProductCard.jsx';
-import JoinDealModal from '../components/JoinDealModal.jsx';
 import AdBanner from '../components/AdBanner.jsx';
+import JoinDealModal from '../components/JoinDealModal.jsx';
 import { productService, cartService, wishlistService, campaignService } from '../services/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import toast from 'react-hot-toast';
@@ -210,7 +210,7 @@ function SidebarContent({ categories, filters, setFilters, minCustom, maxCustom,
   );
 }
 
-/* ── List-view product row — uses shared JoinDealModal ── */
+/* ── List-view product row — Join navigates to the product detail page ── */
 function ListProductCard({ product, alreadyJoined = false }) {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
@@ -249,7 +249,6 @@ function ListProductCard({ product, alreadyJoined = false }) {
     e.stopPropagation();
     if (!isAuthenticated) {
       toast.error('Please sign in to add items to cart');
-      navigate('/login');
       return;
     }
     setCartLoading(true);
@@ -261,26 +260,39 @@ function ListProductCard({ product, alreadyJoined = false }) {
     } finally { setCartLoading(false); }
   };
 
-  /* Opens the join modal */
-  const handleJoin = (e) => {
+  /* Variant products go to the detail page to pick a variant first;
+     non-variant products join the deal immediately, right from this card.
+     We re-verify against the live variants list (not just the hasVariants
+     flag, which can go stale) before deciding to navigate. */
+  const handleJoin = async (e) => {
     e.stopPropagation();
-    if (!isAuthenticated) { toast.error('Please sign in to join the group deal'); navigate('/login'); return; }
+    if (!isAuthenticated) { toast.error('Please sign in to join the group deal'); return; }
+    if (product.hasVariants) {
+      try {
+        const list = await productService.getVariants(product.productId);
+        if (Array.isArray(list) && list.length > 0) {
+          navigate(`/product/${product.productId}`);
+          return;
+        }
+      } catch {
+        navigate(`/product/${product.productId}`);
+        return;
+      }
+    }
     setShowJoinModal(true);
   };
 
-  /* Called by JoinDealModal after successful join/payment */
   const handleJoinSuccess = (qty) => {
     setShowJoinModal(false);
-    const next = localHold + qty;
-    setLocalHold(Math.min(next, product.holdTarget));
     setHasJoined(true);
+    const optimisticHold = Math.min(localHold + qty, product.holdTarget);
+    setLocalHold(optimisticHold);
     window.dispatchEvent(new CustomEvent('campaignJoined', { detail: { productId: product.productId } }));
-    if (next >= product.holdTarget) {
-      cartService.addToCart({ productId: product.productId, quantity: qty }).catch(() => {});
-      toast.success('🎉 Target reached! Product added to your cart.', { duration: 4000 });
-      setTimeout(() => navigate('/cart'), 2500);
+    if (optimisticHold >= product.holdTarget) {
+      toast.success('🎉 Target reached! Redirecting to your cart…', { duration: 3000 });
+      setTimeout(() => navigate('/cart'), 2000);
     } else {
-      toast.success('Joined the deal! It will move to your cart once the target is reached.');
+      toast.success(`Joined with ${qty} unit${qty > 1 ? 's' : ''}! You'll be redirected to cart once the target is reached.`);
     }
   };
 
@@ -288,7 +300,6 @@ function ListProductCard({ product, alreadyJoined = false }) {
     e.stopPropagation();
     if (!isAuthenticated) {
       toast.error('Please sign in to add to wishlist');
-      navigate('/login');
       return;
     }
     try {
@@ -301,7 +312,7 @@ function ListProductCard({ product, alreadyJoined = false }) {
 
   return (
     <>
-      {showJoinModal && hasGroupDeal && (
+      {showJoinModal && (
         <JoinDealModal
           product={product}
           bestGroupPrice={bestGroupPrice}
@@ -311,16 +322,16 @@ function ListProductCard({ product, alreadyJoined = false }) {
           onJoinSuccess={handleJoinSuccess}
         />
       )}
-
       <div onClick={() => navigate(`/product/${product.productId}`)}
+        className="hk-list-card"
         style={{ display: 'flex', background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden', cursor: 'pointer', transition: 'box-shadow 0.2s' }}
         onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.1)'}
         onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}>
 
         {/* Image */}
-        <div style={{ width: 160, minWidth: 160, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', padding: 0 }}>
+        <div className="hk-list-card-img" style={{ width: 160, minWidth: 160, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', padding: 0 }}>
           <img src={imgSrc} alt={product.name} onError={() => setImgSrc(FALLBACK)}
-            style={{ width: '100%', height: 140, objectFit: 'cover' }} />
+            style={{ width: '100%', height: 140, objectFit: 'contain' }} />
         </div>
 
         {/* Details */}
@@ -417,6 +428,7 @@ function ListProductCard({ product, alreadyJoined = false }) {
    MAIN PAGE COMPONENT
 ════════════════════════════════════════════════════════════ */
 export default function Products() {
+  const { isAuthenticated } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [products, setProducts]       = useState([]);
@@ -441,8 +453,11 @@ export default function Products() {
     rating:   '',
   });
 
-  // Fetch joined campaigns to show correct button state on cards
+  // Fetch joined campaigns to show correct button state on cards.
+  // Guests have no "my campaigns" — skip the call entirely so the page
+  // (search, category filters, product grid) works before login.
   useEffect(() => {
+    if (!isAuthenticated) { setJoinedProductIds(new Set()); return; }
     campaignService.getMyCampaigns().then(mine => {
       if (Array.isArray(mine)) {
         // Only ACTIVE or PAUSED campaigns count as "joined" — exclude CANCELLED
@@ -450,7 +465,7 @@ export default function Products() {
         setJoinedProductIds(new Set(active.map(m => Number(m.product_id))));
       }
     }).catch(() => {});
-  }, []);
+  }, [isAuthenticated]);
 
   // Sync filters when URL searchParams change (e.g. search from Header)
   useEffect(() => {
@@ -636,13 +651,27 @@ export default function Products() {
           .hk-mobile-filter-btn   { display: flex !important; }
           .hk-sort-scroll         { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
         }
+        @media (max-width: 480px) {
+          .hk-products-chips { padding: 8px 12px !important; }
+          .hk-products-body  { padding: 10px 12px 32px !important; }
+          .hk-grid-view       { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px !important; }
+          .hk-sort-label      { display: none !important; }
+          .hk-sort-scroll     { display: none !important; }
+        }
+        @media (max-width: 600px) {
+          .hk-list-card-img { width: 110px !important; min-width: 110px !important; }
+        }
+        @media (max-width: 420px) {
+          .hk-list-card     { flex-direction: column !important; }
+          .hk-list-card-img { width: 100% !important; min-width: 0 !important; height: 160px !important; }
+        }
       `}</style>
 
       <div style={{ paddingTop: 112 }}>
 
       {/* ── Active filter chips strip (only shown when filters are active) ── */}
       {activeFilters.length > 0 && (
-        <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px' }}>
+        <div className="hk-products-chips" style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px' }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             {activeFilters.map(f => (
               <span key={f.key} className="hk-chip" onClick={() => removeFilter(f.key)}>
@@ -662,7 +691,7 @@ export default function Products() {
           MAIN BODY  — full width
       ══════════════════════════════════════ */}
       <div style={{ background: '#f4f6fa', minHeight: '80vh' }}>
-        <div style={{ padding: '14px 20px 48px' }}>
+        <div className="hk-products-body" style={{ padding: '14px 20px 48px' }}>
 
           {/* ── Sort / View bar ── */}
           <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', padding: '10px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
@@ -677,7 +706,7 @@ export default function Products() {
                 Filters
               </button>
 
-              <span style={{ fontSize: '0.82rem', color: '#6b7280', fontWeight: 500, flexShrink: 0 }}>Sort by:</span>
+              <span className="hk-sort-label" style={{ fontSize: '0.82rem', color: '#6b7280', fontWeight: 500, flexShrink: 0 }}>Sort by:</span>
 
               <div className="hk-sort-scroll" style={{ display: 'flex', gap: 6, flex: 1, minWidth: 0 }}>
                 {SORT_OPTIONS.map(o => (
@@ -752,7 +781,7 @@ export default function Products() {
             <div style={{ flex: 1, minWidth: 0 }}>
 
               {loading && products.length === 0 ? (
-                <div style={{ display: 'grid', gridTemplateColumns: view === 'list' ? '1fr' : 'repeat(auto-fill,minmax(195px,1fr))', gap: 12 }}>
+                <div className="hk-grid-view" style={{ display: 'grid', gridTemplateColumns: view === 'list' ? '1fr' : 'repeat(auto-fill,minmax(195px,1fr))', gap: 12 }}>
                   {[...Array(12)].map((_, i) => <Skeleton key={i} />)}
                 </div>
 
@@ -770,7 +799,7 @@ export default function Products() {
                 </div>
 
               ) : view === 'grid' ? (
-                <div ref={gridRef} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(195px,1fr))', gap: 12 }}>
+                <div ref={gridRef} className="hk-grid-view" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(195px,1fr))', gap: 12 }}>
                   {products.flatMap((p, i) => {
                     const card = (
                       <div key={p.productId} className="hk-product-item"

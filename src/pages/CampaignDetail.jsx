@@ -183,7 +183,7 @@ export default function CampaignDetail() {
         <span style={{ color: '#374151' }}>{campaign.product_name}</span>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 28, alignItems: 'start' }}>
+      <div className="campaign-detail-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 28, alignItems: 'start' }}>
 
         {/* ── LEFT COLUMN ── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -212,6 +212,11 @@ export default function CampaignDetail() {
                 <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1f2937', marginBottom: 4 }}>
                   {campaign.product_name}
                 </h1>
+                {(campaign.variant_color || campaign.variant_size) && (
+                  <div style={{ fontSize: '0.82rem', color: '#374151', fontWeight: 600, marginBottom: 4 }}>
+                    {[campaign.variant_color, campaign.variant_size].filter(Boolean).join(' / ')}
+                  </div>
+                )}
                 {campaign.sellerName && (
                   <div style={{ fontSize: '0.78rem', color: '#9ca3af', marginBottom: 16 }}>by {campaign.sellerName}</div>
                 )}
@@ -285,7 +290,7 @@ export default function CampaignDetail() {
         </div>
 
         {/* ── RIGHT COLUMN ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, position: 'sticky', top: 100 }}>
+        <div className="campaign-detail-right" style={{ display: 'flex', flexDirection: 'column', gap: 16, position: 'sticky', top: 100 }}>
 
           {/* Progress Card */}
           <div className="card">
@@ -408,6 +413,7 @@ export default function CampaignDetail() {
         @keyframes hk-spin { to { transform: rotate(360deg); } }
         @media (max-width: 768px) {
           .campaign-detail-grid { grid-template-columns: 1fr !important; }
+          .campaign-detail-right { position: static !important; top: auto !important; }
         }
       `}</style>
     </div>

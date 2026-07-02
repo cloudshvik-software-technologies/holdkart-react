@@ -26,6 +26,10 @@ export default function Register() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!form.mobile || !/^[6-9]\d{9}$/.test(form.mobile.replace(/\s+/g, ''))) {
+      toast.error('Enter a valid 10-digit Indian mobile number');
+      return;
+    }
     if (form.password !== form.confirm) { toast.error('Passwords do not match'); return; }
     if (form.password.length < 6) { toast.error('Password must be at least 6 characters'); return; }
     setLoading(true);
@@ -389,9 +393,9 @@ export default function Register() {
                   />
                 </div>
                 <div className="rp-field">
-                  <label className="rp-label">Mobile <span className="rp-optional">(optional)</span></label>
+                  <label className="rp-label">Mobile Number</label>
                   <input
-                    type="tel" placeholder="+91 XXXXXXXXXX"
+                    type="tel" required placeholder="10-digit mobile number"
                     value={form.mobile} onChange={set('mobile')}
                     style={inp('mobile')}
                     onFocus={() => setFocused('mobile')} onBlur={() => setFocused(null)}

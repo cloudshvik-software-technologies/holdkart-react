@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import StarRating from './StarRating.jsx';
 import JoinDealModal from './JoinDealModal.jsx';
-import { cartService, wishlistService, campaignService } from '../services/index.js';
+import { cartService, wishlistService, campaignService, productService } from '../services/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { addGuestCartItem } from '../utils/guestCart.js';
 import toast from 'react-hot-toast';
 
 const FALLBACK_IMG =
@@ -73,10 +74,13 @@ export default function ProductCard({ product, alreadyJoined = false }) {
 
   const handleCart = async (e) => {
     e.stopPropagation();
-    if (!isAuthenticated) { toast.error('Please sign in to add to cart'); navigate('/login'); return; }
     setCartLoading(true);
     try {
-      await cartService.addToCart({ productId: product.productId, quantity: 1 });
+      if (isAuthenticated) {
+        await cartService.addToCart({ productId: product.productId, quantity: 1 });
+      } else {
+        addGuestCartItem(product, 1);
+      }
       toast.success('Added to cart!');
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Failed to add to cart');
@@ -85,7 +89,7 @@ export default function ProductCard({ product, alreadyJoined = false }) {
 
   const handleWishlist = async (e) => {
     e.stopPropagation();
-    if (!isAuthenticated) { toast.error('Please sign in to add to wishlist'); navigate('/login'); return; }
+    if (!isAuthenticated) { toast.error('Please sign in to add to wishlist'); return; }
     try {
       if (wished) {
         await wishlistService.removeFromWishlist({ productId: product.productId });
@@ -101,36 +105,41 @@ export default function ProductCard({ product, alreadyJoined = false }) {
     }
   };
 
-  const handleJoinSuccess = async (qty) => {
+  const handleJoin = async (e) => {
+    e.stopPropagation();
+    if (!isAuthenticated) { toast.error('Please sign in to join the group deal'); return; }
+    if (product.hasVariants) {
+      // Confirm the product actually still has variant options configured
+      // (the hasVariants flag can be stale) before sending the shopper to
+      // the detail page. If it turns out there are none, join immediately.
+      try {
+        const list = await productService.getVariants(product.productId);
+        if (Array.isArray(list) && list.length > 0) {
+          navigate(`/product/${product.productId}`);
+          return;
+        }
+      } catch {
+        navigate(`/product/${product.productId}`);
+        return;
+      }
+    }
+    setShowJoinModal(true);
+  };
+
+  const handleJoinSuccess = (qty) => {
     setShowJoinModal(false);
     setHasJoined(true);
-    setLocalHold(prev => Math.min(prev + qty, product.holdTarget));
-
-    let realHold = localHold + qty;
-    try {
-      const campaigns = await campaignService.listCampaigns();
-      if (Array.isArray(campaigns)) {
-        const campaign = campaigns.find(c => Number(c.product_id) === Number(product.productId));
-        if (campaign) { realHold = Number(campaign.current_hold); setLocalHold(realHold); }
-      }
-    } catch { /* keep optimistic */ }
-
+    const optimisticHold = Math.min(localHold + qty, product.holdTarget);
+    setLocalHold(optimisticHold);
     window.dispatchEvent(new CustomEvent('campaignJoined', { detail: { productId: product.productId } }));
 
-    if (realHold >= product.holdTarget) {
-      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    if (optimisticHold >= product.holdTarget) {
       toast.success('🎉 Target reached! Redirecting to your cart…', { duration: 3000 });
       setTimeout(() => navigate('/cart'), 2000);
     } else {
       toast.success(`Joined with ${qty} unit${qty > 1 ? 's' : ''}! You'll be redirected to cart once the target is reached.`);
       startPolling(product.productId, product.holdTarget);
     }
-  };
-
-  const handleJoin = (e) => {
-    e.stopPropagation();
-    if (!isAuthenticated) { toast.error('Please sign in to join the group deal'); navigate('/login'); return; }
-    setShowJoinModal(true);
   };
 
   const hasGroupDeal   = product.holdTarget > 0;
@@ -149,12 +158,11 @@ export default function ProductCard({ product, alreadyJoined = false }) {
           product={product}
           bestGroupPrice={bestGroupPrice}
           maxDiscountPct={maxDiscountPct}
-          remainingSlots={product.holdTarget - localHold}
+          remainingSlots={Math.max(0, product.holdTarget - localHold)}
           onClose={() => setShowJoinModal(false)}
           onJoinSuccess={handleJoinSuccess}
         />
       )}
-
       <div
         onClick={handleCardClick}
         style={{
@@ -187,7 +195,7 @@ export default function ProductCard({ product, alreadyJoined = false }) {
         </button>
 
         {/* Image */}
-        <div style={{ background: '#f9fafb', overflow: 'hidden', height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="hk-prodcard-img" style={{ background: '#f9fafb', overflow: 'hidden', height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <img
             src={imgSrc}
             alt={product.name}
@@ -218,31 +226,51 @@ export default function ProductCard({ product, alreadyJoined = false }) {
             ) : <span style={{ display: 'block' }} />}
           </div>
 
-          {/* Group Deal progress — only shown when deal exists */}
-          {hasGroupDeal && (
-            <div style={{ marginBottom: 5 }}>
-              <div style={{ height: 4, background: '#e5e7eb', borderRadius: 99, overflow: 'hidden', marginBottom: 3 }}>
+          {/* Group Deal progress (deal products) / stock & shipping info (non-deal products) —
+              same skeleton sizing in both cases so the Price/Buttons row stays aligned
+              across a grid row, whether or not that product has a running deal. */}
+          <div style={{ marginBottom: 5 }}>
+            <div style={{ height: 4, background: hasGroupDeal ? '#e5e7eb' : '#dcfce7', borderRadius: 99, overflow: 'hidden', marginBottom: 3 }}>
+              {hasGroupDeal ? (
                 <div style={{
                   height: '100%', width: `${progressPct}%`, borderRadius: 99,
                   background: progressPct >= 100 ? '#16a34a' : '#2a5298',
                   transition: 'width 0.4s ease',
                 }} />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-                <span style={{ fontSize: '0.68rem', color: '#6b7280' }}>
-                  <span style={{ fontWeight: 700, color: '#1e3c72' }}>{safeHold}/{product.holdTarget}</span> joined
-                </span>
-                <span style={{ fontSize: '0.68rem', color: '#6b7280' }}>Group Deal</span>
-              </div>
-              <div style={{ fontSize: '0.68rem', marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 5 }}>
-                <span style={{ color: '#0f1111', fontWeight: 700, fontSize: '0.67rem' }}>Best price on hold</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ color: '#dc2626', fontWeight: 800 }}>₹{bestGroupPrice.toLocaleString('en-IN')}</span>
-                  <span style={{ background: '#dc2626', color: '#fff', borderRadius: 3, padding: '1px 4px' }}>{maxDiscountPct}% off</span>
-                </div>
-              </div>
+              ) : (
+                <div style={{ height: '100%', width: '100%', borderRadius: 99, background: '#16a34a' }} />
+              )}
             </div>
-          )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+              {hasGroupDeal ? (
+                <>
+                  <span style={{ fontSize: '0.68rem', color: '#6b7280' }}>
+                    <span style={{ fontWeight: 700, color: '#1e3c72' }}>{safeHold}/{product.holdTarget}</span> joined
+                  </span>
+                  <span style={{ fontSize: '0.68rem', color: '#6b7280' }}>Group Deal</span>
+                </>
+              ) : (
+                <>
+                  <span style={{ fontSize: '0.68rem', color: '#15803d', fontWeight: 700 }}>✓ In Stock</span>
+                  <span style={{ fontSize: '0.68rem', color: '#6b7280' }}>Fixed Price</span>
+                </>
+              )}
+            </div>
+            <div style={{ fontSize: '0.68rem', marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 5, minHeight: '2.3em' }}>
+              {hasGroupDeal ? (
+                <>
+                  <span style={{ color: '#0f1111', fontWeight: 700, fontSize: '0.67rem' }}>Best price on hold</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ color: '#dc2626', fontWeight: 800 }}>₹{bestGroupPrice.toLocaleString('en-IN')}</span>
+                    <span className="hk-discount-badge" style={{ background: '#dc2626', color: '#fff', borderRadius: 3, padding: '1px 4px', whiteSpace: 'nowrap', flexShrink: 0 }}>{maxDiscountPct}% off</span>
+                  </div>
+                </>
+              ) : (
+                <span style={{ color: '#6b7280', fontSize: '0.65rem' }}>Ready to ship — no group deal needed</span>
+              )}
+            </div>
+          </div>
+
 
           {/* Price */}
           <div style={{ marginBottom: 6, marginTop: 'auto' }}>
@@ -255,25 +283,28 @@ export default function ProductCard({ product, alreadyJoined = false }) {
           </div>
 
           {/* Buttons */}
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div className="hk-card-btn-row" style={{ display: 'flex', gap: 6, minWidth: 0 }}>
             {hasGroupDeal && (
               hasJoined ? (
-                <button disabled style={{
-                  flex: 1, padding: '6px 0',
+                <button disabled className="hk-card-btn" style={{
+                  flex: 1, padding: '6px 8px', whiteSpace: 'nowrap',
                   background: '#d1fae5', border: '1px solid #6ee7b7',
                   borderRadius: 4, fontWeight: 700, fontSize: '0.78rem',
                   color: '#065f46', cursor: 'default',
+                  minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
                 }}>
                   ✓ Joined
                 </button>
               ) : (
                 <button
                   onClick={handleJoin}
+                  className="hk-card-btn"
                   style={{
-                    flex: 1, padding: '6px 0',
+                    flex: 1, padding: '6px 8px', whiteSpace: 'nowrap',
                     background: '#f0c14b', border: '1px solid #a88734',
                     borderRadius: 4, fontWeight: 700, fontSize: '0.78rem',
                     color: '#111', cursor: 'pointer',
+                    minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
                   }}
                 >
                   Join
@@ -283,18 +314,37 @@ export default function ProductCard({ product, alreadyJoined = false }) {
             <button
               onClick={handleCart}
               disabled={cartLoading}
+              className="hk-card-btn"
               style={{
-                flex: 1, padding: '6px 0',
+                flex: 1, padding: hasGroupDeal ? '6px 8px' : '6px 0', whiteSpace: 'nowrap',
                 background: cartLoading ? '#e5e7eb' : 'linear-gradient(135deg, #2a5298, #1e3c72)',
                 border: 'none', borderRadius: 4,
                 fontWeight: 700, fontSize: '0.78rem',
                 color: cartLoading ? '#9ca3af' : '#fff',
                 cursor: cartLoading ? 'not-allowed' : 'pointer',
+                minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
               }}
             >
               {cartLoading ? '…' : 'Add to Cart'}
             </button>
           </div>
+
+          <style>{`
+            /* ── Shrink deal-product action buttons on narrow/responsive screens so
+                 Join + Add to Cart never get cut off / overflow the card width ── */
+            @media (max-width: 768px) {
+              .hk-card-btn-row { gap: 4px !important; }
+              .hk-card-btn { padding: 6px 4px !important; font-size: 0.7rem !important; }
+              .hk-discount-badge { padding: 1px 3px !important; font-size: 0.62rem !important; }
+            }
+            @media (max-width: 480px) {
+              .hk-card-btn { padding: 6px 3px !important; font-size: 0.66rem !important; }
+              .hk-discount-badge { font-size: 0.6rem !important; }
+            }
+            @media (max-width: 360px) {
+              .hk-card-btn { padding: 5px 2px !important; font-size: 0.6rem !important; }
+            }
+          `}</style>
         </div>
       </div>
     </>

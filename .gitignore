@@ -3,3 +3,8 @@ dist/
 .env
 holdkart-react/.env
 holdkart-react/node_modules/
+
+*.log
+uploads/
+build/
+coverage/

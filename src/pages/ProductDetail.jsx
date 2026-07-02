@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { productService, cartService, wishlistService, reviewService, campaignService, profileService } from '../services/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { addGuestCartItem } from '../utils/guestCart.js';
 import StarRating from '../components/StarRating.jsx';
 import JoinDealModal from '../components/JoinDealModal.jsx';
 import toast from 'react-hot-toast';
@@ -46,12 +47,19 @@ function extractBrand(name = '') {
   return words[0]?.toLowerCase() || '';
 }
 
+// Turn a specs key like "skin_type" into a readable label like "Skin Type"
+function specLabel(key = '') {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
 /* ─── styles ─── */
 const S = {
   page: {
     background: '#f4f6fa',
     minHeight: '100vh',
-    paddingTop: 100,
+    paddingTop: 112,
     paddingBottom: 60,
   },
   inner: {
@@ -76,7 +84,7 @@ const S = {
     display: 'grid',
     gridTemplateColumns: '500px 1fr 280px',
     gap: 20,
-    alignItems: 'flex-start',
+    alignItems: 'stretch',
     marginBottom: 24,
   },
   imageCol: {
@@ -198,6 +206,34 @@ const S = {
     borderRadius: 6,
     padding: '10px 12px',
     marginBottom: 14,
+  },
+  fixedPriceBox: {
+    background: '#f0fdf4',
+    border: '1px solid #bbf7d0',
+    borderRadius: 6,
+    padding: '10px 12px',
+    marginBottom: 14,
+  },
+  fixedPriceHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  fixedPriceLabel: {
+    fontSize: '0.78rem',
+    fontWeight: 700,
+    color: '#15803d',
+    letterSpacing: '0.05em',
+    textTransform: 'uppercase',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  fixedPriceTag: {
+    fontSize: '0.78rem',
+    color: '#16a34a',
+    fontWeight: 600,
   },
   groupDealHeader: {
     display: 'flex',
@@ -477,10 +513,12 @@ const S = {
     fontWeight: active ? 700 : 400,
     fontSize: '0.9rem',
     color: active ? '#0f1111' : '#6b7280',
+    borderTop: 'none',
+    borderLeft: 'none',
+    borderRight: 'none',
     borderBottom: active ? '2px solid #2a5298' : '2px solid transparent',
     marginBottom: -2,
     background: 'none',
-    border: 'none',
     cursor: 'pointer',
     transition: 'color 0.15s',
   }),
@@ -492,6 +530,29 @@ const S = {
     lineHeight: 1.8,
     fontSize: '0.9rem',
     color: '#374151',
+  },
+  specsGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '4px 24px',
+  },
+  specsRow: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+    padding: '12px 0',
+    borderBottom: '1px solid #f3f4f6',
+    fontSize: '1.05rem',
+  },
+  specsLabel: {
+    color: '#6b7280',
+    minWidth: 120,
+    flexShrink: 0,
+  },
+  specsValue: {
+    color: '#0f1111',
+    fontWeight: 700,
+    fontSize: '1.05rem',
   },
   reviewCard: {
     background: '#fff',
@@ -582,6 +643,12 @@ export default function ProductDetail() {
   const { isAuthenticated } = useAuth();
 
   const [product, setProduct]   = useState(null);
+  // ── Variants (colour / size selector) ─────────────────────────────────────
+  const [variants, setVariants]             = useState([]);
+  const [selectedColor, setSelectedColor]   = useState(null);
+  const [selectedSize, setSelectedSize]     = useState(null);
+  const [variantWarning, setVariantWarning] = useState(false);
+  const variantSectionRef = useRef(null);
   const [reviews, setReviews]         = useState([]);
   const [showAllReviews, setShowAllReviews] = useState(false);
   const [lightbox, setLightbox] = useState(null); // { images: [...], index: 0, isReview: bool }
@@ -602,7 +669,12 @@ export default function ProductDetail() {
   const [youMayAlsoLike, setYouMayAlsoLike] = useState([]);
 
   const [activeCampaign, setActiveCampaign] = useState(null);
-  const [hasJoined, setHasJoined]           = useState(false);
+  // Campaign row IDs (from campaignRowId in getMyCampaigns) that this customer
+  // currently holds an ACTIVE/PAUSED slot in, for this product. A product can
+  // run a separate campaign per colour/size, so "has joined" must be checked
+  // per campaign — not just per product — otherwise joining one colour's deal
+  // would incorrectly show every other colour/size as already joined too.
+  const [myJoinedCampaignIds, setMyJoinedCampaignIds] = useState([]);
   const [joinLoading, setJoinLoading]       = useState(false);
   const [localHold, setLocalHold]           = useState(0);
   const [showJoinModal, setShowJoinModal]   = useState(false);
@@ -690,12 +762,12 @@ export default function ProductDetail() {
 
       if (isAuthenticated) {
         const mine   = await campaignService.getMyCampaigns();
-        const joined = Array.isArray(mine)
-          ? mine.some(m => Number(m.product_id) === Number(p.productId) && (m.campaignStatus === 'ACTIVE' || m.campaignStatus === 'PAUSED'))
-          : false;
-        setHasJoined(joined);
+        const mineForProduct = Array.isArray(mine)
+          ? mine.filter(m => Number(m.product_id) === Number(p.productId) && (m.campaignStatus === 'ACTIVE' || m.campaignStatus === 'PAUSED'))
+          : [];
+        setMyJoinedCampaignIds(mineForProduct.map(m => Number(m.campaignRowId)));
         // Start polling for all users who are already in the deal (only when ACTIVE)
-        if (joined && campaign) startPolling(p.productId, p.holdTarget);
+        if (mineForProduct.length && campaign) startPolling(p.productId, p.holdTarget);
       }
     } catch {
       /* no active campaign — fine */
@@ -801,6 +873,41 @@ export default function ProductDetail() {
     })();
   }, [id]);
 
+  // Fetch colour/size variants for this product (only when the seller has configured them)
+  // and default-select the variant that currently has a deal/campaign running, if any —
+  // falling back to the first variant otherwise, mirroring the seller portal's variant selector.
+  // The customer can still freely switch colour/size afterwards.
+  useEffect(() => {
+    if (!product?.productId || !product?.hasVariants) { setVariants([]); return; }
+    (async () => {
+      try {
+        const list = await productService.getVariants(product.productId);
+        const arr = Array.isArray(list) ? list : (Array.isArray(list?.data) ? list.data : []);
+        setVariants(arr);
+        if (arr.length) {
+          const dealVariantIds = new Set(
+            (product.campaigns || []).filter(c => c.variantId != null).map(c => c.variantId)
+          );
+          const dealVariant = dealVariantIds.size
+            ? arr.find(v => dealVariantIds.has(v.id))
+            : null;
+          const defaultVariant = dealVariant || arr[0];
+          setSelectedColor(defaultVariant.color || null);
+          setSelectedSize(defaultVariant.size || null);
+        }
+      } catch {
+        setVariants([]);
+      }
+    })();
+  }, [product?.productId, product?.hasVariants, product?.campaigns]);
+
+  // Switch the main image to the selected variant's own photo, if it has one
+  // (e.g. picking "Red" jumps the gallery to the red product shots).
+  useEffect(() => {
+    const v = variants.find(v => (v.color || null) === selectedColor && (v.size || null) === selectedSize);
+    if (v?.images?.length) setMainImg(v.images[0].url);
+  }, [variants, selectedColor, selectedSize]);
+
   // Separately handle auth-dependent data (canReview) without re-fetching the whole product
   useEffect(() => {
     if (!isAuthenticated || !product) return;
@@ -816,25 +923,61 @@ export default function ProductDetail() {
     if (!isAuthenticated || !product) return;
     campaignService.getMyCampaigns().then(mine => {
       if (Array.isArray(mine)) {
-        const joined = mine.some(
+        const mineForProduct = mine.filter(
           m => Number(m.product_id) === Number(product.productId) && (m.campaignStatus === 'ACTIVE' || m.campaignStatus === 'PAUSED')
         );
-        setHasJoined(joined);
+        setMyJoinedCampaignIds(mineForProduct.map(m => Number(m.campaignRowId)));
       }
     }).catch(() => {});
   }, [isAuthenticated, product?.productId]);
 
-  // Check if this product is already in the cart (persists across page visits / removes)
+  // Check if this product is already in the cart (persists across page visits / removes).
+  // Only a REGULAR-priced row counts as "added via Add to Cart" — a DEAL row is
+  // created automatically when the customer joins a Group Deal and must not make
+  // the button read "Go to Cart" for a normal add they never actually did.
+  // Also scoped to the exact colour/size currently selected — having "Brown / L"
+  // in the cart shouldn't make "Blue / M" of the same product show "Go to Cart" too.
   useEffect(() => {
     if (!isAuthenticated || !product) return;
     cartService.getCart().then(res => {
       const items = Array.isArray(res) ? res : (res?.data?.items || res?.data || res?.items || []);
-      const inCart = Array.isArray(items) && items.some(
-        item => String(item.productId) === String(product.productId)
-      );
+      const currentVariant = variants.find(v => (v.color || null) === selectedColor && (v.size || null) === selectedSize) || null;
+      const inCart = Array.isArray(items) && items.some(item => {
+        if (String(item.productId) !== String(product.productId)) return false;
+        if (item.priceType === 'DEAL') return false;
+        return currentVariant ? Number(item.variantId) === Number(currentVariant.id) : !item.variantId;
+      });
       setAddedToCart(inCart);
     }).catch(() => {});
-  }, [isAuthenticated, product?.productId]);
+  }, [isAuthenticated, product?.productId, selectedColor, selectedSize, variants]);
+
+  // Shared helper: fetch delivery estimate for a given pincode (used by manual entry,
+  // saved profile address, and browser-geolocation auto-detect)
+  const fetchDeliveryEstimate = useCallback(async (pincode, productId) => {
+    setDeliveryLoading(true);
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081'}/api/customer/product/${productId}/delivery-estimate?pincode=${pincode}`
+      );
+      const data = await res.json();
+      if (data?.estimatedDate) {
+        // Parse and format: "2025-06-12" or "12 Jun, Fri" style
+        try {
+          const d = new Date(data.estimatedDate);
+          if (!isNaN(d)) {
+            const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            setDeliveryDate(`${d.getDate()} ${months[d.getMonth()]}, ${days[d.getDay()]}`);
+          } else {
+            setDeliveryDate(data.estimatedDate);
+          }
+        } catch { setDeliveryDate(data.estimatedDate); }
+      } else {
+        setDeliveryDate(null);
+      }
+    } catch { setDeliveryDate(null); }
+    finally { setDeliveryLoading(false); }
+  }, []);
 
   // Fetch profile address and then delivery estimate
   useEffect(() => {
@@ -858,67 +1001,69 @@ export default function ProductDetail() {
         } catch { /* ignore */ }
       }
       if (pincode) {
-        setDeliveryLoading(true);
-        try {
-          const res = await fetch(
-            `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081'}/api/customer/product/${product.productId}/delivery-estimate?pincode=${pincode}`
-          );
-          const data = await res.json();
-          if (data?.estimatedDate) {
-            // Parse and format: "2025-06-12" or "12 Jun, Fri" style
-            try {
-              const d = new Date(data.estimatedDate);
-              if (!isNaN(d)) {
-                const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-                const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-                setDeliveryDate(`${d.getDate()} ${months[d.getMonth()]}, ${days[d.getDay()]}`);
-              } else {
-                setDeliveryDate(data.estimatedDate);
-              }
-            } catch { setDeliveryDate(data.estimatedDate); }
-          } else {
-            setDeliveryDate(null);
-          }
-        } catch { setDeliveryDate(null); }
-        finally { setDeliveryLoading(false); }
+        await fetchDeliveryEstimate(pincode, product.productId);
       }
     };
     fetchAddressAndEstimate();
-  }, [isAuthenticated, product?.productId]);
+  }, [isAuthenticated, product?.productId, fetchDeliveryEstimate]);
+
+  // Auto-detect location via the browser's native geolocation prompt (same prompt Chrome
+  // shows on flipkart.com) — only for users who don't already have a known pincode, and
+  // only once per browser so we don't ask repeatedly. If denied/unsupported/fails, the
+  // existing manual "Enter pincode" flow below keeps working exactly as before.
+  useEffect(() => {
+    if (!product) return;
+    if (deliveryAddress?.pincode || manualPincode) return; // already have a pincode from profile/earlier
+    if (typeof window === 'undefined' || !window.navigator?.geolocation) return;
+    if (localStorage.getItem('locationPromptShown')) return;
+    localStorage.setItem('locationPromptShown', '1');
+
+    window.navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          const res = await fetch(
+            `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
+          );
+          const data = await res.json();
+          const pincode = data?.postcode;
+          if (pincode && /^[1-9][0-9]{5}$/.test(pincode)) {
+            setManualPincode(pincode);
+            setDeliveryAddress(prev => ({
+              ...(prev || {}),
+              pincode,
+              city: prev?.city || data.city || data.locality || '',
+              state: prev?.state || data.principalSubdivision || '',
+            }));
+            await fetchDeliveryEstimate(pincode, product.productId);
+          }
+        } catch { /* reverse-geocoding failed — user can still enter pincode manually */ }
+      },
+      () => { /* user denied or location unavailable — manual entry remains available */ },
+      { timeout: 8000 }
+    );
+  }, [product, deliveryAddress?.pincode, manualPincode, fetchDeliveryEstimate]);
 
   const handleSelectPincode = async (pincode) => {
     if (!/^[1-9][0-9]{5}$/.test(pincode)) return;
     setManualPincode(pincode);
     setShowAddressModal(false);
     setDeliveryAddress(prev => ({ ...(prev || {}), pincode }));
-    setDeliveryLoading(true);
-    try {
-      const res = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081'}/api/customer/product/${product.productId}/delivery-estimate?pincode=${pincode}`
-      );
-      const data = await res.json();
-      if (data?.estimatedDate) {
-        try {
-          const d = new Date(data.estimatedDate);
-          if (!isNaN(d)) {
-            const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-            setDeliveryDate(`${d.getDate()} ${months[d.getMonth()]}, ${days[d.getDay()]}`);
-          } else {
-            setDeliveryDate(data.estimatedDate);
-          }
-        } catch { setDeliveryDate(data.estimatedDate); }
-      } else {
-        setDeliveryDate(null);
-      }
-    } catch { setDeliveryDate(null); }
-    finally { setDeliveryLoading(false); }
+    await fetchDeliveryEstimate(pincode, product.productId);
   };
 
   const handleCart = async () => {
-    if (!isAuthenticated) { toast.error('Please sign in to add items to cart'); navigate('/login'); return; }
     if (addedToCart) { navigate('/cart'); return; }
-    try { await cartService.addToCart({ productId: product.productId, quantity: qty }); toast.success('Added to cart!'); setAddedToCart(true); }
+    if (!requireVariantSelection()) return;
+    try {
+      if (isAuthenticated) {
+        await cartService.addToCart({ productId: product.productId, variantId: selectedVariant?.id, quantity: qty });
+      } else {
+        addGuestCartItem(product, qty, selectedVariant);
+      }
+      toast.success('Added to cart!');
+      setAddedToCart(true);
+    }
     catch(e) { toast.error(e?.response?.data?.message || 'Failed'); }
   };
 
@@ -930,6 +1075,7 @@ export default function ProductDetail() {
 
   const handleBuyNow = async () => {
     if (!isAuthenticated) { toast.error('Please sign in to purchase'); navigate('/login'); return; }
+    if (!requireVariantSelection()) return;
     await handleCart();
     navigate('/cart');
   };
@@ -937,6 +1083,7 @@ export default function ProductDetail() {
   /* Opens the join modal for first-time join */
   const openJoinModal = () => {
     if (!isAuthenticated) { toast.error('Please sign in to join'); navigate('/login'); return; }
+    if (!requireVariantSelection()) return;
     setIsAddMore(false);
     setShowJoinModal(true);
   };
@@ -944,6 +1091,7 @@ export default function ProductDetail() {
   /* Opens the join modal for adding more units when already joined */
   const openAddMoreModal = () => {
     if (!isAuthenticated) { toast.error('Please sign in'); navigate('/login'); return; }
+    if (!requireVariantSelection()) return;
     setIsAddMore(true);
     setShowJoinModal(true);
   };
@@ -951,9 +1099,14 @@ export default function ProductDetail() {
   /* Called by JoinDealModal after a successful join/payment */
   const handleJoinSuccess = async (qty) => {
     setShowJoinModal(false);
-    setHasJoined(true);
+    // Only mark the campaign for the currently selected colour/size as joined —
+    // other variants of this product may be running their own separate deals.
+    if (matchedCampaign) {
+      const joinedId = Number(matchedCampaign.id);
+      setMyJoinedCampaignIds(prev => prev.includes(joinedId) ? prev : [...prev, joinedId]);
+    }
     // Optimistically update the count immediately so UI feels responsive
-    const optimisticHold = Math.min(localHold + qty, product.holdTarget);
+    const optimisticHold = Math.min(localHold + qty, campaignHoldTarget);
     setLocalHold(optimisticHold);
     window.dispatchEvent(new CustomEvent('campaignJoined', { detail: { productId: product.productId } }));
 
@@ -961,10 +1114,13 @@ export default function ProductDetail() {
       // Sync with real server data
       const p = await productService.getProduct(id);
       setProduct(p);
-      const realHold = p.currentHold || optimisticHold;
+      const refreshedCampaign = hasVariants
+        ? (p.campaigns || []).find(c => c.variantId != null && selectedVariant && c.variantId === selectedVariant.id)
+        : (p.campaigns || []).find(c => c.variantId == null);
+      const realHold = refreshedCampaign?.currentHold ?? optimisticHold;
       setLocalHold(realHold);
 
-      if (realHold >= product.holdTarget) {
+      if (realHold >= campaignHoldTarget) {
         // This user's join completed the deal — redirect immediately
         stopPolling();
         toast.success('🎉 Target reached! Redirecting to your cart…', { duration: 3000 });
@@ -972,17 +1128,17 @@ export default function ProductDetail() {
       } else {
         // Deal not yet complete — start polling so this user gets redirected when others fill remaining slots
         toast.success(`Joined with ${qty} unit${qty > 1 ? 's' : ''}! You'll be redirected to cart once the target is reached.`);
-        startPolling(product.productId, product.holdTarget);
+        startPolling(product.productId, campaignHoldTarget);
         await loadCampaignStatus(p);
       }
     } catch {
-      if (optimisticHold >= product.holdTarget) {
+      if (optimisticHold >= campaignHoldTarget) {
         stopPolling();
         toast.success('🎉 Target reached! Redirecting to your cart…', { duration: 3000 });
         setTimeout(() => navigate('/cart'), 2000);
       } else {
         toast.success(`Joined with ${qty} unit${qty > 1 ? 's' : ''}! You'll be redirected to cart once the target is reached.`);
-        startPolling(product.productId, product.holdTarget);
+        startPolling(product.productId, campaignHoldTarget);
       }
     }
   };
@@ -992,13 +1148,16 @@ export default function ProductDetail() {
     if (!isAuthenticated) { toast.error('Please sign in'); navigate('/login'); return; }
     setJoinLoading(true);
     try {
-      await campaignService.addToDeal({ productId: product.productId });
+      await campaignService.addToDeal({ productId: product.productId, variantId: selectedVariant?.id || null });
       const p = await productService.getProduct(id);
       setProduct(p);
-      const realHold = p.currentHold || 0;
+      const refreshedCampaign = hasVariants
+        ? (p.campaigns || []).find(c => c.variantId != null && selectedVariant && c.variantId === selectedVariant.id)
+        : (p.campaigns || []).find(c => c.variantId == null);
+      const realHold = refreshedCampaign?.currentHold ?? 0;
       setLocalHold(realHold);
       window.dispatchEvent(new CustomEvent('campaignJoined', { detail: { productId: product.productId } }));
-      if (realHold >= product.holdTarget) {
+      if (realHold >= campaignHoldTarget) {
         stopPolling();
         toast.success('🎉 Target reached! Redirecting to your cart…', { duration: 3000 });
         setTimeout(() => navigate('/cart'), 2000);
@@ -1012,16 +1171,19 @@ export default function ProductDetail() {
   };
 
   const handleLeave = async () => {
-    if (!activeCampaign) return;
+    if (!matchedCampaign) return;
     setJoinLoading(true);
     stopPolling(); // Stop polling — user no longer in deal
     try {
-      await campaignService.leaveCampaign({ campaignId: activeCampaign.id });
+      await campaignService.leaveCampaign({ campaignId: matchedCampaign.id });
       toast.success('Left group deal');
-      setHasJoined(false);
+      setMyJoinedCampaignIds(prev => prev.filter(id => id !== Number(matchedCampaign.id)));
       const p = await productService.getProduct(id);
       setProduct(p);
-      setLocalHold(p.currentHold || 0);
+      const refreshedCampaign = hasVariants
+        ? (p.campaigns || []).find(c => c.variantId != null && selectedVariant && c.variantId === selectedVariant.id)
+        : (p.campaigns || []).find(c => c.variantId == null);
+      setLocalHold(refreshedCampaign?.currentHold || 0);
       await loadCampaignStatus(p);
     } catch(e) { toast.error(e?.response?.data?.message || 'Failed to leave'); }
     finally { setJoinLoading(false); }
@@ -1065,6 +1227,21 @@ export default function ProductDetail() {
     finally { setSubmittingReview(false); }
   };
 
+  // Switching colour/size can move the shopper between a variant that's in
+  // an active deal and one that isn't (or between two different deals with
+  // different progress) — resync the joined-slot count whenever that happens.
+  // Declared before the loading/!product early returns below so hook order
+  // stays consistent across renders.
+  useEffect(() => {
+    if (!product) return;
+    const hv = variants.length > 0;
+    const sv = hv ? variants.find(v => (v.color || null) === selectedColor && (v.size || null) === selectedSize) || null : null;
+    const mc = hv
+      ? (product.campaigns || []).find(c => c.variantId != null && sv && c.variantId === sv.id) || null
+      : (product.campaigns || []).find(c => c.variantId == null) || null;
+    setLocalHold(mc?.currentHold || 0);
+  }, [product, variants, selectedColor, selectedSize]);
+
   if (loading) return (
     <div style={{ ...S.page, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ textAlign: 'center' }}>
@@ -1076,24 +1253,81 @@ export default function ProductDetail() {
   );
   if (!product) return null;
 
+  // ── Variant derivation ──────────────────────────────────────────────────
+  // hasVariants / selectedVariant mirror the seller portal's variant model.
+  // When a variant is selected, its price/stock/images take over from the
+  // base product's — for products without variants, nothing here changes
+  // (hasVariants is false and everything falls through to product.* as before).
+  const hasVariants   = variants.length > 0;
+  // Colours that have at least one size actively running a group deal are
+  // shown first in the swatch list, followed by colours with no deal at all.
+  const campaignVariantIds = new Set((product.campaigns || []).filter(c => c.variantId != null).map(c => c.variantId));
+  const variantColors = [...new Set(variants.map(v => v.color).filter(Boolean))]
+    .sort((a, b) => {
+      const aHasDeal = variants.some(v => v.color === a && campaignVariantIds.has(v.id)) ? 1 : 0;
+      const bHasDeal = variants.some(v => v.color === b && campaignVariantIds.has(v.id)) ? 1 : 0;
+      return bHasDeal - aHasDeal;
+    });
+  const sizesForColor = selectedColor
+    ? variants.filter(v => v.color === selectedColor).map(v => v.size).filter(Boolean)
+    : [...new Set(variants.map(v => v.size).filter(Boolean))];
+  const selectedVariant = hasVariants
+    ? variants.find(v => (v.color || null) === selectedColor && (v.size || null) === selectedSize) || null
+    : null;
+  const effectiveRetailPrice = selectedVariant?.price != null ? selectedVariant.price : product.retailPrice;
+  const galleryImages = (selectedVariant?.images?.length ? selectedVariant.images.map(im => im.url) : product.images) || [];
+  // A product can run several campaigns at once, each scoped to a specific
+  // colour/size — e.g. "Red / M" is in a deal while "Blue / L" of the same
+  // product is not and is sold at the regular fixed price. Match the
+  // currently selected variant against the product's active campaigns
+  // (falling back to a whole-product campaign for products with no variants)
+  // so the deal UI only appears for the exact combination actually on deal.
+  const matchedCampaign = hasVariants
+    ? (product.campaigns || []).find(c => c.variantId != null && selectedVariant && c.variantId === selectedVariant.id) || null
+    : (product.campaigns || []).find(c => c.variantId == null) || null;
+  // Whether the customer has joined THIS specific campaign (i.e. the deal for
+  // the currently selected colour/size) — not just "joined some deal on this
+  // product". Lets the customer join a different colour's deal independently.
+  const hasJoined = matchedCampaign
+    ? myJoinedCampaignIds.includes(Number(matchedCampaign.id))
+    : false;
+
+  // Blocks Add to Cart / Buy Now / Join Deal until a variant combination is
+  // chosen (only when the product actually has variants configured).
+  const requireVariantSelection = () => {
+    if (!hasVariants || selectedVariant) return true;
+    setVariantWarning(true);
+    toast.error('Please select a colour and size before continuing');
+    variantSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return false;
+  };
+
+  // Switching colour/size can move the shopper between a variant that's in
+  // an active deal and one that isn't (or between two different deals with
+  // different progress) — resync happens in a useEffect declared earlier,
+  // before this component's conditional early returns.
+
   const avgRating    = reviews.length ? (reviews.reduce((a, r) => a + r.rating, 0) / reviews.length) : 0;
-  const hasGroupBuy  = product.holdTarget > 0;
-  const safeHold     = Math.min(localHold, product.holdTarget || 0);
+  const hasGroupBuy  = !!matchedCampaign;
+  const campaignHoldPrice  = matchedCampaign?.holdPrice  || 0;
+  const campaignHoldTarget = matchedCampaign?.holdTarget || 0;
+  const safeHold     = Math.min(localHold, campaignHoldTarget || 0);
   // Use holdPrice as the absolute deal price (set by seller on campaign)
-  const bestGroupPrice = hasGroupBuy && product.holdPrice > 0
-    ? product.holdPrice
-    : product.retailPrice;
-  const maxDiscountPct = hasGroupBuy && product.retailPrice > 0
-    ? Math.round((1 - bestGroupPrice / product.retailPrice) * 100)
+  const bestGroupPrice = hasGroupBuy && campaignHoldPrice > 0
+    ? campaignHoldPrice
+    : effectiveRetailPrice;
+  const maxDiscountPct = hasGroupBuy && effectiveRetailPrice > 0
+    ? Math.round((1 - bestGroupPrice / effectiveRetailPrice) * 100)
     : 0;
   // Display price scales toward deal price proportionally as slots fill
-  const displayPrice = hasGroupBuy && safeHold > 0 && product.holdTarget > 0
-    ? Math.round(product.retailPrice - (product.retailPrice - bestGroupPrice) * (safeHold / product.holdTarget))
-    : product.retailPrice;
+  const displayPrice = hasGroupBuy && safeHold > 0 && campaignHoldTarget > 0
+    ? Math.round(effectiveRetailPrice - (effectiveRetailPrice - bestGroupPrice) * (safeHold / campaignHoldTarget))
+    : effectiveRetailPrice;
   // If the campaign is PAUSED, treat product as out of stock for all customers.
   // remainingStock is the number of units available for regular Add to Cart
-  // (total stock minus slots committed to the active campaign).
-  const remainingStock = product.remainingStock ?? product.stock;
+  // (total stock minus slots committed to the active campaign) — uses the
+  // selected variant's stock once one is chosen.
+  const remainingStock = selectedVariant ? selectedVariant.availableStock : (product.remainingStock ?? product.stock);
   const inStock      = remainingStock > 0 && !campaignPaused;
 
   const features = [
@@ -1106,21 +1340,111 @@ export default function ProductDetail() {
 
   const isNarrow = typeof window !== 'undefined' && window.innerWidth < 900;
 
+  // The Group Deal / Fixed Price box: for products with colour/size variants,
+  // this is shown at the top of the right-hand Buy Box column instead of the
+  // middle info column, so the deal is visible right away without scrolling
+  // past the variant selector. Non-variant products keep the original placement.
+  const dealBox = hasGroupBuy ? (
+    <GroupBuySection
+      product={{ ...product, retailPrice: effectiveRetailPrice, holdPrice: campaignHoldPrice, holdTarget: campaignHoldTarget }}
+      localHold={localHold}
+      onJoin={openJoinModal}
+      onLeave={handleLeave}
+      onAddProduct={handleAddProduct}
+      joinLoading={joinLoading}
+      hasJoined={hasJoined}
+    />
+  ) : (
+    <div style={S.fixedPriceBox}>
+      <div style={S.fixedPriceHeader}>
+        <span style={S.fixedPriceLabel}>
+          <span style={{ fontSize: '1rem' }}>✓</span> Fixed Price
+        </span>
+        <span style={S.fixedPriceTag}>Ready to ship</span>
+      </div>
+
+      <div style={S.progressTrack}>
+        <div style={{ ...S.progressFill(100), background: '#16a34a' }} />
+      </div>
+
+      <div style={{ fontSize: '0.8rem', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+        <span style={{ fontWeight: 700, color: '#0f1111' }}>No group deal needed</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ background: '#16a34a', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: '0.75rem' }}>In stock</span>
+        </div>
+      </div>
+
+      <div style={S.groupPriceRow}>
+        <span style={{ ...S.groupDealPrice, color: '#15803d' }}>
+          ₹{displayPrice.toLocaleString('en-IN')}
+        </span>
+      </div>
+
+      <p style={{ fontSize: '0.82rem', color: '#166534', margin: 0 }}>
+        This item is available at a fixed price — no group buy required, ships right away.
+      </p>
+    </div>
+  );
+
   return (
     <React.Fragment>
-      <div style={S.page}>
+      <div className="hk-pd-page" style={S.page}>
+      {/* Responsive overrides (mobile/tablet) — additive only, does not change desktop layout */}
+      <style>{`
+        @media (max-width: 900px) {
+          .hk-pd-grid { grid-template-columns: 1fr !important; }
+          .hk-pd-similar-grid { grid-template-columns: repeat(3, 1fr) !important; }
+          /* Buy box and image col must not be sticky when columns stack */
+          .hk-pd-buy-box { position: static !important; top: auto !important; }
+          .hk-pd-img-col { position: static !important; top: auto !important; }
+        }
+        @media (max-width: 700px) {
+          .hk-pd-badge-grid { grid-template-columns: 1fr !important; }
+          .hk-pd-specs-grid { grid-template-columns: 1fr !important; }
+          .hk-pd-lightbox-body { flex-direction: column !important; }
+          .hk-pd-lightbox-panel { width: 100% !important; border-left: none !important; border-top: 1px solid #e5e7eb !important; max-height: 38vh !important; }
+        }
+        @media (max-width: 600px) {
+          .hk-pd-similar-grid {
+            display: flex !important;
+            grid-template-columns: none !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+            scroll-snap-type: x mandatory;
+          }
+          .hk-pd-similar-grid > div {
+            flex: 0 0 calc((100% - 12px) / 2) !important;
+            scroll-snap-align: start;
+          }
+        }
+        /* Recently Viewed & You May Also Like — 2 cards on mobile, 5 on desktop */
+        .hk-pd-rv-card, .hk-pd-ymal-card {
+          min-width: calc((100% - 48px) / 5) !important;
+          max-width: calc((100% - 48px) / 5) !important;
+        }
+        @media (max-width: 768px) {
+          .hk-pd-rv-card, .hk-pd-ymal-card {
+            min-width: calc((100% - 12px) / 2) !important;
+            max-width: calc((100% - 12px) / 2) !important;
+          }
+          .hk-pd-scroll-arrow { display: none !important; }
+        }
+      `}</style>
       {/* Join modal — shared with Home/Products page cards */}
       {showJoinModal && hasGroupBuy && (
         <JoinDealModal
-          product={product}
+          product={{ ...product, retailPrice: effectiveRetailPrice }}
+          variantId={selectedVariant?.id || null}
+          variantLabel={selectedVariant ? [selectedVariant.color, selectedVariant.size].filter(Boolean).join(' / ') : null}
           bestGroupPrice={bestGroupPrice}
           maxDiscountPct={maxDiscountPct}
-          remainingSlots={Math.max(0, product.holdTarget - localHold)}
+          remainingSlots={Math.max(0, campaignHoldTarget - localHold)}
           onClose={() => setShowJoinModal(false)}
           onJoinSuccess={handleJoinSuccess}
           campaignAction={isAddMore ? async (qty, paymentInfo = {}) => {
             await campaignService.addToDeal({
               productId: product.productId,
+              variantId: selectedVariant?.id || null,
               quantity: qty,
               cashfreeOrderId: paymentInfo.cashfreeOrderId || null,
               depositAmount:   paymentInfo.depositAmount   || 0,
@@ -1149,7 +1473,7 @@ export default function ProductDetail() {
         </div>
 
         {/* ── 3-column product grid ── */}
-        <div style={{
+        <div className="hk-pd-grid" style={{
           display: 'grid',
           gridTemplateColumns: isNarrow ? '1fr' : '500px 1fr 280px',
           gap: 16,
@@ -1158,10 +1482,10 @@ export default function ProductDetail() {
         }}>
 
           {/* ── Col 1: Images ── */}
-          <div style={S.imageCol}>
+          <div className="hk-pd-img-col" style={S.imageCol}>
             <div
               style={{ position: 'relative', cursor: 'zoom-in' }}
-              onClick={() => setProductLightbox({ index: product.images?.indexOf(mainImg) >= 0 ? product.images.indexOf(mainImg) : 0 })}
+              onClick={() => setProductLightbox({ index: galleryImages?.indexOf(mainImg) >= 0 ? galleryImages.indexOf(mainImg) : 0 })}
             >
               <img
                 src={resolveSellerImg(mainImg)}
@@ -1172,16 +1496,16 @@ export default function ProductDetail() {
             </div>
             {/* Click to see full view */}
             <div
-              onClick={() => setProductLightbox({ index: product.images?.indexOf(mainImg) >= 0 ? product.images.indexOf(mainImg) : 0 })}
+              onClick={() => setProductLightbox({ index: galleryImages?.indexOf(mainImg) >= 0 ? galleryImages.indexOf(mainImg) : 0 })}
               style={{ textAlign: 'center', marginBottom: 10, cursor: 'pointer' }}
             >
               <span style={{ fontSize: '0.8rem', color: '#2a5298', textDecoration: 'underline', fontWeight: 500 }}>
                 Click to see full view
               </span>
             </div>
-            {product.images?.length > 1 && (
+            {galleryImages?.length > 1 && (
               <div style={S.thumbRow}>
-                {product.images.map((img, i) => (
+                {galleryImages.map((img, i) => (
                   <img
                     key={i}
                     src={resolveSellerImg(img)}
@@ -1220,39 +1544,113 @@ export default function ProductDetail() {
                 </span>
                 {maxDiscountPct > 0 && (
                   <span style={{ fontSize: '0.88rem', color: '#9ca3af', textDecoration: 'line-through' }}>
-                    ₹{product.retailPrice.toLocaleString('en-IN')}
+                    ₹{effectiveRetailPrice.toLocaleString('en-IN')}
                   </span>
                 )}
               </div>
               <p style={S.taxNote}>Inclusive of all taxes</p>
             </div>
 
-            {/* Group Deal — center column box; Join button opens the shared modal */}
-            {hasGroupBuy && (
-              <GroupBuySection
-                product={product}
-                localHold={localHold}
-                onJoin={openJoinModal}
-                onLeave={handleLeave}
-                onAddProduct={handleAddProduct}
-                joinLoading={joinLoading}
-                hasJoined={hasJoined}
-              />
+            {/* ── Variant selector (colour / size) — mirrors the seller portal's
+                 variant swatches; only rendered when the seller has configured
+                 variants for this product. Selecting a combination updates the
+                 price, stock and (if that colour has its own photos) the gallery. ── */}
+            {hasVariants && (
+              <div ref={variantSectionRef} style={{
+                marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid #e5e7eb',
+                ...(variantWarning && !selectedVariant ? { outline: '2px solid #dc2626', outlineOffset: 6, borderRadius: 6 } : {}),
+              }}>
+                {variantColors.length > 0 && (
+                  <div style={{ marginBottom: sizesForColor.length ? 14 : 0 }}>
+                    <p style={{ fontSize: '0.85rem', color: '#374151', marginBottom: 8 }}>
+                      Colour: <strong style={{ color: '#0f1111' }}>{selectedColor || 'Select'}</strong>
+                    </p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {variantColors.map(color => {
+                        const rep = variants.find(v => v.color === color); // representative variant for thumb/price
+                        const thumb = rep?.images?.[0]?.url;
+                        const active = color === selectedColor;
+                        return (
+                          <button
+                            key={color}
+                            onClick={() => {
+                              setSelectedColor(color);
+                              setVariantWarning(false);
+                              const stillValid = variants.some(v => v.color === color && v.size === selectedSize);
+                              if (!stillValid) {
+                                const firstForColor = variants.find(v => v.color === color);
+                                setSelectedSize(firstForColor?.size || null);
+                              }
+                            }}
+                            style={{
+                              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                              padding: 6, width: 76, borderRadius: 6, cursor: 'pointer',
+                              background: '#fff', fontFamily: 'inherit',
+                              border: active ? '2px solid #2a5298' : '1px solid #d1d5db',
+                              boxShadow: active ? '0 0 0 1px #2a5298' : 'none',
+                            }}
+                          >
+                            <img
+                              src={resolveSellerImg(thumb)}
+                              alt={color}
+                              style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 4, background: '#f9fafb' }}
+                              onError={e => { e.target.src = FALLBACK_IMG; }}
+                            />
+                            <span style={{ fontSize: '0.72rem', color: '#374151', textAlign: 'center', lineHeight: 1.2 }}>{color}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {sizesForColor.length > 0 && (
+                  <div>
+                    <p style={{ fontSize: '0.85rem', color: '#374151', marginBottom: 8 }}>
+                      Size: <strong style={{ color: '#0f1111' }}>{selectedSize || 'Select'}</strong>
+                    </p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {[...new Set(sizesForColor)].map(size => {
+                        const active = size === selectedSize;
+                        const variantForSize = variants.find(v => v.color === selectedColor && v.size === size);
+                        const outOfStock = variantForSize && variantForSize.availableStock <= 0;
+                        return (
+                          <button
+                            key={size}
+                            disabled={outOfStock}
+                            onClick={() => { setSelectedSize(size); setVariantWarning(false); }}
+                            style={{
+                              minWidth: 44, padding: '8px 14px', borderRadius: 6,
+                              background: outOfStock ? '#f3f4f6' : '#fff', fontFamily: 'inherit',
+                              border: active ? '2px solid #2a5298' : '1px solid #d1d5db',
+                              boxShadow: active ? '0 0 0 1px #2a5298' : 'none',
+                              color: outOfStock ? '#9ca3af' : '#0f1111',
+                              fontWeight: 600, fontSize: '0.85rem',
+                              cursor: outOfStock ? 'not-allowed' : 'pointer',
+                              textDecoration: outOfStock ? 'line-through' : 'none',
+                            }}
+                          >
+                            {size}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {variantWarning && !selectedVariant && (
+                  <p style={{ fontSize: '0.78rem', color: '#dc2626', marginTop: 8, marginBottom: 0 }}>
+                    Please select a colour and size to continue.
+                  </p>
+                )}
+              </div>
             )}
 
-            {/* About this item */}
-            <div style={{ marginBottom: 14 }}>
-              <p style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f1111', marginBottom: 10 }}>
-                About this item
-              </p>
-              {product.description ? (
-                <p style={{ fontSize: '0.88rem', lineHeight: 1.7, color: '#374151' }}>
-                  {product.description}
-                </p>
-              ) : (
-                <p style={{ fontSize: '0.88rem', color: '#6b7280' }}>No description available.</p>
-              )}
-            </div>
+            {/* Group Deal — center column box; Join button opens the shared modal.
+                 For products with colour/size variants, this box is shown at the
+                 top of the right-hand Buy Box column instead (see Col 3 below),
+                 so it stays visible right next to the variant selector. */}
+            {!hasVariants && dealBox}
 
             {/* Feature bullets */}
             <ul style={S.featuresList}>
@@ -1266,7 +1664,17 @@ export default function ProductDetail() {
           </div>
 
           {/* ── Col 3: Buy Box ── */}
-          <div style={S.buyBox}>
+          <div className="hk-pd-buy-box" style={S.buyBox}>
+            {/* For variant products, the deal box moves here (top-right) so it's
+                 visible alongside colour/size selection instead of further down.
+                 The negative side margins let it break out of the Buy Box's own
+                 padding so it's as wide as the box was in the middle column. */}
+            {hasVariants && (
+              <div style={{ margin: '-4px -20px 14px', padding: '0 8px' }}>
+                {dealBox}
+              </div>
+            )}
+
             <p style={S.buyBoxPrice}>
               <span style={{ fontSize: '1rem', verticalAlign: 'super' }}>₹</span>
               {displayPrice.toLocaleString('en-IN')}
@@ -1398,7 +1806,7 @@ export default function ProductDetail() {
             <div style={S.divider} />
 
             {/* Trust badges */}
-            <div style={S.badgeGrid}>
+            <div className="hk-pd-badge-grid" style={S.badgeGrid}>
               {[['📦', 'Quality Certified'], ['🔄', '7-Day Returns'], ['🛡️', 'Warranty'], ['🚚', 'Fast Delivery']].map(([icon, label]) => (
                 <div key={label} style={S.badgeItem}>
                   <span>{icon}</span>
@@ -1421,6 +1829,22 @@ export default function ProductDetail() {
             <div style={S.descCard}>
               <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f1111', marginBottom: 16 }}>Product Description</h2>
               <p style={{ lineHeight: 1.8, color: '#374151' }}>{product.description || 'No description available.'}</p>
+
+              {product.specs && Object.keys(product.specs).length > 0 && (
+                <>
+                  <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f1111', margin: '24px 0 16px' }}>Product Details</h2>
+                  <div className="hk-pd-specs-grid" style={S.specsGrid}>
+                    {Object.entries(product.specs)
+                      .filter(([key, value]) => value !== '' && value != null && !key.toLowerCase().startsWith('ship'))
+                      .map(([key, value]) => (
+                        <div key={key} style={S.specsRow}>
+                          <span style={S.specsLabel}>{specLabel(key)}</span>
+                          <span style={S.specsValue}>{String(value)}</span>
+                        </div>
+                      ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -1781,7 +2205,7 @@ export default function ProductDetail() {
 
           // 5-per-row wrapping grid (no scroll, products wrap to next line)
           const renderGrid = (items) => (
-            <div style={{
+            <div className="hk-pd-similar-grid" style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(5, 1fr)',
               gap: 12,
@@ -1880,6 +2304,7 @@ export default function ProductDetail() {
               <div style={{ position: 'relative' }}>
                 {/* Left arrow */}
                 <button
+                  className="hk-pd-scroll-arrow"
                   onClick={() => document.getElementById(rvScrollId)?.scrollBy({ left: -SCROLL_AMT, behavior: 'smooth' })}
                   style={{ position: 'absolute', left: -18, top: '42%', transform: 'translateY(-50%)',
                     width: 36, height: 36, borderRadius: '50%', background: '#fff', border: '1px solid #d1d5db',
@@ -1903,7 +2328,7 @@ export default function ProductDetail() {
                     const isTrending = item.reviewCount > 10;
                     const isBestseller = item.avgRating >= 4.5;
                     return (
-                      <div key={item.productId} onClick={() => goToProduct(item.productId)}
+                      <div key={item.productId} className="hk-pd-rv-card" onClick={() => goToProduct(item.productId)}
                         style={{ minWidth: CARD_W, maxWidth: CARD_W, flexShrink: 0,
                           background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
                           overflow: 'hidden', cursor: 'pointer',
@@ -1968,6 +2393,7 @@ export default function ProductDetail() {
 
                 {/* Right arrow */}
                 <button
+                  className="hk-pd-scroll-arrow"
                   onClick={() => document.getElementById(rvScrollId)?.scrollBy({ left: SCROLL_AMT, behavior: 'smooth' })}
                   style={{ position: 'absolute', right: -18, top: '42%', transform: 'translateY(-50%)',
                     width: 36, height: 36, borderRadius: '50%', background: '#fff', border: '1px solid #d1d5db',
@@ -1997,6 +2423,7 @@ export default function ProductDetail() {
               <div style={{ position: 'relative' }}>
                 {/* Left arrow */}
                 <button
+                  className="hk-pd-scroll-arrow"
                   onClick={() => document.getElementById(ymalScrollId)?.scrollBy({ left: -SCROLL_AMT, behavior: 'smooth' })}
                   style={{ position: 'absolute', left: -18, top: '42%', transform: 'translateY(-50%)',
                     width: 36, height: 36, borderRadius: '50%', background: '#fff', border: '1px solid #d1d5db',
@@ -2017,7 +2444,7 @@ export default function ProductDetail() {
                     const discPrice = hasDiscount ? Math.round(item.retailPrice * (1 - item.holdTarget / 100)) : item.retailPrice;
                     const discPct = hasDiscount ? item.holdTarget : 0;
                     return (
-                      <div key={item.productId} onClick={() => goToProduct(item.productId)}
+                      <div key={item.productId} className="hk-pd-ymal-card" onClick={() => goToProduct(item.productId)}
                         style={{ minWidth: CARD_W, maxWidth: CARD_W, flexShrink: 0,
                           background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
                           overflow: 'hidden', cursor: 'pointer',
@@ -2067,6 +2494,7 @@ export default function ProductDetail() {
 
                 {/* Right arrow */}
                 <button
+                  className="hk-pd-scroll-arrow"
                   onClick={() => document.getElementById(ymalScrollId)?.scrollBy({ left: SCROLL_AMT, behavior: 'smooth' })}
                   style={{ position: 'absolute', right: -18, top: '42%', transform: 'translateY(-50%)',
                     width: 36, height: 36, borderRadius: '50%', background: '#fff', border: '1px solid #d1d5db',
@@ -2082,8 +2510,8 @@ export default function ProductDetail() {
     </div>
 
     {/* ── Product Image Lightbox Modal (Amazon-style) ── */}
-    {productLightbox && product.images?.length > 0 && (() => {
-      const imgs = product.images.map(resolveSellerImg);
+    {productLightbox && galleryImages?.length > 0 && (() => {
+      const imgs = galleryImages.map(resolveSellerImg);
       const idx = productLightbox.index;
       const setIdx = (i) => setProductLightbox({ index: i });
       return (
@@ -2101,7 +2529,7 @@ export default function ProductDetail() {
             {/* Header: IMAGES tab only + close */}
             <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #e5e7eb', padding: '0 24px', flexShrink: 0 }}>
               <button style={{ padding: '16px 20px', fontWeight: 700, fontSize: '0.95rem', color: '#0f1111',
-                background: 'none', border: 'none', cursor: 'default', borderBottom: '2.5px solid #0f1111', marginBottom: -1 }}>
+                background: 'none', borderTop: 'none', borderLeft: 'none', borderRight: 'none', cursor: 'default', borderBottom: '2.5px solid #0f1111', marginBottom: -1 }}>
                 IMAGES
               </button>
               <button
@@ -2113,7 +2541,7 @@ export default function ProductDetail() {
             </div>
 
             {/* Body: main image left, info+thumbs right */}
-            <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+            <div className="hk-pd-lightbox-body" style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
               {/* Main image area */}
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 padding: '32px 40px', position: 'relative', background: '#fff', minWidth: 0 }}>
@@ -2159,7 +2587,7 @@ export default function ProductDetail() {
               </div>
 
               {/* Right panel: title + thumbnail grid */}
-              <div style={{ width: 320, borderLeft: '1px solid #e5e7eb', padding: '24px 20px',
+              <div className="hk-pd-lightbox-panel" style={{ width: 320, borderLeft: '1px solid #e5e7eb', padding: '24px 20px',
                 overflowY: 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <p style={{ fontSize: '1rem', color: '#0f1111', fontWeight: 500, lineHeight: 1.5, margin: 0 }}>
                   {product.name}

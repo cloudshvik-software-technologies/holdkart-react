@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { cartService, orderService, paymentService, profileService } from '../services/index.js';
 import { getAvailableCouriers } from '../services/shipping.service.js';
@@ -81,6 +81,48 @@ function resolveImg(url) {
     : `/seller-uploads${url.startsWith('/') ? '' : '/'}${url}`;
 }
 
+// Some popular city names differ from their official postal "District" name
+// (renamed cities, twin-city districts, etc). Without this, a perfectly valid
+// address (e.g. Kochi, which is in Ernakulam district) would be wrongly flagged
+// as a city/pincode mismatch.
+const CITY_DISTRICT_ALIASES = {
+  bengaluru: ['bangalore', 'bengaluru', 'bangalore urban', 'bengaluru urban'],
+  mysuru: ['mysore', 'mysuru'],
+  mangaluru: ['mangalore', 'dakshina kannada'],
+  belagavi: ['belgaum'],
+  kalaburagi: ['gulbarga'],
+  ballari: ['bellary'],
+  shivamogga: ['shimoga'],
+  hubballi: ['hubli', 'dharwad'],
+  tumkur: ['tumakuru', 'tumkur'],
+  gurgaon: ['gurugram'],
+  prayagraj: ['allahabad'],
+  kochi: ['ernakulam'],
+  tiruchirappalli: ['trichy'],
+  puducherry: ['pondicherry'],
+  mumbai: ['mumbai city', 'mumbai suburban'],
+  'navi mumbai': ['thane', 'raigad'],
+  'pimpri-chinchwad': ['pune'],
+  'vasai-virar': ['palghar'],
+  noida: ['gautam buddha nagar', 'gautam buddh nagar'],
+  'greater noida': ['gautam buddha nagar', 'gautam buddh nagar'],
+  'new delhi': ['delhi', 'central delhi', 'south delhi', 'north delhi', 'east delhi', 'west delhi', 'south west delhi', 'north west delhi', 'south east delhi', 'north east delhi', 'shahdara', 'new delhi'],
+  delhi: ['delhi', 'central delhi', 'south delhi', 'north delhi', 'east delhi', 'west delhi', 'south west delhi', 'north west delhi', 'south east delhi', 'north east delhi', 'shahdara', 'new delhi'],
+};
+const normalizeName = (s) => (s || '').toLowerCase().replace(/[^a-z]/g, '');
+function cityMatchesDistrict(cityInput, district) {
+  const cNorm = normalizeName(cityInput);
+  const dNorm = normalizeName(district);
+  if (!cNorm) return true;
+  if (dNorm.includes(cNorm) || cNorm.includes(dNorm)) return true;
+  const aliasKey = Object.keys(CITY_DISTRICT_ALIASES).find(k => normalizeName(k) === cNorm);
+  if (!aliasKey) return false;
+  return CITY_DISTRICT_ALIASES[aliasKey].some(alias => {
+    const aNorm = normalizeName(alias);
+    return aNorm === dNorm || dNorm.includes(aNorm) || aNorm.includes(dNorm);
+  });
+}
+
 const inputStyle = {
   width: '100%', padding: '9px 12px',
   border: '1px solid #d1d5db', borderRadius: 4,
@@ -119,10 +161,13 @@ export default function BuyNow() {
   const [address,      setAddress]      = useState({
     address: '', city: '', state: '', pincode: '', paymentMethod: 'COD',
   });
+  // Verifies the entered pincode actually belongs to the selected state/city —
+  // status: 'idle' | 'checking' | 'ok' | 'mismatch' | 'error'
+  const [pincodeCheck, setPincodeCheck] = useState({ status: 'idle', detectedState: '', detectedDistrict: '' });
+  const pincodeCheckSeqRef = useRef(0);
 
-  // courier state — same shape as Checkout's courierMap but single-item keyed by 'item'
-  const [courier,     setCourier]     = useState({ list: [], loading: false, error: null, selected: null });
-  const [courierOpen, setCourierOpen] = useState(false);
+  // courier state — same shape as Checkout's per-item courier entry
+  const [courier, setCourier] = useState({ list: [], loading: false, error: null, selected: null });
 
   useEffect(() => {
     if (!isAuthenticated) { navigate('/login'); return; }
@@ -170,6 +215,38 @@ export default function BuyNow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address.pincode, address.paymentMethod]);
 
+  /* Verify the entered pincode actually belongs to the selected state/city —
+     prevents combinations like Tamil Nadu + a Karnataka pincode, or
+     Coimbatore + a Chennai pincode, from being saved. */
+  useEffect(() => {
+    const { pincode, state, city } = address;
+    if (!/^\d{6}$/.test(pincode) || !state) {
+      setPincodeCheck({ status: 'idle', detectedState: '', detectedDistrict: '' });
+      return;
+    }
+    const seq = ++pincodeCheckSeqRef.current;
+    setPincodeCheck(prev => ({ ...prev, status: 'checking' }));
+    const norm = (s) => (s || '').toLowerCase().replace(/[^a-z]/g, '');
+    (async () => {
+      try {
+        const res = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+        const data = await res.json();
+        if (seq !== pincodeCheckSeqRef.current) return; // a newer check has since started
+        const po = data?.[0]?.PostOffice?.[0];
+        if (!po) { setPincodeCheck({ status: 'error', detectedState: '', detectedDistrict: '' }); return; }
+        const stateMatches = norm(po.State) === norm(state);
+        const cityMatches = cityMatchesDistrict(city, po.District);
+        setPincodeCheck({
+          status: stateMatches && cityMatches ? 'ok' : 'mismatch',
+          detectedState: po.State || '',
+          detectedDistrict: po.District || '',
+        });
+      } catch {
+        if (seq === pincodeCheckSeqRef.current) setPincodeCheck({ status: 'error', detectedState: '', detectedDistrict: '' });
+      }
+    })();
+  }, [address.pincode, address.state, address.city]);
+
   const set = (field, val) => setAddress(prev => ({ ...prev, [field]: val }));
   const inp = (name) => ({
     ...inputStyle,
@@ -196,6 +273,22 @@ export default function BuyNow() {
   const addrDone = !!(address.address && address.city && address.state && address.pincode);
   const cities   = address.state ? (CITIES_BY_STATE[address.state] || []) : [];
 
+  /* ── Payment method availability (seller-controlled per product) ── */
+  const codAllowed    = item ? item.shipCod    !== false : true;
+  const onlineAllowed = item ? item.shipOnline !== false : true;
+
+  /* If the currently selected method isn't allowed for this product, fall
+     back to whichever method is still allowed. */
+  useEffect(() => {
+    if (!item) return;
+    if (address.paymentMethod === 'COD' && !codAllowed && onlineAllowed) {
+      set('paymentMethod', 'Online');
+    } else if (address.paymentMethod === 'Online' && !onlineAllowed && codAllowed) {
+      set('paymentMethod', 'COD');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item, codAllowed, onlineAllowed]);
+
   const removeBuyNowItem = async () => {
     if (item?.cartId) {
       try { await cartService.removeFromCart({ cartId: item.cartId }); } catch { /* best-effort */ }
@@ -204,7 +297,14 @@ export default function BuyNow() {
 
   const placeCOD = async () => {
     await orderService.placeOrder({
-      items: [{ productId: item.productId, quantity: item.quantity }],
+      // BUG FIX: include the courier the customer selected on this page —
+      // previously it was used only to compute deliveryCharge and discarded.
+      items: [{
+        productId: item.productId,
+        quantity: item.quantity,
+        courierId:   courier.selected?.courierId   ?? null,
+        courierName: courier.selected?.courierName ?? null,
+      }],
       ...address, deliveryCharge, platformFee,
     });
     await removeBuyNowItem();
@@ -235,7 +335,12 @@ export default function BuyNow() {
           try {
             await paymentService.verifyPayment({ orderId: cfOrder.orderId });
             await orderService.placeOrder({
-              items: [{ productId: item.productId, quantity: item.quantity }],
+              items: [{
+                productId: item.productId,
+                quantity: item.quantity,
+                courierId:   courier.selected?.courierId   ?? null,
+                courierName: courier.selected?.courierName ?? null,
+              }],
               ...address, paymentId: cfOrder.orderId, deliveryCharge, platformFee,
             });
             await removeBuyNowItem();
@@ -251,15 +356,31 @@ export default function BuyNow() {
     e.preventDefault();
     if (!addrDone) { toast.error('Please fill all address fields'); return; }
     if (!/^\d{6}$/.test(address.pincode)) { toast.error('Enter a valid 6-digit pincode'); return; }
+    if (pincodeCheck.status === 'mismatch') {
+      toast.error(`That pincode belongs to ${pincodeCheck.detectedDistrict}, ${pincodeCheck.detectedState} — please match it with the selected city/state`);
+      return;
+    }
     setAddrExpanded(false);
   };
 
   const handlePlaceOrder = async () => {
     if (!addrDone) { toast.error('Please add a delivery address first'); setAddrExpanded(true); return; }
     if (!/^\d{6}$/.test(address.pincode)) { toast.error('Enter a valid 6-digit pincode'); setAddrExpanded(true); return; }
-    // require courier selection only when couriers have loaded
+    if (pincodeCheck.status === 'mismatch') {
+      toast.error(`That pincode belongs to ${pincodeCheck.detectedDistrict}, ${pincodeCheck.detectedState} — please match it with the selected city/state`);
+      setAddrExpanded(true); return;
+    }
+    // BUG FIX: previously this only blocked submission when the courier list had
+    // already loaded (`courier.list.length > 0`). If the user clicked "Place Order"
+    // while couriers were still being fetched, `list` was still empty, the check
+    // was skipped entirely, and the order went through with courier.selected = null
+    // — so customer_courier_id / customer_courier_name were stored as NULL.
+    if (courier.loading) {
+      toast.error('Please wait — fetching available couriers for your address');
+      return;
+    }
     if (courier.list.length > 0 && !courier.selected) {
-      toast.error('Please select a delivery partner'); return;
+      toast.error('Please select a courier'); return;
     }
     setPlacing(true);
     try {
@@ -271,78 +392,122 @@ export default function BuyNow() {
     } finally { setPlacing(false); }
   };
 
-  /* ── Price Details panel ── */
+  /* ── Price Details panel — mirrors Checkout.jsx's Order Summary layout ── */
   const PricePanel = () => (
-    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, overflow: 'hidden', position: 'sticky', top: 96 }}>
-      <div style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '14px 18px' }}>
-        <h3 style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f1111', margin: 0 }}>Price Details</h3>
-      </div>
-      <div style={{ padding: '16px 18px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', color: '#374151', marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid #f3f4f6' }}>
-          <span>MRP (incl. of all taxes)</span>
-          <span>₹{mrpTotal.toLocaleString('en-IN')}</span>
+    <div className="hk-bn-price-col" style={{ position: 'sticky', top: 96 }}>
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, overflow: 'hidden' }}>
+
+        {/* Header */}
+        <div style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '14px 18px' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f1111', margin: 0 }}>Price Details</h3>
         </div>
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', color: '#374151', marginBottom: 6 }}>
-            <span>Delivery Charge</span>
-            <span style={{ fontWeight: 600, color: deliveryCharge === 0 ? '#007600' : '#0f1111' }}>
-  {deliveryCharge === null ? <span style={{ color: '#6b7280', fontSize: '0.8rem' }}>Select courier</span> : deliveryCharge === 0 ? 'FREE' : `₹${deliveryCharge}`}
-</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', color: '#374151', marginBottom: 4 }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              Platform Fee
-              <span
-                style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
-                onMouseEnter={() => setShowFees(true)}
-                onMouseLeave={() => setShowFees(false)}
-              >
-                <span style={{ width: 14, height: 14, borderRadius: '50%', background: '#6b7280', color: '#fff', fontSize: '0.65rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'default', userSelect: 'none' }}>i</span>
-                {showFees && (
-                  <div style={{ position: 'absolute', bottom: '120%', left: '50%', transform: 'translateX(-50%)', width: 220, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px 14px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 999, pointerEvents: 'none' }}>
-                    <p style={{ fontWeight: 700, fontSize: '0.82rem', color: '#0f1111', marginBottom: 6 }}>Platform Fee</p>
-                    <p style={{ fontSize: '0.78rem', color: '#6b7280', lineHeight: 1.5 }}>A non-refundable fee charged to help keep the platform running smoothly and support app improvements.</p>
-                    <div style={{ position: 'absolute', bottom: -6, left: '50%', transform: 'translateX(-50%)', width: 10, height: 10, background: '#fff', border: '1px solid #e5e7eb', borderTop: 'none', borderLeft: 'none', rotate: '45deg' }} />
-                  </div>
-                )}
-              </span>
-            </span>
-            <span style={{ fontWeight: 600 }}>₹{platformFee}</span>
-          </div>
-        </div>
-        {(savings > 0 || depositPaid > 0) && (
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem' }}>
-              <span style={{ color: '#374151' }}>Discounts</span>
-              <span style={{ color: '#007600', fontWeight: 600 }}>−₹{(savings + depositPaid).toLocaleString('en-IN')}</span>
+
+        {/* Item list */}
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid #e5e7eb' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: '0.82rem', color: '#0f1111', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {item.name}
+              </p>
+              <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: 0 }}>
+                ₹{price.toLocaleString('en-IN')} × {qty}
+              </p>
             </div>
-            {savings > 0 && (
-              <div style={{ paddingLeft: 10, marginTop: 4, display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#6b7280' }}>
-                <span style={{ borderBottom: '1px dotted #d1d5db' }}>{item.hasGroupDeal ? 'Group Deal Discount' : 'Product Discount'}</span>
-                <span style={{ color: '#007600' }}>−₹{savings.toLocaleString('en-IN')}</span>
-              </div>
-            )}
-            {depositPaid > 0 && (
-              <div style={{ paddingLeft: 10, marginTop: 4, display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#6b7280' }}>
-                <span style={{ borderBottom: '1px dotted #d1d5db' }}>Deposit Pre-paid</span>
-                <span style={{ color: '#7c3aed' }}>−₹{depositPaid.toLocaleString('en-IN')}</span>
-              </div>
-            )}
+            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#0f1111', flexShrink: 0 }}>
+              ₹{lineTotal.toLocaleString('en-IN')}
+            </span>
           </div>
-        )}
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1rem', color: '#0f1111', paddingTop: 10, borderTop: '1px solid #e5e7eb', marginBottom: 8 }}>
-          <span>Total Amount</span>
-          <span>₹{total.toLocaleString('en-IN')}</span>
         </div>
-        {(savings + depositPaid) > 0 && (
-          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 4, padding: '8px 12px', fontSize: '0.8rem', color: '#15803d', fontWeight: 600, textAlign: 'center', marginBottom: 12 }}>
-            You will save ₹{(savings + depositPaid).toLocaleString('en-IN')} on this order
+
+        {/* Totals */}
+        <div style={{ padding: '14px 18px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#374151', marginBottom: 8 }}>
+            <span>Items ({qty})</span>
+            <span>₹{lineTotal.toLocaleString('en-IN')}</span>
           </div>
-        )}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 0', borderTop: '1px solid #f3f4f6', fontSize: '0.75rem', color: '#6b7280' }}>
-          <span style={{ fontSize: '1rem', flexShrink: 0 }}>🛡️</span>
-          <span>Safe and secure payments. Easy returns. 100% Authentic products.</span>
+
+          {savings > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#007600', fontWeight: 600, marginBottom: 8 }}>
+              <span>{item.hasGroupDeal ? 'Group Deal Savings' : 'Product Discount'}</span>
+              <span>−₹{savings.toLocaleString('en-IN')}</span>
+            </div>
+          )}
+
+          {depositPaid > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#7c3aed', fontWeight: 600, marginBottom: 8 }}>
+              <span>Deposit Pre-paid</span>
+              <span>−₹{depositPaid.toLocaleString('en-IN')}</span>
+            </div>
+          )}
+
+          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 10, marginBottom: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#374151', marginBottom: 6 }}>
+              <span>Delivery Charge</span>
+              <span style={{ fontWeight: 600 }}>
+                {deliveryCharge === null
+                  ? <span style={{ color: '#6b7280', fontSize: '0.8rem' }}>Select courier</span>
+                  : deliveryCharge === 0
+                    ? <span style={{ color: '#007600' }}>FREE</span>
+                    : `₹${deliveryCharge}`
+                }
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#374151', marginBottom: 4 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                Platform Fee
+                <span
+                  style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
+                  onMouseEnter={() => setShowFees(true)}
+                  onMouseLeave={() => setShowFees(false)}
+                >
+                  <span style={{ width: 14, height: 14, borderRadius: '50%', background: '#6b7280', color: '#fff', fontSize: '0.65rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'default', userSelect: 'none' }}>i</span>
+                  {showFees && (
+                    <div style={{ position: 'absolute', bottom: '120%', left: '50%', transform: 'translateX(-50%)', width: 220, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px 14px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 999, pointerEvents: 'none' }}>
+                      <p style={{ fontWeight: 700, fontSize: '0.82rem', color: '#0f1111', marginBottom: 6 }}>Platform Fee</p>
+                      <p style={{ fontSize: '0.78rem', color: '#6b7280', lineHeight: 1.5 }}>A non-refundable fee charged to help keep the platform running smoothly and support app improvements.</p>
+                      <div style={{ position: 'absolute', bottom: -6, left: '50%', transform: 'translateX(-50%)', width: 10, height: 10, background: '#fff', border: '1px solid #e5e7eb', borderTop: 'none', borderLeft: 'none', rotate: '45deg' }} />
+                    </div>
+                  )}
+                </span>
+              </span>
+              <span style={{ fontWeight: 600 }}>₹{platformFee}</span>
+            </div>
+          </div>
+
+          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1.05rem', color: '#0f1111' }}>
+            <span>{depositPaid > 0 ? 'Amount Due' : 'Order Total'}</span>
+            <span style={{ color: depositPaid > 0 ? '#2a5298' : '#0f1111' }}>₹{total.toLocaleString('en-IN')}</span>
+          </div>
+          <p style={{ fontSize: '0.68rem', color: '#6b7280', marginTop: 4 }}>Inclusive of all taxes</p>
+          {depositPaid > 0 && (
+            <p style={{ fontSize: '0.68rem', color: '#7c3aed', marginTop: 2, fontWeight: 600 }}>
+              ₹{depositPaid.toLocaleString('en-IN')} group deal deposit already paid — deducted above
+            </p>
+          )}
+
+          {/* Payment info */}
+          <div style={{ marginTop: 14, background: '#f4f6fa', borderRadius: 4, padding: '10px 12px', fontSize: '0.78rem', color: '#374151', display: 'flex', alignItems: 'center', gap: 8 }}>
+            {address.paymentMethod === 'COD'
+              ? <><span>💵</span><span>You pay <strong>₹{total.toLocaleString('en-IN')}</strong> on delivery</span></>
+              : <><span>🔒</span><span>Secure payment via <strong>Cashfree</strong></span></>
+            }
+          </div>
         </div>
+      </div>
+
+      {/* Trust badges */}
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '14px 18px', marginTop: 12 }}>
+        {[
+          ['✅', '100% Secure Checkout'],
+          ['🔄', '7-Day Easy Returns'],
+          ['🚚', 'Fast & Reliable Delivery'],
+          ['📦', 'Quality Certified Products'],
+        ].map(([icon, label]) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.78rem', color: '#374151', marginBottom: 8 }}>
+            <span>{icon}</span>
+            <span>{label}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -363,16 +528,27 @@ export default function BuyNow() {
         select:focus { border-color: #2a5298 !important; box-shadow: 0 0 0 3px rgba(42,82,152,0.12) !important; outline: none; }
         textarea:focus { border-color: #2a5298 !important; box-shadow: 0 0 0 3px rgba(42,82,152,0.12) !important; outline: none; }
         @keyframes spin { to { transform: rotate(360deg); } }
+        @media (max-width: 768px) {
+          .hk-bn-layout { grid-template-columns: 1fr !important; }
+          .hk-bn-price-col { position: static !important; }
+          .hk-bn-courier-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+        }
+        @media (max-width: 480px) {
+          .hk-bn-item-row { grid-template-columns: 52px 1fr !important; }
+          .hk-bn-item-price { grid-column: 1 / -1 !important; text-align: left !important; margin-top: 6px; }
+          .hk-bn-courier-wrap { margin-left: 0 !important; }
+          .hk-bn-courier-grid { grid-template-columns: 1fr !important; }
+        }
       `}</style>
 
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 16px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'flex-start' }}>
+        <div className="hk-bn-layout" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'flex-start' }}>
 
           {/* ══════════ LEFT COLUMN ══════════ */}
           <div>
 
             {/* ── ADDRESS BAR ── */}
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, marginBottom: 16, overflow: 'hidden' }}>
+            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, marginBottom: 12, overflow: 'hidden' }}>
 
               {/* Collapsed row — always visible */}
               <div style={{ padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -387,7 +563,7 @@ export default function BuyNow() {
                       {addrDone ? '✓' : '!'}
                     </span>
                     <span style={{ fontWeight: 700, fontSize: '0.88rem', color: addrDone ? '#007600' : '#2a5298' }}>
-                      Address
+                      Delivery Address
                     </span>
                   </div>
                   {addrDone && !addrExpanded && (
@@ -402,8 +578,9 @@ export default function BuyNow() {
                   )}
                 </div>
                 <button
+                  type="button"
                   onClick={() => setAddrExpanded(v => !v)}
-                  style={{ background: 'none', border: '1px solid #2a5298', borderRadius: 4, color: '#2a5298', fontSize: '0.78rem', fontWeight: 600, padding: '4px 12px', cursor: 'pointer', flexShrink: 0 }}
+                  style={{ background: 'none', border: '1px solid #2a5298', borderRadius: 4, color: '#2a5298', fontSize: '0.78rem', fontWeight: 600, padding: '4px 12px', cursor: 'pointer', flexShrink: 0, fontFamily: 'inherit' }}
                 >
                   {addrExpanded ? 'Cancel' : 'Change'}
                 </button>
@@ -412,7 +589,7 @@ export default function BuyNow() {
               {/* Expanded form */}
               {addrExpanded && (
                 <div style={{ borderTop: '1px solid #f3f4f6', padding: '20px 24px' }}>
-                  <form id="bn-addr-form" onSubmit={handleAddressSave}>
+                  <form onSubmit={handleAddressSave}>
                     <Field label="Street Address, Area, Landmark" required>
                       <textarea
                         rows={2} required
@@ -457,8 +634,16 @@ export default function BuyNow() {
                         value={address.pincode}
                         onChange={e => set('pincode', e.target.value.replace(/\D/g, '').slice(0, 6))}
                         onFocus={onF('pincode')} onBlur={onB}
-                        style={{ ...inp('pincode'), maxWidth: 180 }}
+                        style={{ ...inp('pincode'), maxWidth: 180, borderColor: pincodeCheck.status === 'mismatch' ? '#dc2626' : inp('pincode').borderColor }}
                       />
+                      {pincodeCheck.status === 'checking' && (
+                        <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 4 }}>Checking pincode…</div>
+                      )}
+                      {pincodeCheck.status === 'mismatch' && (
+                        <div style={{ fontSize: '0.78rem', color: '#dc2626', marginTop: 4 }}>
+                          This pincode belongs to {pincodeCheck.detectedDistrict}, {pincodeCheck.detectedState} — it doesn't match the selected city/state.
+                        </div>
+                      )}
                     </Field>
                     <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                       <button type="submit"
@@ -475,227 +660,202 @@ export default function BuyNow() {
               )}
             </div>
 
-            {/* ── ORDER SUMMARY ── */}
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '24px', marginBottom: 16 }}>
-              <h2 style={{ fontWeight: 700, fontSize: '1rem', color: '#0f1111', marginBottom: 18 }}>
-                Order Summary
-              </h2>
-              <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr auto', gap: 16, alignItems: 'flex-start' }}>
+            {/* ── ORDER SUMMARY (item + inline courier card grid) — mirrors Checkout.jsx ── */}
+            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,0.05)', overflow: 'hidden', marginBottom: 12 }}>
+              <div style={{ background: '#1e3c72', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: '1.05rem' }}></span>
+                  Order Summary ({qty} {qty === 1 ? 'item' : 'items'})
+                </h2>
+                {savings > 0 && (
+                  <span style={{ background: '#16a34a', color: '#fff', fontSize: '0.75rem', fontWeight: 700, padding: '4px 12px', borderRadius: 99, whiteSpace: 'nowrap' }}>
+                    🎉 You're saving ₹{savings.toLocaleString('en-IN')}
+                  </span>
+                )}
+              </div>
+
+              <div style={{ padding: '20px 24px', background: '#f5f8ff' }}>
+
+              {!addrDone && (
+                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 4, padding: '10px 14px', fontSize: '0.8rem', color: '#92400e', marginBottom: 14 }}>
+                  ⓘ Add your delivery address above to see available couriers.
+                </div>
+              )}
+
+              <div style={{ padding: '16px 0' }}>
+
+              {/* Product row */}
+              <div className="hk-bn-item-row" style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: 14, alignItems: 'center' }}>
                 <div style={{ border: '1px solid #e5e7eb', borderRadius: 4, overflow: 'hidden', background: '#f9fafb' }}>
                   <img
                     src={resolveImg(item.imageUrl)} alt={item.name}
                     onError={e => { e.target.src = FALLBACK_IMG; }}
-                    style={{ width: '100%', height: 80, objectFit: 'contain', display: 'block' }}
+                    style={{ width: '100%', height: 64, objectFit: 'contain', display: 'block' }}
                   />
                 </div>
                 <div style={{ minWidth: 0 }}>
-                  <p style={{ fontSize: '0.92rem', fontWeight: 500, color: '#0f1111', margin: '0 0 4px', lineHeight: 1.4 }}>
+                  <p style={{ fontSize: '0.88rem', fontWeight: 500, color: '#0f1111', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {item.name}
                   </p>
-                  {item.category && (
-                    <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0 0 6px' }}>{item.category}</p>
-                  )}
-                  <p style={{ fontSize: '0.75rem', color: '#374151', margin: '0 0 4px' }}>Qty: {qty}</p>
+                  <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0 0 4px' }}>Qty: {qty}</p>
                   {item.hasGroupDeal ? (
-                    <span style={{ fontSize: '0.72rem', fontWeight: 700, background: '#f0fdf4', color: '#15803d', border: '1px solid #86efac', borderRadius: 3, padding: '2px 7px' }}>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#eef2ff', color: '#1e3c72', border: '1px solid #c7d8f8', borderRadius: 3, padding: '1px 6px' }}>
                       🤝 Group Deal Price
                     </span>
                   ) : (
-                    <span style={{ fontSize: '0.72rem', color: '#6b7280', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 3, padding: '2px 7px' }}>
+                    <span style={{ fontSize: '0.68rem', color: '#6b7280', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 3, padding: '1px 6px' }}>
                       Regular Price
                     </span>
                   )}
                 </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  {savings > 0 && (
-                    <p style={{ fontSize: '0.78rem', color: '#9ca3af', textDecoration: 'line-through', margin: '0 0 2px' }}>
-                      ₹{mrpTotal.toLocaleString('en-IN')}
-                    </p>
-                  )}
-                  <p style={{ fontWeight: 700, fontSize: '1rem', color: '#0f1111', margin: 0 }}>
+                <div className="hk-bn-item-price" style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <p style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f1111', margin: '0 0 2px' }}>
                     ₹{lineTotal.toLocaleString('en-IN')}
                   </p>
                   {savings > 0 && (
-                    <p style={{ fontSize: '0.72rem', color: '#007600', fontWeight: 600, margin: '2px 0 0' }}>
+                    <p style={{ fontSize: '0.72rem', color: '#007600', margin: 0, fontWeight: 600 }}>
                       Save ₹{savings.toLocaleString('en-IN')}
                     </p>
                   )}
                 </div>
               </div>
-            </div>
 
-            {/* ── DELIVERY PARTNER ── */}
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '24px', marginBottom: 16 }}>
-              <h2 style={{ fontWeight: 700, fontSize: '1rem', color: '#0f1111', marginBottom: 14 }}>
-                Delivery Partner
-              </h2>
-
-              {!addrDone && (
-                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 4, padding: '10px 14px', fontSize: '0.8rem', color: '#92400e' }}>
-                  ⓘ Enter your delivery pincode above to see available couriers.
-                </div>
-              )}
-
-              {addrDone && courier.loading && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: '#6b7280' }}>
-                  <div style={{ width: 14, height: 14, border: '2px solid #e5e7eb', borderTopColor: '#2a5298', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
-                  Fetching couriers…
-                </div>
-              )}
-
-              {addrDone && courier.error && !courier.loading && (
-                <div style={{ fontSize: '0.78rem', color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, padding: '6px 10px' }}>
-                  ⚠ {courier.error}
-                </div>
-              )}
-
-              {addrDone && !courier.loading && !courier.error && courier.list.length > 0 && (() => {
-                const sel = courier.selected;
-                return (
-                  <div style={{ position: 'relative' }}>
-                    <p style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151', margin: '0 0 6px' }}>
-                      Select Courier
-                    </p>
-
-                    {/* Trigger */}
-                    <div
-                      onClick={() => setCourierOpen(v => !v)}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 10,
-                        padding: '9px 12px',
-                        border: `1.5px solid ${sel ? '#2a5298' : '#d1d5db'}`,
-                        borderRadius: courierOpen ? '4px 4px 0 0' : 4,
-                        background: sel ? '#eef2ff' : '#f9fafb', cursor: 'pointer',
-                      }}
-                    >
-                      {sel?.logo ? (
-                        <img src={sel.logo} alt={sel.courierName} style={{ width: 28, height: 28, objectFit: 'contain', flexShrink: 0 }} onError={e => { e.target.style.display = 'none'; }} />
-                      ) : (
-                        <div style={{ width: 28, height: 28, borderRadius: 4, background: '#c7d2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, color: '#3730a3', flexShrink: 0 }}>
-                          {sel?.courierName?.slice(0, 2).toUpperCase() || '—'}
-                        </div>
-                      )}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: '0.82rem', fontWeight: 600, color: '#0f1111', margin: '0 0 1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {sel?.courierName || 'Select a courier'}
-                        </p>
-                        <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: 0 }}>
-                          {sel ? <>Est. delivery: {sel.etaDays} days</> : 'Choose a courier for delivery'}
-                        </p>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                        <span style={{ fontSize: '0.88rem', fontWeight: 700, color: sel?.rate === 0 ? '#007600' : '#0f1111' }}>
-                          {sel?.rate === 0 ? 'FREE' : sel ? `₹${sel.rate}` : ''}
-                        </span>
-                        <span style={{ fontSize: '0.7rem', color: '#6b7280', transform: courierOpen ? 'rotate(180deg)' : 'none', display: 'inline-block', transition: 'transform 0.15s' }}>▼</span>
-                      </div>
+              {/* ── Courier selector — inline cards, 3 per row, same as Checkout ── */}
+              {addrDone && (
+                <div className="hk-bn-courier-wrap" style={{ marginTop: 14, marginLeft: 78 }}>
+                  {courier.loading && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: '#6b7280' }}>
+                      <div style={{ width: 14, height: 14, border: '2px solid #e5e7eb', borderTopColor: '#2a5298', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+                      Fetching couriers…
                     </div>
+                  )}
 
-                    {/* Dropdown */}
-                    {courierOpen && (
-                      <div style={{
-                        position: 'absolute', top: '100%', left: 0, right: 0,
-                        border: '1.5px solid #2a5298', borderTop: 'none',
-                        borderRadius: '0 0 4px 4px',
-                        background: '#fff', zIndex: 50,
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                        maxHeight: 260, overflowY: 'auto',
-                      }}>
-                        {courier.list.map((c, ci) => {
-                          const isSelected = sel?.courierId === c.courierId;
-                          return (
-                            <div
-                              key={c.courierId}
-                              onClick={() => {
-                                setCourier(prev => ({ ...prev, selected: c }));
-                                setCourierOpen(false);
-                              }}
-                              style={{
-                                display: 'flex', alignItems: 'center', gap: 10,
-                                padding: '9px 12px',
-                                borderTop: ci > 0 ? '1px solid #f3f4f6' : 'none',
-                                background: isSelected ? '#eef2ff' : '#fff',
-                                cursor: 'pointer',
-                              }}
-                              onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#f9fafb'; }}
-                              onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = '#fff'; }}
-                            >
-                              {/* Radio dot */}
-                              <div style={{
-                                width: 15, height: 15, borderRadius: '50%',
-                                border: `2px solid ${isSelected ? '#2a5298' : '#d1d5db'}`,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                flexShrink: 0, background: '#fff',
-                              }}>
-                                {isSelected && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#2a5298' }} />}
-                              </div>
+                  {courier.error && !courier.loading && (
+                    <div style={{ fontSize: '0.78rem', color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, padding: '6px 10px' }}>
+                      ⚠ {courier.error}
+                    </div>
+                  )}
 
-                              {/* Logo / initials */}
-                              {c.logo ? (
-                                <img src={c.logo} alt={c.courierName} style={{ width: 28, height: 28, objectFit: 'contain', flexShrink: 0 }} onError={e => { e.target.style.display = 'none'; }} />
-                              ) : (
-                                <div style={{ width: 28, height: 28, borderRadius: 4, background: '#e0e7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, color: '#3730a3', flexShrink: 0 }}>
-                                  {c.courierName.slice(0, 2).toUpperCase()}
+                  {!courier.loading && !courier.error && courier.list.length > 0 && (() => {
+                    const sel = courier.selected;
+                    return (
+                      <div>
+                        <p style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151', margin: '0 0 8px' }}>
+                          Select Courier
+                        </p>
+
+                        <div className="hk-bn-courier-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+                          {courier.list.map((c) => {
+                            const isSelected = sel?.courierId === c.courierId;
+                            return (
+                              <div
+                                key={c.courierId}
+                                onClick={() => setCourier(prev => ({ ...prev, selected: c }))}
+                                style={{
+                                  position: 'relative',
+                                  display: 'flex', alignItems: 'center', gap: 9,
+                                  padding: '10px 10px',
+                                  border: `1.5px solid ${isSelected ? '#2a5298' : '#e5e7eb'}`,
+                                  borderRadius: 12,
+                                  background: isSelected ? '#eef2ff' : '#fff',
+                                  cursor: 'pointer',
+                                  boxShadow: isSelected ? '0 1px 6px rgba(42,82,152,0.18)' : '0 1px 2px rgba(0,0,0,0.04)',
+                                  transition: 'border-color 0.15s, box-shadow 0.15s, background 0.15s',
+                                }}
+                                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.borderColor = '#c7d2fe'; }}
+                                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                              >
+                                {/* Selected checkmark */}
+                                {isSelected && (
+                                  <div style={{
+                                    position: 'absolute', top: -7, right: -7,
+                                    width: 17, height: 17, borderRadius: '50%',
+                                    background: '#2a5298', color: '#fff',
+                                    fontSize: '0.6rem', fontWeight: 700,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                                  }}>
+                                    ✓
+                                  </div>
+                                )}
+
+                                {/* Icon badge */}
+                                <div style={{
+                                  width: 36, height: 36, borderRadius: 9, flexShrink: 0,
+                                  background: isSelected ? '#dbe4fb' : '#f1f4f9',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  fontSize: '1.05rem', overflow: 'hidden',
+                                }}>
+                                  {c.logo
+                                    ? <img src={c.logo} alt={c.courierName} style={{ width: 22, height: 22, objectFit: 'contain' }} onError={e => { e.target.style.display = 'none'; }} />
+                                    : '🚚'
+                                  }
                                 </div>
-                              )}
 
-                              {/* Name + ETA */}
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <p style={{ fontSize: '0.82rem', fontWeight: 600, color: '#0f1111', margin: '0 0 1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {c.courierName}
-                                </p>
-                                <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: 0 }}>
-                                  Est. delivery: {c.etaDays} days
-                                </p>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <p style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0f1111', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {c.courierName}
+                                  </p>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.72rem', color: '#6b7280', whiteSpace: 'nowrap' }}>
+                                    <span style={{ color: c.rate === 0 ? '#007600' : '#0f1111', fontWeight: 700 }}>
+                                      {c.rate === 0 ? 'FREE' : `₹${c.rate}`}
+                                    </span>
+                                    <span style={{ color: '#d1d5db' }}>•</span>
+                                    <span>{c.etaDays} day{c.etaDays > 1 ? 's' : ''}</span>
+                                  </div>
+                                </div>
                               </div>
-
-                              {/* Rate */}
-                              <span style={{ fontSize: '0.88rem', fontWeight: 700, color: c.rate === 0 ? '#007600' : '#0f1111', flexShrink: 0 }}>
-                                {c.rate === 0 ? 'FREE' : `₹${c.rate}`}
-                              </span>
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
+                        </div>
                       </div>
-                    )}
-                  </div>
-                );
-              })()}
+                    );
+                  })()}
+                </div>
+              )}
+              </div>
+              </div>
             </div>
+
 
             {/* ── PAYMENT METHOD ── */}
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '24px', marginBottom: 16 }}>
-              <h2 style={{ fontWeight: 700, fontSize: '1rem', color: '#0f1111', marginBottom: 18 }}>
+            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '20px 24px', marginBottom: 16 }}>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#0f1111', margin: '0 0 18px' }}>
                 Payment Method
               </h2>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
                 {[
-                  { val: 'COD',    icon: '💵', label: 'Cash on Delivery', sub: 'Pay when your order arrives at your door', badge: null },
-                  { val: 'Online', icon: '💳', label: 'Pay Online',        sub: 'UPI · Credit/Debit Card · Net Banking · Wallets via Cashfree', badge: 'Instant confirmation' },
-                ].map(({ val, icon, label, sub, badge }) => {
+                  { val: 'COD',    icon: '💵', label: 'Cash on Delivery', sub: 'Pay when your order arrives at your door', badge: null,
+                    allowed: codAllowed, disabledMsg: 'Cash on delivery is not available for this product' },
+                  { val: 'Online', icon: '💳', label: 'Pay Online',        sub: 'UPI · Credit/Debit Card · Net Banking · Wallets via Cashfree', badge: 'Instant confirmation',
+                    allowed: onlineAllowed, disabledMsg: 'Online payment is not available for this product' },
+                ].map(({ val, icon, label, sub, badge, allowed, disabledMsg }) => {
                   const selected = address.paymentMethod === val;
                   return (
                     <label key={val}
-                      onClick={() => set('paymentMethod', val)}
+                      onClick={() => allowed ? set('paymentMethod', val) : toast.error(disabledMsg)}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px',
-                        border: `2px solid ${selected ? '#2a5298' : '#e5e7eb'}`,
-                        borderRadius: 4, cursor: 'pointer',
-                        background: selected ? '#eef2ff' : '#fff',
+                        border: `2px solid ${selected && allowed ? '#2a5298' : '#e5e7eb'}`,
+                        borderRadius: 4, cursor: allowed ? 'pointer' : 'not-allowed',
+                        background: !allowed ? '#f9fafb' : (selected ? '#eef2ff' : '#fff'),
+                        opacity: allowed ? 1 : 0.6,
                         transition: 'all 0.15s',
                       }}
                     >
-                      <div style={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${selected ? '#2a5298' : '#d1d5db'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: '#fff' }}>
-                        {selected && <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#2a5298' }} />}
+                      <div style={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${selected && allowed ? '#2a5298' : '#d1d5db'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: '#fff' }}>
+                        {selected && allowed && <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#2a5298' }} />}
                       </div>
                       <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>{icon}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ fontWeight: 600, fontSize: '0.92rem', color: '#0f1111' }}>{label}</span>
-                          {badge && <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#dcfce7', color: '#15803d', padding: '2px 7px', borderRadius: 3 }}>{badge}</span>}
+                          {badge && allowed && <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#dcfce7', color: '#15803d', padding: '2px 7px', borderRadius: 3 }}>{badge}</span>}
                         </div>
-                        <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 2 }}>{sub}</div>
+                        <div style={{ fontSize: '0.78rem', color: allowed ? '#6b7280' : '#dc2626', marginTop: 2 }}>
+                          {allowed ? sub : disabledMsg}
+                        </div>
                       </div>
                     </label>
                   );
@@ -704,8 +864,9 @@ export default function BuyNow() {
 
               {/* Place Order CTA */}
               <button
+                type="button"
                 onClick={handlePlaceOrder}
-                disabled={placing}
+                disabled={placing || (address.paymentMethod === 'COD' ? !codAllowed : !onlineAllowed)}
                 style={{
                   width: '100%', padding: '13px',
                   background: placing ? '#e5e7eb' : '#f0c14b',

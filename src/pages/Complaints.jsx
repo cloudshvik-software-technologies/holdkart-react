@@ -11,6 +11,9 @@ const STATUS_META = {
   'Closed':      { color: '#6b7280', bg: '#f3f4f6' },
 };
 
+const FALLBACK_IMG =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Crect width='80' height='80' fill='%23f0f4f8'/%3E%3Ccircle cx='40' cy='30' r='12' fill='%23d1d9e6'/%3E%3Cpath d='M18 65 Q40 45 62 65Z' fill='%23d1d9e6'/%3E%3C/svg%3E";
+
 const FAQS = [
   {
     q: 'How do I track my order?',
@@ -110,6 +113,7 @@ export default function Complaints() {
   const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
+  const [viewingResolution, setViewingResolution] = useState(null);
 
   const fetchAll = async () => {
     try {
@@ -134,6 +138,10 @@ export default function Complaints() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.subject || !form.description) { toast.error('Please fill all fields'); return; }
+    if (selectedProductInReview) {
+      toast.error('Already a complaint is in review for this product.');
+      return;
+    }
     setSubmitting(true);
     try {
       await complaintService.submitComplaint(form);
@@ -157,6 +165,16 @@ export default function Complaints() {
     ? complaints
     : complaints.filter(c => (c.status || '').toLowerCase().replace(' ', '-') === activeTab);
 
+  // product_ids that already have an Open / In Progress complaint —
+  // used to block raising a second complaint for the same product.
+  const productIdsInReview = new Set(
+    complaints
+      .filter(c => c.product_id && (c.status === 'Open' || c.status === 'In Progress'))
+      .map(c => c.product_id)
+  );
+  const selectedOrder = orders.find(o => String(o.id) === String(form.orderId));
+  const selectedProductInReview = !!(selectedOrder?.product_id && productIdsInReview.has(selectedOrder.product_id));
+
   const inputStyle = {
     width: '100%', padding: '10px 14px',
     border: '1.5px solid #e5e7eb', borderRadius: 8,
@@ -175,18 +193,35 @@ export default function Complaints() {
   };
 
   return (
-    <div style={{
+    <div className="hk-cmp-root" style={{
       background: '#F7F8FA', minHeight: '100vh',
-      paddingTop: 88, fontFamily: "'Inter', sans-serif",
+      paddingTop: 112, fontFamily: "'Inter', sans-serif",
     }}>
+      <style>{`
+        @media (max-width: 768px) {
+          .hk-cmp-two-col { grid-template-columns: 1fr !important; }
+          .hk-cmp-root { padding-top: 98px !important; }
+          .hk-cmp-hero { padding: 28px 16px !important; }
+          .hk-cmp-hero-row {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 16px !important;
+          }
+          .hk-cmp-body { padding: 24px 16px 60px !important; }
+        }
+        @media (max-width: 480px) {
+          .hk-cmp-root { padding-top: 92px !important; }
+          .hk-cmp-hero { padding: 20px 12px !important; }
+        }
+      `}</style>
 
       {/* ── HERO ── */}
-      <div style={{
+      <div className="hk-cmp-hero" style={{
         background: '#fff',
         borderBottom: '1px solid #EBEBEB',
         padding: '52px 24px',
       }}>
-        <div style={{ maxWidth: 1080, margin: '0 auto', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24, flexWrap: 'wrap' }}>
+        <div className="hk-cmp-hero-row" style={{ maxWidth: 1080, margin: '0 auto', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24, flexWrap: 'wrap' }}>
           <div style={{ borderLeft: '3px solid #FF6B00', paddingLeft: 24 }}>
             <p style={{ margin: '0 0 6px', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#FF6B00' }}>
               Support Center
@@ -218,7 +253,7 @@ export default function Complaints() {
         </div>
       </div>
 
-      <div style={{ maxWidth: 1080, margin: '0 auto', padding: '40px 24px 80px' }}>
+      <div className="hk-cmp-body" style={{ maxWidth: 1080, margin: '0 auto', padding: '40px 24px 80px' }}>
 
         {/* ── QUICK LINKS ── */}
         <div style={{
@@ -254,7 +289,7 @@ export default function Complaints() {
         </div>
 
         {/* ── TWO-COL: FAQ + CONTACT ── */}
-        <div style={{
+        <div className="hk-cmp-two-col" style={{
           display: 'grid', gridTemplateColumns: '3fr 2fr',
           gap: 32, alignItems: 'start', marginBottom: 48,
         }}>
@@ -398,9 +433,17 @@ export default function Complaints() {
                   >
                     <option value="">Select an order...</option>
                     {orders.map(o => (
-                      <option key={o.id} value={o.id}>#{o.order_number} - {o.product_name}</option>
+                      <option key={o.id} value={o.id}>
+                        #{o.order_number} - {o.product_name}
+                        {o.product_id && productIdsInReview.has(o.product_id) ? ' (complaint in review)' : ''}
+                      </option>
                     ))}
                   </select>
+                  {selectedProductInReview && (
+                    <p style={{ margin: '8px 0 0', fontSize: '0.8rem', color: '#dc2626', fontWeight: 600 }}>
+                      Already a complaint is in review for this product.
+                    </p>
+                  )}
                 </div>
 
                 <div style={{ gridColumn: '1 / -1' }}>
@@ -448,18 +491,18 @@ export default function Complaints() {
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || selectedProductInReview}
                   style={{
-                    background: submitting ? '#e5e7eb' : '#FF6B00',
-                    color: submitting ? '#9ca3af' : '#fff',
+                    background: (submitting || selectedProductInReview) ? '#e5e7eb' : '#FF6B00',
+                    color: (submitting || selectedProductInReview) ? '#9ca3af' : '#fff',
                     border: 'none', padding: '10px 28px',
                     borderRadius: 8, fontWeight: 700,
                     fontSize: '0.875rem',
-                    cursor: submitting ? 'not-allowed' : 'pointer',
+                    cursor: (submitting || selectedProductInReview) ? 'not-allowed' : 'pointer',
                     transition: 'background 0.2s',
                   }}
-                  onMouseEnter={e => { if (!submitting) e.currentTarget.style.background = '#E85D04'; }}
-                  onMouseLeave={e => { if (!submitting) e.currentTarget.style.background = '#FF6B00'; }}
+                  onMouseEnter={e => { if (!submitting && !selectedProductInReview) e.currentTarget.style.background = '#E85D04'; }}
+                  onMouseLeave={e => { if (!submitting && !selectedProductInReview) e.currentTarget.style.background = '#FF6B00'; }}
                 >
                   {submitting ? 'Submitting...' : 'Submit Complaint'}
                 </button>
@@ -557,32 +600,75 @@ export default function Complaints() {
                     background: '#fff', borderRadius: 10,
                     border: '1px solid #E5E7EB',
                     borderLeft: '3px solid ' + meta.color,
-                    padding: '20px 24px',
+                    overflow: 'hidden',
                     transition: 'box-shadow 0.15s',
                   }}
                     onMouseEnter={e => e.currentTarget.style.boxShadow = '0 2px 16px rgba(0,0,0,0.07)'}
                     onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 16 }}>
-                      <h4 style={{ fontWeight: 700, fontSize: '0.9rem', color: '#111827', margin: 0, lineHeight: 1.4 }}>
-                        {c.subject}
-                      </h4>
-                      <span style={{
-                        flexShrink: 0, padding: '3px 10px', borderRadius: 4,
-                        fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.05em',
-                        textTransform: 'uppercase',
-                        background: meta.bg, color: meta.color,
+                    {/* Product strip — what the complaint is actually about */}
+                    {c.product_name && (
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '12px 24px',
+                        background: '#FAFAFB',
+                        borderBottom: '1px solid #F3F4F6',
                       }}>
-                        {c.status}
-                      </span>
-                    </div>
-                    <p style={{ color: '#6b7280', fontSize: '0.85rem', lineHeight: 1.65, margin: '0 0 14px' }}>
-                      {c.description}
-                    </p>
-                    <div style={{ display: 'flex', gap: 24, fontSize: '0.75rem', color: '#9ca3af' }}>
-                      <span>Submitted {new Date(c.created_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                      {c.order_id && <span>Order #{c.order_id}</span>}
-                      {c.resolved_date && <span>Resolved {new Date(c.resolved_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
+                        {/* <img
+                          src={c.product_image || FALLBACK_IMG}
+                          onError={e => { e.target.src = FALLBACK_IMG; }}
+                          alt={c.product_name}
+                          style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover', border: '1px solid #E5E7EB', flexShrink: 0 }}
+                        /> */}
+                        <span style={{ fontSize: '0.78rem', color: '#9ca3af', fontWeight: 600 }}>
+                          Regarding
+                        </span>
+                        <span style={{ fontSize: '0.82rem', color: '#1f2937', fontWeight: 700, lineHeight: 1.3 }}>
+                          {c.product_name}
+                        </span>
+                      </div>
+                    )}
+
+                    <div style={{ padding: '18px 24px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 16 }}>
+                        <h4 style={{ fontWeight: 700, fontSize: '0.9rem', color: '#111827', margin: 0, lineHeight: 1.4 }}>
+                          {c.subject}
+                        </h4>
+                        <span style={{
+                          flexShrink: 0, padding: '3px 10px', borderRadius: 4,
+                          fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.05em',
+                          textTransform: 'uppercase',
+                          background: meta.bg, color: meta.color,
+                        }}>
+                          {c.status}
+                        </span>
+                      </div>
+                      <p style={{ color: '#6b7280', fontSize: '0.85rem', lineHeight: 1.65, margin: '0 0 14px' }}>
+                        {c.description}
+                      </p>
+                      <div style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        flexWrap: 'wrap', gap: 12,
+                        paddingTop: 12, borderTop: '1px solid #F3F4F6',
+                      }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, fontSize: '0.75rem', color: '#9ca3af' }}>
+                          <span>Submitted {new Date(c.created_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                          {c.order_number ? <span>Order #{c.order_number}</span> : c.order_id && <span>Order #{c.order_id}</span>}
+                          {c.resolved_date && <span>Resolved {new Date(c.resolved_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
+                        </div>
+                        {c.status === 'Resolved' && c.seller_resolution && (
+                          <button
+                            onClick={() => setViewingResolution(c)}
+                            style={{
+                              background: '#F0FDF4', border: '1px solid #BBF7D0',
+                              color: '#16a34a', fontWeight: 700, fontSize: '0.78rem',
+                              padding: '6px 14px', borderRadius: 7, cursor: 'pointer',
+                            }}
+                          >
+                            View Response
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -591,6 +677,61 @@ export default function Complaints() {
           )}
         </div>
       </div>
+
+      {viewingResolution && (
+        <div
+          onClick={() => setViewingResolution(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(17, 24, 39, 0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 24, zIndex: 100,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 14, maxWidth: 480, width: '100%',
+              padding: '28px 28px 24px', boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 16 }}>
+              <div>
+                <p style={{
+                  margin: '0 0 6px', fontSize: '0.72rem', fontWeight: 700,
+                  letterSpacing: '0.04em', textTransform: 'uppercase', color: '#16a34a',
+                }}>
+                  Response from seller
+                </p>
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#111827' }}>
+                  {viewingResolution.subject}
+                </h3>
+              </div>
+              <button
+                onClick={() => setViewingResolution(null)}
+                style={{
+                  background: '#F3F4F6', border: 'none', borderRadius: 6,
+                  width: 28, height: 28, cursor: 'pointer', color: '#6b7280',
+                  fontSize: '1rem', lineHeight: 1, flexShrink: 0,
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <p style={{
+              margin: 0, fontSize: '0.9rem', lineHeight: 1.7, color: '#374151',
+              background: '#F9FAFB', border: '1px solid #E5E7EB',
+              borderRadius: 8, padding: '14px 16px',
+            }}>
+              {viewingResolution.seller_resolution}
+            </p>
+            {viewingResolution.resolved_date && (
+              <p style={{ margin: '14px 0 0', fontSize: '0.78rem', color: '#9ca3af' }}>
+                Resolved {new Date(viewingResolution.resolved_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

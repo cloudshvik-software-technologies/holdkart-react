@@ -44,8 +44,7 @@ export default function GroupBuyWidget({ productId }) {
   const joinedIds = new Set(mine.map(m => String(m.campaign_id)));
 
   const handleJoin = async (campaignId) => {
-    if (!isAuthenticated) { navigate('/login'); return; }
-    setJoining(campaignId);
+    if (!isAuthenticated) { toast.error('Please sign in to join'); return; }
     try {
       await campaignService.joinCampaign({ campaignId });
       toast.success('Joined the group deal!');
@@ -57,8 +56,7 @@ export default function GroupBuyWidget({ productId }) {
   };
 
   const handleStart = async () => {
-    if (!isAuthenticated) { navigate('/login'); return; }
-    setStarting(true);
+    if (!isAuthenticated) { toast.error('Please sign in to start a group deal'); return; }
     try {
       await campaignService.startCampaign({ productId });
       toast.success('Group deal started! Others can now join.');
@@ -107,7 +105,7 @@ export default function GroupBuyWidget({ productId }) {
               </div>
               {!showStart ? (
                 <button
-                  onClick={() => isAuthenticated ? setShowStart(true) : navigate('/login')}
+                  onClick={() => isAuthenticated ? setShowStart(true) : toast.error('Please sign in to start a group deal')}
                   style={{
                     background: 'linear-gradient(135deg,#2a5298,#1e3c72)',
                     color: '#fff', border: 'none', borderRadius: 8,

@@ -22,7 +22,7 @@ function loadCashfreeScript() {
 // Preload immediately on import (fire-and-forget)
 loadCashfreeScript();
 
-export default function JoinDealModal({ product, bestGroupPrice, maxDiscountPct, remainingSlots, onClose, onJoinSuccess, campaignAction }) {
+export default function JoinDealModal({ product, bestGroupPrice, maxDiscountPct, remainingSlots, onClose, onJoinSuccess, campaignAction, variantLabel, variantId }) {
   const [qty, setQty]       = useState(1);
   const [paying, setPaying] = useState(false);
 
@@ -42,6 +42,7 @@ export default function JoinDealModal({ product, bestGroupPrice, maxDiscountPct,
     } else {
       await campaignService.startOrJoinCampaign({
         productId: product.productId,
+        variantId: variantId || null,
         quantity: qty,
         cashfreeOrderId,
         depositAmount,
@@ -99,6 +100,10 @@ export default function JoinDealModal({ product, bestGroupPrice, maxDiscountPct,
         try {
           await paymentService.verifyPayment({ orderId: orderData.orderId });
           await doJoin({ cashfreeOrderId: orderData.orderId, depositAmount: totalDeposit });
+          // A real payment (deposit) was just charged via Cashfree — refresh the
+          // page once so every price/stock/deal figure shown is guaranteed fresh
+          // from the server, rather than relying on in-memory state to catch up.
+          window.location.reload();
         } catch (err) {
           toast.error(err?.response?.data?.message || 'Payment verification failed');
           setPaying(false);
@@ -141,6 +146,9 @@ export default function JoinDealModal({ product, bestGroupPrice, maxDiscountPct,
               <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f1111', margin: 0 }}>Join Group Deal</h2>
             </div>
             <p style={{ fontSize: '0.78rem', color: '#6b7280', margin: 0 }}>{product.name}</p>
+            {variantLabel && (
+              <p style={{ fontSize: '0.74rem', color: '#374151', margin: '2px 0 0', fontWeight: 600 }}>{variantLabel}</p>
+            )}
           </div>
           <button
             onClick={onClose}

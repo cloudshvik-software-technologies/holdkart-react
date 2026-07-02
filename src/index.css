@@ -23,8 +23,10 @@
     --warn:      #ca8a04;
   }
 
-  html { scroll-behavior: smooth; }
-  body { font-family: var(--font); color: var(--text); background: var(--bg); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  html { scroll-behavior: smooth; width: 100%; }
+  html, body { overflow-x: hidden; }
+  body { font-family: var(--font); color: var(--text); background: var(--bg); line-height: 1.6; -webkit-font-smoothing: antialiased; width: 100%; min-height: 100vh; }
+  #root { width: 100%; min-height: 100vh; }
   a { text-decoration: none; color: inherit; }
   button { cursor: pointer; border: none; background: none; font-family: var(--font); }
   input,select,textarea { font-family: var(--font); }
@@ -148,8 +150,16 @@
   /* ── RESPONSIVE ── */
   @media (max-width: 768px) {
     .form-row { grid-template-columns: 1fr; }
-    .page-wrap { padding: 100px 16px 40px; }
+    .page-wrap { padding: 112px 16px 40px; }
     .cart-layout { grid-template-columns: 1fr; }
     .product-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
     .order-summary { position: static; }
+    .filter-bar { flex-direction: column; align-items: stretch; }
+    .filter-bar input { min-width: 0; width: 100%; }
+    .filter-bar select { width: 100%; }
+    /* ── ProductCard image height — shorter cards on mobile ── */
+    .hk-prodcard-img { height: 150px !important; }
+  }
+  @media (max-width: 480px) {
+    .hk-prodcard-img { height: 130px !important; }
   }

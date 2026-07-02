@@ -62,8 +62,9 @@ function WishlistItem({ item, onRemove, removingId }) {
       {/* Image */}
       <div
         onClick={() => navigate(`/product/${item.productId}`)}
+        className="wl-item-img"
         style={{
-          width: 160, minWidth: 160, background: '#f9fafb',
+          background: '#f9fafb',
           cursor: 'pointer', position: 'relative', overflow: 'hidden',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}
@@ -226,6 +227,10 @@ export default function Wishlist() {
         @keyframes wl-pulse {
           0%, 100% { opacity: 1; }
           50%       { opacity: 0.55; }
+        }
+        .wl-item-img { width: 160px; min-width: 160px; }
+        @media (max-width: 600px) {
+          .wl-item-img { width: 100px !important; min-width: 100px !important; }
         }
       `}</style>
 
