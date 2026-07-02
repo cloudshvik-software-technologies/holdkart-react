@@ -138,6 +138,15 @@ function CampaignRow({ item, leaving, onLeave }) {
           <StatusBadge status={status} />
         </div>
 
+        {/* Colour / size this customer actually joined the deal with */}
+        {(item.variant_color || item.variant_size || item.variant_label) && (
+          <div style={{ fontSize: '0.78rem', color: '#374151', fontWeight: 600, marginBottom: 6 }}>
+            {item.variant_color || item.variant_size
+              ? [item.variant_color, item.variant_size].filter(Boolean).join(' / ')
+              : item.variant_label}
+          </div>
+        )}
+
         {/* Price row */}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: '1.1rem', fontWeight: 700, color: '#b12704' }}>

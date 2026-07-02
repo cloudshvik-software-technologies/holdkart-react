@@ -50,7 +50,7 @@ export default function Login() {
       if (guestItems.length > 0) {
         try {
           await mergeGuestCart(
-            guestItems.map(({ productId, quantity }) => ({ productId, quantity }))
+            guestItems.map(({ productId, quantity, variantId }) => ({ productId, quantity, variantId }))
           );
         } catch {
           // Merge failure is non-fatal — the user's existing server cart is safe.
