@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { productService, cartService, wishlistService, reviewService, campaignService, profileService } from '../services/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { addGuestCartItem } from '../utils/guestCart.js';
@@ -626,6 +626,11 @@ function GroupBuySection({ product, localHold, onJoin, onLeave, onAddProduct, jo
             <div style={{ flex: 1, padding: '7px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, fontSize: '0.82rem', fontWeight: 700, color: '#15803d' }}>
                Joined this deal
             </div>
+            {remaining > 0 && (
+              <button onClick={onAddProduct} disabled={joinLoading} style={S.joinBtn(joinLoading)}>
+                {joinLoading ? 'Adding\u2026' : 'Add More'}
+              </button>
+            )}
             <button onClick={onLeave} disabled={joinLoading} style={S.leaveBtn}>Leave</button>
           </div>
         </div>
@@ -640,7 +645,13 @@ function GroupBuySection({ product, localHold, onJoin, onLeave, onAddProduct, jo
 export default function ProductDetail() {
   const { id }       = useParams();
   const navigate     = useNavigate();
+  const location     = useLocation();
   const { isAuthenticated } = useAuth();
+  // A listing card (or the "+N more variants on deal" popover) can deep-link
+  // straight to a specific colour/size via ?variant=<id> — e.g. tapping a
+  // variant row should land here with that exact variant already selected,
+  // not whichever one the default "closest to target" heuristic would pick.
+  const requestedVariantId = new URLSearchParams(location.search).get('variant');
 
   const [product, setProduct]   = useState(null);
   // ── Variants (colour / size selector) ─────────────────────────────────────
@@ -689,14 +700,23 @@ export default function ProductDetail() {
   const pollRef                             = useRef(null);
 
   // Poll campaign status every 4s while user has joined — redirect all participants when deal completes
-  const startPolling = useCallback((productId, holdTarget) => {
+  // BUG FIX: a product can run several campaigns at once, each scoped to a different
+  // colour/size (e.g. Black / Desert / White / Natural iPhones each have their own
+  // campaign row). Previously this matched purely on product_id, so it could pick up
+  // *any* of those campaigns — often the wrong one — and overwrite a correct "4/5
+  // joined" with another variant's "0/5", making the deal look reset a few seconds
+  // after joining. Now it matches on the exact variant the shopper joined with too.
+  const startPolling = useCallback((productId, holdTarget, variantId = null) => {
     if (pollRef.current) return; // already polling
     pollRef.current = setInterval(async () => {
       try {
         const campaigns = await campaignService.listCampaigns();
-        const active = Array.isArray(campaigns)
-          ? campaigns.find(c => Number(c.product_id) === Number(productId))
-          : null;
+        const forProduct = Array.isArray(campaigns)
+          ? campaigns.filter(c => Number(c.product_id) === Number(productId))
+          : [];
+        const active = variantId
+          ? forProduct.find(c => Number(c.variant_id) === Number(variantId)) || null
+          : forProduct.find(c => !c.variant_id) || null;
         if (!active) {
           // Campaign no longer active — deal completed or cancelled
           clearInterval(pollRef.current);
@@ -743,13 +763,21 @@ export default function ProductDetail() {
     return p;
   };
 
-  const loadCampaignStatus = async (p) => {
+  const loadCampaignStatus = async (p, variantIdOverride) => {
     if (!p?.holdTarget || p.holdTarget <= 0) return;
     try {
       const campaigns = await campaignService.listCampaigns();
-      const campaign  = Array.isArray(campaigns)
-        ? campaigns.find(c => Number(c.product_id) === Number(p.productId))
-        : null;
+      const forProduct = Array.isArray(campaigns)
+        ? campaigns.filter(c => Number(c.product_id) === Number(p.productId))
+        : [];
+      // BUG FIX: don't just grab the first campaign for this product — several
+      // colour/size variants can each be running their own deal at once. Match
+      // the one for the currently selected variant (falling back to the first
+      // one only when nothing is selected yet, e.g. on initial page load).
+      const vid = variantIdOverride !== undefined ? variantIdOverride : (selectedVariant?.id ?? null);
+      const campaign = (vid
+        ? forProduct.find(c => Number(c.variant_id) === Number(vid))
+        : forProduct.find(c => !c.variant_id)) || forProduct[0] || null;
       setActiveCampaign(campaign || null);
       if (campaign) setLocalHold(campaign.current_hold);
 
@@ -767,7 +795,7 @@ export default function ProductDetail() {
           : [];
         setMyJoinedCampaignIds(mineForProduct.map(m => Number(m.campaignRowId)));
         // Start polling for all users who are already in the deal (only when ACTIVE)
-        if (mineForProduct.length && campaign) startPolling(p.productId, p.holdTarget);
+        if (mineForProduct.length && campaign) startPolling(p.productId, p.holdTarget, campaign.variant_id || null);
       }
     } catch {
       /* no active campaign — fine */
@@ -885,13 +913,19 @@ export default function ProductDetail() {
         const arr = Array.isArray(list) ? list : (Array.isArray(list?.data) ? list.data : []);
         setVariants(arr);
         if (arr.length) {
+          // A deep link (e.g. the Home page's "+N more variants on deal"
+          // popover) takes priority over the default heuristic below —
+          // the shopper explicitly picked this colour/size before landing here.
+          const requestedVariant = requestedVariantId
+            ? arr.find(v => String(v.id) === String(requestedVariantId))
+            : null;
           const dealVariantIds = new Set(
             (product.campaigns || []).filter(c => c.variantId != null).map(c => c.variantId)
           );
           const dealVariant = dealVariantIds.size
             ? arr.find(v => dealVariantIds.has(v.id))
             : null;
-          const defaultVariant = dealVariant || arr[0];
+          const defaultVariant = requestedVariant || dealVariant || arr[0];
           setSelectedColor(defaultVariant.color || null);
           setSelectedSize(defaultVariant.size || null);
         }
@@ -1128,7 +1162,7 @@ export default function ProductDetail() {
       } else {
         // Deal not yet complete — start polling so this user gets redirected when others fill remaining slots
         toast.success(`Joined with ${qty} unit${qty > 1 ? 's' : ''}! You'll be redirected to cart once the target is reached.`);
-        startPolling(product.productId, campaignHoldTarget);
+        startPolling(product.productId, campaignHoldTarget, selectedVariant?.id || null);
         await loadCampaignStatus(p);
       }
     } catch {
@@ -1138,7 +1172,7 @@ export default function ProductDetail() {
         setTimeout(() => navigate('/cart'), 2000);
       } else {
         toast.success(`Joined with ${qty} unit${qty > 1 ? 's' : ''}! You'll be redirected to cart once the target is reached.`);
-        startPolling(product.productId, campaignHoldTarget);
+        startPolling(product.productId, campaignHoldTarget, selectedVariant?.id || null);
       }
     }
   };
