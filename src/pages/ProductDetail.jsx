@@ -1177,33 +1177,6 @@ export default function ProductDetail() {
     }
   };
 
-  /* Add more units when already joined */
-  const handleAddProduct = async () => {
-    if (!isAuthenticated) { toast.error('Please sign in'); navigate('/login'); return; }
-    setJoinLoading(true);
-    try {
-      await campaignService.addToDeal({ productId: product.productId, variantId: selectedVariant?.id || null });
-      const p = await productService.getProduct(id);
-      setProduct(p);
-      const refreshedCampaign = hasVariants
-        ? (p.campaigns || []).find(c => c.variantId != null && selectedVariant && c.variantId === selectedVariant.id)
-        : (p.campaigns || []).find(c => c.variantId == null);
-      const realHold = refreshedCampaign?.currentHold ?? 0;
-      setLocalHold(realHold);
-      window.dispatchEvent(new CustomEvent('campaignJoined', { detail: { productId: product.productId } }));
-      if (realHold >= campaignHoldTarget) {
-        stopPolling();
-        toast.success('🎉 Target reached! Redirecting to your cart…', { duration: 3000 });
-        setTimeout(() => navigate('/cart'), 2000);
-      } else {
-        toast.success('Added to deal! You\'ll be redirected to cart once the target is reached.');
-        await loadCampaignStatus(p);
-      }
-    } catch(e) {
-      toast.error(e?.response?.data?.message || 'Failed to add to deal');
-    } finally { setJoinLoading(false); }
-  };
-
   const handleLeave = async () => {
     if (!matchedCampaign) return;
     setJoinLoading(true);
@@ -1384,7 +1357,7 @@ export default function ProductDetail() {
       localHold={localHold}
       onJoin={openJoinModal}
       onLeave={handleLeave}
-      onAddProduct={handleAddProduct}
+      onAddProduct={openAddMoreModal}
       joinLoading={joinLoading}
       hasJoined={hasJoined}
     />
