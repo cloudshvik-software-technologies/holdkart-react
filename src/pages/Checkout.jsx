@@ -345,6 +345,10 @@ export default function Checkout() {
     // seller never knew which courier the customer chose at checkout).
     const items = cart.map(i => ({
       productId: i.productId,
+      // BUG FIX: carry the variant (colour/size) this cart row is for through to
+      // the order — without it, checkout couldn't tell "Green" from "Blue" apart
+      // and the order always fell back to the product's default photo.
+      variantId: i.variantId || null,
       quantity: i.quantity,
       deliveryCharge: itemDeliveryCharge(i),
       courierId:   courierMap[i.cartId]?.selected?.courierId   ?? null,
@@ -397,6 +401,7 @@ export default function Checkout() {
           // BUG FIX: include the courier the customer selected for each item
           const items = cart.map(i => ({
             productId: i.productId,
+            variantId: i.variantId || null,
             quantity: i.quantity,
             deliveryCharge: itemDeliveryCharge(i),
             courierId:   courierMap[i.cartId]?.selected?.courierId   ?? null,

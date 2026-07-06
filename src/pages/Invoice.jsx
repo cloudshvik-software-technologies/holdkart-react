@@ -300,6 +300,11 @@ export default function Invoice() {
                 <tr>
                   <td style={tdL()}>
                     <div style={{ fontWeight: 600 }}>{order.product_name}</div>
+                    {(order.variant_color || order.variant_size) && (
+                      <div style={{ color: '#374151', fontSize: '0.62rem', fontWeight: 600 }}>
+                        {[order.variant_color, order.variant_size].filter(Boolean).join(' / ')}
+                      </div>
+                    )}
                     {order.category && <div style={{ color: '#6b7280', fontSize: '0.62rem' }}>{order.category}</div>}
                     <div style={{ color: '#555', fontSize: '0.6rem' }}>SGST/UTGST: 9% | CGST: 9%</div>
                   </td>

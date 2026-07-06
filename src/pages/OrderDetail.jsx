@@ -509,7 +509,11 @@ export default function OrderDetail() {
                 }
                 <div style={{ flex: 1 }}>
                   <div className="od-prod-name">{order.product_name}</div>
-                  {order.variant && <div className="od-prod-variant">{order.variant}</div>}
+                  {(order.variant_color || order.variant_size) && (
+                    <div className="od-prod-variant">
+                      {[order.variant_color, order.variant_size].filter(Boolean).join(' / ')}
+                    </div>
+                  )}
                   {order.sellerName && <div className="od-prod-seller">Seller: {order.sellerName}</div>}
                   {CANCEL_LIKE_META[order.order_status] && (
                     <div style={{

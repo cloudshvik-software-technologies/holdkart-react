@@ -611,6 +611,11 @@ function OrderCard({ order, onCancelClick, onReturnClick, onReviewClick }) {
               Qty: {order.quantity || 1}
               {order.size && <> &nbsp;·&nbsp; Size: {order.size}</>}
             </div>
+            {(order.variant_color || order.variant_size) && (
+              <div className="amz-prod-meta" style={{ fontWeight: 600, color: '#374151' }}>
+                {[order.variant_color, order.variant_size].filter(Boolean).join(' / ')}
+              </div>
+            )}
 
             {!isCancelled && !isRequested && !isReturnRequested && <OrderProgress status={status} />}
 
