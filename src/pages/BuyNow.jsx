@@ -301,6 +301,9 @@ export default function BuyNow() {
       // previously it was used only to compute deliveryCharge and discarded.
       items: [{
         productId: item.productId,
+        // BUG FIX: carry the variant (colour/size) through to the order — see
+        // Checkout.jsx for the same fix on the multi-item checkout flow.
+        variantId: item.variantId || null,
         quantity: item.quantity,
         courierId:   courier.selected?.courierId   ?? null,
         courierName: courier.selected?.courierName ?? null,
@@ -337,6 +340,7 @@ export default function BuyNow() {
             await orderService.placeOrder({
               items: [{
                 productId: item.productId,
+                variantId: item.variantId || null,
                 quantity: item.quantity,
                 courierId:   courier.selected?.courierId   ?? null,
                 courierName: courier.selected?.courierName ?? null,

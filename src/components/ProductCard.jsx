@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import StarRating from './StarRating.jsx';
 import JoinDealModal from './JoinDealModal.jsx';
@@ -28,6 +29,9 @@ export default function ProductCard({ product, alreadyJoined = false }) {
   const [localHold, setLocalHold]         = useState(product.currentHold || 0);
   const [hasJoined, setHasJoined]         = useState(alreadyJoined);
   const [showJoinModal, setShowJoinModal] = useState(false);
+  const [showVariantPopover, setShowVariantPopover] = useState(false);
+  const [variantDeals, setVariantDeals]   = useState([]);
+  const [variantDealsLoading, setVariantDealsLoading] = useState(false);
   const pollRef = useRef(null);
 
   // Poll every 4s while joined — redirect to cart when deal completes
@@ -70,7 +74,15 @@ export default function ProductCard({ product, alreadyJoined = false }) {
     }).catch(() => {});
   }, [isAuthenticated, product.productId]);
 
-  const handleCardClick = () => navigate(`/product/${product.productId}`);
+  // BUG FIX: the card shows the "best" deal variant's photo/price (e.g. the White
+  // iPhone with 4/5 joined), but clicking it used to land on the product page with
+  // no ?variant param — so the detail page's default-selection logic fell back to
+  // whichever variant it found first (often a different colour, e.g. Black), not
+  // the one actually pictured on the card. Passing the variant along keeps them in sync.
+  const handleCardClick = () => {
+    const suffix = product.campaignVariantId ? `?variant=${product.campaignVariantId}` : '';
+    navigate(`/product/${product.productId}${suffix}`);
+  };
 
   const handleCart = async (e) => {
     e.stopPropagation();
@@ -115,15 +127,56 @@ export default function ProductCard({ product, alreadyJoined = false }) {
       try {
         const list = await productService.getVariants(product.productId);
         if (Array.isArray(list) && list.length > 0) {
-          navigate(`/product/${product.productId}`);
+          navigate(`/product/${product.productId}${product.campaignVariantId ? `?variant=${product.campaignVariantId}` : ''}`);
           return;
         }
       } catch {
-        navigate(`/product/${product.productId}`);
+        navigate(`/product/${product.productId}${product.campaignVariantId ? `?variant=${product.campaignVariantId}` : ''}`);
         return;
       }
     }
     setShowJoinModal(true);
+  };
+
+  // Opens the "+N more variants on deal" popover, listing every colour/size
+  // that currently has an active group deal so the shopper can jump straight
+  // to whichever one they actually want (this card only ever shows one).
+  const handleShowVariantDeals = async (e) => {
+    e.stopPropagation();
+    setShowVariantPopover(true);
+    if (variantDeals.length || variantDealsLoading) return;
+    setVariantDealsLoading(true);
+    try {
+      const [fullProduct, variantList] = await Promise.all([
+        productService.getProduct(product.productId),
+        productService.getVariants(product.productId),
+      ]);
+      const variants = Array.isArray(variantList) ? variantList : [];
+      const campaigns = (fullProduct?.campaigns || []).filter(c => c.variantId != null);
+      const rows = campaigns.map(c => {
+        const v = variants.find(vv => vv.id === c.variantId);
+        return {
+          variantId: c.variantId,
+          label: c.variantLabel || [v?.color, v?.size].filter(Boolean).join(' / '),
+          color: v?.color || null,
+          size: v?.size || null,
+          image: v?.images?.[0]?.url || null,
+          dealPrice: c.holdPrice,
+          target: c.holdTarget,
+          currentHold: c.currentHold,
+        };
+      }).sort((a, b) => (b.currentHold / (b.target || 1)) - (a.currentHold / (a.target || 1)));
+      setVariantDeals(rows);
+    } catch {
+      setVariantDeals([]);
+    } finally {
+      setVariantDealsLoading(false);
+    }
+  };
+
+  const handleSelectVariantDeal = (variantId) => {
+    setShowVariantPopover(false);
+    navigate(`/product/${product.productId}?variant=${variantId}`);
   };
 
   const handleJoinSuccess = (qty) => {
@@ -162,6 +215,77 @@ export default function ProductCard({ product, alreadyJoined = false }) {
           onClose={() => setShowJoinModal(false)}
           onJoinSuccess={handleJoinSuccess}
         />
+      )}
+      {showVariantPopover && createPortal(
+        <div
+          onClick={(e) => { e.stopPropagation(); setShowVariantPopover(false); }}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 99999,
+            background: 'rgba(0,0,0,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 12, padding: '18px 16px',
+              width: '100%', maxWidth: 380, maxHeight: '80vh', overflowY: 'auto',
+              boxShadow: '0 24px 64px rgba(0,0,0,0.28)',
+              fontFamily: "'Segoe UI', Arial, sans-serif",
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f1111', margin: 0 }}>Variants on deal</h3>
+              <button
+                onClick={() => setShowVariantPopover(false)}
+                style={{ background: 'none', border: 'none', fontSize: '1.4rem', color: '#9ca3af', cursor: 'pointer', lineHeight: 1 }}
+              >×</button>
+            </div>
+
+            {variantDealsLoading ? (
+              <p style={{ fontSize: '0.82rem', color: '#6b7280', textAlign: 'center', padding: '20px 0' }}>Loading…</p>
+            ) : variantDeals.length === 0 ? (
+              <p style={{ fontSize: '0.82rem', color: '#6b7280', textAlign: 'center', padding: '20px 0' }}>No other variant deals right now.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {variantDeals.map(v => {
+                  const pct = v.target > 0 ? Math.min(100, Math.round((v.currentHold / v.target) * 100)) : 0;
+                  return (
+                    <div
+                      key={v.variantId}
+                      onClick={() => handleSelectVariantDeal(v.variantId)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 10px',
+                        cursor: 'pointer', transition: 'background 0.15s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#f9fafb'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = '#fff'; }}
+                    >
+                      <img
+                        src={resolveImgSrc(v.image)}
+                        alt={v.label || 'Variant'}
+                        style={{ width: 44, height: 44, objectFit: 'contain', borderRadius: 6, background: '#f3f4f6', flexShrink: 0 }}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: '0.8rem', fontWeight: 700, color: '#111', margin: 0 }}>{v.label || 'Variant'}</p>
+                        <div style={{ height: 4, background: '#e5e7eb', borderRadius: 99, overflow: 'hidden', margin: '4px 0' }}>
+                          <div style={{ height: '100%', width: `${pct}%`, background: pct >= 100 ? '#16a34a' : '#2a5298', borderRadius: 99 }} />
+                        </div>
+                        <p style={{ fontSize: '0.68rem', color: '#6b7280', margin: 0 }}>{v.currentHold}/{v.target} joined</p>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <p style={{ fontSize: '0.85rem', fontWeight: 800, color: '#dc2626', margin: 0 }}>₹{Number(v.dealPrice).toLocaleString('en-IN')}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
       )}
       <div
         onClick={handleCardClick}
@@ -225,6 +349,37 @@ export default function ProductCard({ product, alreadyJoined = false }) {
               </>
             ) : <span style={{ display: 'block' }} />}
           </div>
+
+          {/* Which variant this card's deal price/photo belongs to, and whether other
+              variants of the same product also have a deal running right now. */}
+          {hasGroupDeal && (product.campaignVariantLabel || product.otherVariantDealsCount > 0) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 3 }}>
+              {product.campaignVariantLabel && (
+                <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#374151', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 3, padding: '1px 5px' }}>
+                  {product.campaignVariantLabel}
+                </span>
+              )}
+              {product.otherVariantDealsCount > 0 && (
+                <button
+                  onClick={handleShowVariantDeals}
+                  className="hk-variant-deal-badge"
+                  title="See all variants running a deal"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    fontSize: '0.68rem', fontWeight: 800, color: '#fff',
+                    background: 'linear-gradient(135deg, #f97316, #dc2626)',
+                    border: 'none', borderRadius: 20, padding: '3px 9px 3px 7px',
+                    cursor: 'pointer', boxShadow: '0 1px 4px rgba(220,38,38,0.35)',
+                    animation: 'hkVariantPulse 1.8s ease-in-out infinite',
+                  }}
+                >
+                  <span aria-hidden="true">🔥</span>
+                  {product.otherVariantDealsCount} more variant{product.otherVariantDealsCount > 1 ? 's' : ''} on deal
+                  <span aria-hidden="true" style={{ marginLeft: 1 }}>›</span>
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Group Deal progress (deal products) / stock & shipping info (non-deal products) —
               same skeleton sizing in both cases so the Price/Buttons row stays aligned
@@ -330,6 +485,11 @@ export default function ProductCard({ product, alreadyJoined = false }) {
           </div>
 
           <style>{`
+            @keyframes hkVariantPulse {
+              0%, 100% { box-shadow: 0 1px 4px rgba(220,38,38,0.35); transform: scale(1); }
+              50% { box-shadow: 0 2px 10px rgba(220,38,38,0.55); transform: scale(1.035); }
+            }
+            .hk-variant-deal-badge:hover { filter: brightness(1.08); animation-play-state: paused; }
             /* ── Shrink deal-product action buttons on narrow/responsive screens so
                  Join + Add to Cart never get cut off / overflow the card width ── */
             @media (max-width: 768px) {

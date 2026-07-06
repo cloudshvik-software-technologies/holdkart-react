@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import SessionGuard from './components/SessionGuard.jsx';
 import LoginNudge   from './components/LoginNudge.jsx';
@@ -52,6 +53,19 @@ function GuestRoute() {
   return !isAuthenticated ? <Outlet /> : <Navigate to="/home" replace />;
 }
 
+// BUG FIX: this is a single-page app, so React Router never resets the
+// browser's scroll position when navigating between pages — clicking a
+// product card while scrolled down the Home page used to land on the
+// product page still scrolled down (looking like it "opened at the
+// bottom"). Reset to the top on every route change instead.
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [pathname]);
+  return null;
+}
+
 function AppLayout() {
   return (
     <>
@@ -76,6 +90,7 @@ function PublicLayout() {
 function AppRoutes() {
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <SessionGuard />
       <Routes>
 
