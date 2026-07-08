@@ -803,7 +803,7 @@ export default function Products() {
                   {products.flatMap((p, i) => {
                     const card = (
                       <div key={p.productId} className="hk-product-item"
-                        style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                        style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden', height: '100%' }}>
                         <ProductCard product={p} alreadyJoined={joinedProductIds.has(p.productId)} />
                       </div>
                     );
