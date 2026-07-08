@@ -117,12 +117,12 @@ function WishlistItem({ item, onRemove, removingId }) {
         <div
           onClick={() => navigate(`/product/${item.productId}`)}
           style={{
-            fontWeight: 600, fontSize: '0.98rem', color: '#0f1111', lineHeight: 1.4,
+            fontWeight: 600, fontSize: '0.98rem', color: '#1f2937', lineHeight: 1.4,
             cursor: 'pointer', maxWidth: 520,
             display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
           }}
-          onMouseEnter={e => e.currentTarget.style.color = '#c7511f'}
-          onMouseLeave={e => e.currentTarget.style.color = '#0f1111'}
+          onMouseEnter={e => e.currentTarget.style.color = '#E85D04'}
+          onMouseLeave={e => e.currentTarget.style.color = '#1f2937'}
         >
           {item.name}
         </div>
@@ -134,7 +134,7 @@ function WishlistItem({ item, onRemove, removingId }) {
               {item.avgRating.toFixed(1)} ★
             </div>
             {item.reviewCount > 0 && (
-              <span style={{ fontSize: '0.74rem', color: '#007185' }}>
+              <span style={{ fontSize: '0.74rem', color: '#2a5298' }}>
                 {item.reviewCount} {item.reviewCount === 1 ? 'rating' : 'ratings'}
               </span>
             )}
@@ -145,7 +145,7 @@ function WishlistItem({ item, onRemove, removingId }) {
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
           {hasGroupDeal && dealPrice ? (
             <>
-              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f1111' }}>
+              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1f2937' }}>
                 ₹{dealPrice.toLocaleString('en-IN')}
               </span>
               <span style={{ fontSize: '0.85rem', color: '#9ca3af', textDecoration: 'line-through' }}>
@@ -156,7 +156,7 @@ function WishlistItem({ item, onRemove, removingId }) {
               </span>
             </>
           ) : (
-            <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f1111' }}>
+            <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1f2937' }}>
               ₹{displayPrice.toLocaleString('en-IN')}
             </span>
           )}
@@ -239,7 +239,7 @@ export default function Wishlist() {
 
           {/* Breadcrumb */}
           <div style={{ fontSize: '0.78rem', color: '#555', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Link to="/" style={{ color: '#007185', textDecoration: 'none' }}
+            <Link to="/" style={{ color: '#2a5298', textDecoration: 'none' }}
               onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
               onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}>
               Home
@@ -251,7 +251,7 @@ export default function Wishlist() {
           {/* Page header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
             <div>
-              <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#0f1111', margin: 0, lineHeight: 1.2 }}>
+              <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#1f2937', margin: 0, lineHeight: 1.2 }}>
                 Your Wish List
               </h1>
               {!loading && (
@@ -264,13 +264,11 @@ export default function Wishlist() {
               to="/products"
               style={{
                 padding: '8px 18px',
-                background: 'linear-gradient(to bottom, #f7dfa5, #f0c14b)',
-                border: '1px solid #a88734',
+                background: 'rgb(240 127 34)', border: '1px solid #994917',
                 borderRadius: 4,
-                fontWeight: 700, fontSize: '0.85rem', color: '#111',
+                fontWeight: 700, fontSize: '0.85rem', color: '#fff',
                 textDecoration: 'none',
                 display: 'inline-flex', alignItems: 'center', gap: 6,
-                boxShadow: '0 1px 0 rgba(255,255,255,0.4) inset',
               }}
             >
                Continue Shopping
@@ -291,7 +289,7 @@ export default function Wishlist() {
               padding: '60px 32px', textAlign: 'center',
             }}>
               <div style={{ fontSize: '4rem', marginBottom: 16, lineHeight: 1 }}>♡</div>
-              <h2 style={{ fontSize: '1.3rem', fontWeight: 700, color: '#0f1111', marginBottom: 8 }}>
+              <h2 style={{ fontSize: '1.3rem', fontWeight: 700, color: '#1f2937', marginBottom: 8 }}>
                 Your wish list is empty
               </h2>
               <p style={{ fontSize: '0.92rem', color: '#555', marginBottom: 24, maxWidth: 360, margin: '0 auto 24px' }}>
@@ -302,10 +300,9 @@ export default function Wishlist() {
                 style={{
                   display: 'inline-block',
                   padding: '10px 24px',
-                  background: 'linear-gradient(to bottom, #f7dfa5, #f0c14b)',
-                  border: '1px solid #a88734',
+                  background: 'rgb(240 127 34)', border: '1px solid #994917',
                   borderRadius: 4,
-                  fontWeight: 700, fontSize: '0.92rem', color: '#111',
+                  fontWeight: 700, fontSize: '0.92rem', color: '#fff',
                   textDecoration: 'none',
                 }}
               >

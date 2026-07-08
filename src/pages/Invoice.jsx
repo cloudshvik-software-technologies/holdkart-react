@@ -169,7 +169,7 @@ export default function Invoice() {
         .inv-toolbar { max-width:870px; margin:0 auto 14px; padding:0 16px; display:flex; align-items:center; gap:10px; }
         .inv-btn-back { display:inline-flex; align-items:center; gap:6px; background:#fff; border:1.5px solid #e5e7eb; border-radius:8px; padding:9px 18px; font-size:0.87rem; font-weight:600; color:#1f2937; cursor:pointer; font-family:inherit; }
         .inv-btn-back:hover { background:#f4f6fa; }
-        .inv-btn-dl { display:inline-flex; align-items:center; gap:8px; background:linear-gradient(135deg,#FF6B00,#E85D04); border:none; border-radius:8px; padding:9px 22px; font-size:0.87rem; font-weight:700; color:#fff; cursor:pointer; font-family:inherit; box-shadow:0 3px 10px rgba(255,107,0,.35); }
+        .inv-btn-dl { display:inline-flex; align-items:center; gap:8px; background:rgb(240 127 34); border:1px solid #994917; border-radius:8px; padding:9px 22px; font-size:0.87rem; font-weight:700; color:#fff; cursor:pointer; font-family:inherit; box-shadow:0 3px 10px rgba(255,107,0,.35); }
         .inv-btn-dl:disabled { opacity:.65; cursor:not-allowed; }
         .inv-card { max-width:870px; margin:0 auto; padding:0 16px; }
         @media print { .inv-toolbar{display:none} .inv-page{padding-top:0;background:#fff} .inv-doc{box-shadow:none!important} }

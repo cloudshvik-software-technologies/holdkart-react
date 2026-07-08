@@ -334,7 +334,7 @@ export default function OrderDetail() {
         .od-star-btn:hover { transform: scale(1.2); }
         .od-review-textarea { width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 10px 12px; font-size: 0.88rem; font-family: inherit; resize: vertical; min-height: 80px; box-sizing: border-box; margin-top: 10px; }
         .od-review-textarea:focus { outline: none; border-color: #2a5298; }
-        .od-submit-review-btn { margin-top: 12px; background: #e47911; color: #fff; border: none; border-radius: 20px; padding: 8px 22px; font-size: 0.88rem; font-weight: 600; cursor: pointer; font-family: inherit; }
+        .od-submit-review-btn { margin-top: 12px; background: #FF6B00; color: #fff; border: none; border-radius: 20px; padding: 8px 22px; font-size: 0.88rem; font-weight: 600; cursor: pointer; font-family: inherit; }
         .od-submit-review-btn:disabled { opacity: 0.6; cursor: not-allowed; }
         .od-submit-review-btn:hover:not(:disabled) { background: #c96a00; }
         .od-img-upload-label { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; cursor: pointer; font-size: 0.84rem; color: #2a5298; font-weight: 500; border: 1px dashed #90a8d4; border-radius: 6px; padding: 7px 14px; }

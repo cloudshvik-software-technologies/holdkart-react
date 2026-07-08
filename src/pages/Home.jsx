@@ -32,16 +32,16 @@ const BRANDS = [
 const SLIDES = [
   {
     id: 0,
-    bg: '#131921',
-    accentBar: '#febd69',
+    bg: '#1e3c72',
+    accentBar: '#FF6B00',
     topLabel: 'HoldKart Big Sale | Live Now',
     headline: '50–80% off',
     sub: 'Deals on Electronics & Gadgets',
     brands: ['Samsung', 'Apple', 'Sony'],
     badge: 'Extra 10% cashback*',
     offer: '10% Instant discount* on UPI transactions',
-    color1: '#e47911',
-    color2: '#febd69',
+    color1: '#FF6B00',
+    color2: '#E85D04',
     leftImg:  { src: 'https://images.unsplash.com/photo-1616348436168-de43ad0db179?w=480&q=90', alt: 'Smartphone' },
     rightImg: { src: 'https://images.unsplash.com/photo-1525547719571-a2d4ac8945e2?w=480&q=90', alt: 'Laptop' },
   },
@@ -164,10 +164,10 @@ function SuggestedForYou({ items: itemsProp, loading, guardedNav, title = 'Sugge
     <div style={{ background: '#fff', borderRadius: 4, border: '1px solid #ddd', padding: '16px 20px', marginBottom: 12, position: 'relative' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2 style={{ fontWeight: 800, fontSize: '1.15rem', color: '#0f1111', margin: 0 }}>{title}</h2>
+        <h2 style={{ fontWeight: 800, fontSize: '1.15rem', color: '#1f2937', margin: 0 }}>{title}</h2>
         <button
           onClick={() => guardedNav(`/products`)}
-          style={{ width: 38, height: 38, borderRadius: '50%', background: '#0f1111', border: 'none', color: '#fff', fontSize: '1.1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+          style={{ width: 38, height: 38, borderRadius: '50%', background: '#1f2937', border: 'none', color: '#fff', fontSize: '1.1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
         >→</button>
       </div>
 
@@ -202,15 +202,15 @@ function SuggestedForYou({ items: itemsProp, loading, guardedNav, title = 'Sugge
                     : <div style={{ fontSize: '2.5rem', color: '#ccc' }}>📦</div>
                   }
                 </div>
-                <div style={{ fontSize: '0.8rem', color: '#0f1111', fontWeight: 500, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                <div style={{ fontSize: '0.8rem', color: '#1f2937', fontWeight: 500, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                   {p.name || p.productName || catName}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
                   {mrp > price && <span style={{ fontSize: '0.75rem', color: '#878787', textDecoration: 'line-through' }}>₹{mrp.toLocaleString('en-IN')}</span>}
-                  <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f1111' }}>₹{price.toLocaleString('en-IN')}</span>
+                  <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1f2937' }}>₹{price.toLocaleString('en-IN')}</span>
                 </div>
                 {upiPrice > 0 && price > 0 && (
-                  <div style={{ fontSize: '0.72rem', color: '#2874f0', fontWeight: 600 }}>
+                  <div style={{ fontSize: '0.72rem', color: '#2a5298', fontWeight: 600 }}>
                     ₹{upiPrice.toLocaleString('en-IN')} <span style={{ fontWeight: 400 }}>with deal + more</span>
                   </div>
                 )}
@@ -391,7 +391,7 @@ function ShopMoreGrid({ items: itemsProp, allProducts, categories, loading, guar
         return (
           <div key={cat} style={{ background: '#fff', borderRadius: 4, border: '1px solid #ddd', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
             {/* Title */}
-            <h3 style={{ fontWeight: 800, fontSize: '1rem', color: '#0f1111', lineHeight: 1.3, margin: 0 }}>
+            <h3 style={{ fontWeight: 800, fontSize: '1rem', color: '#1f2937', lineHeight: 1.3, margin: 0 }}>
               {SECTION_TITLES[si] || cat}
             </h3>
 
@@ -407,7 +407,7 @@ function ShopMoreGrid({ items: itemsProp, allProducts, categories, loading, guar
             </div>
 
             {/* Product name */}
-            <div style={{ fontSize: '0.78rem', color: '#0f1111', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+            <div style={{ fontSize: '0.78rem', color: '#1f2937', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
               {hero.name || hero.productName || cat}
             </div>
 
@@ -418,7 +418,7 @@ function ShopMoreGrid({ items: itemsProp, allProducts, categories, loading, guar
                 <sup style={{ fontSize: '0.55rem', verticalAlign: 'super' }}>00</sup>
               </span>
               {mrp > price && (
-                <span style={{ fontSize: '0.72rem', color: '#565959' }}>
+                <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>
                   M.R.P: <span style={{ textDecoration: 'line-through' }}>₹{mrp.toLocaleString('en-IN')}</span>
                 </span>
               )}
@@ -433,7 +433,7 @@ function ShopMoreGrid({ items: itemsProp, allProducts, categories, loading, guar
                     key={ti}
                     onClick={() => guardedNav(`/product/${p.productId}`)}
                     style={{
-                      width: 52, height: 52, borderRadius: 4, border: ti === 0 ? '2px solid #007185' : '1px solid #ddd',
+                      width: 52, height: 52, borderRadius: 4, border: ti === 0 ? '2px solid #2a5298' : '1px solid #ddd',
                       background: '#f7f7f7', overflow: 'hidden', cursor: 'pointer', flexShrink: 0,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}
@@ -448,7 +448,7 @@ function ShopMoreGrid({ items: itemsProp, allProducts, categories, loading, guar
             </div>
 
             {/* See more */}
-            <a onClick={() => guardedNav(`/products?category=${encodeURIComponent(cat)}`)} style={{ fontSize: '0.78rem', color: '#007185', cursor: 'pointer', fontWeight: 500, marginTop: 'auto' }}>
+            <a onClick={() => guardedNav(`/products?category=${encodeURIComponent(cat)}`)} style={{ fontSize: '0.78rem', color: '#2a5298', cursor: 'pointer', fontWeight: 500, marginTop: 'auto' }}>
               See more
             </a>
           </div>
@@ -495,8 +495,8 @@ function BrowsingHistoryCarousel({ items: itemsProp, loading, guardedNav, joined
   return (
     <div style={{ background: '#fff', borderRadius: 4, border: '1px solid #ddd', padding: '16px', marginBottom: 12, position: 'relative' }}>
       <div className="hk-bh-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#0f1111' }}>{title}</h2>
-        <span className="hk-bh-page" style={{ fontSize: '0.78rem', color: '#565959', whiteSpace: 'nowrap', flexShrink: 0 }}>Page 1 of {Math.ceil(itemsProp.length / 7)}</span>
+        <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#1f2937' }}>{title}</h2>
+        <span className="hk-bh-page" style={{ fontSize: '0.78rem', color: '#6b7280', whiteSpace: 'nowrap', flexShrink: 0 }}>Page 1 of {Math.ceil(itemsProp.length / 7)}</span>
       </div>
 
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -556,7 +556,7 @@ function BrowsingHistoryCarousel({ items: itemsProp, loading, guardedNav, joined
                     : <div style={{ fontSize: '2rem', color: '#ccc' }}>📦</div>
                   }
                 </div>
-                <div style={{ fontSize: '0.78rem', color: '#007185', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                <div style={{ fontSize: '0.78rem', color: '#2a5298', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                   {p.name || p.productName || 'Product'}
                 </div>
                 {discPct > 0 && (
@@ -566,7 +566,7 @@ function BrowsingHistoryCarousel({ items: itemsProp, loading, guardedNav, joined
                   </div>
                 )}
                 {mrp > price && (
-                  <div style={{ fontSize: '0.7rem', color: '#565959' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#6b7280' }}>
                     M.R.P: <span style={{ textDecoration: 'line-through' }}>₹{mrp.toLocaleString('en-IN')}</span>
                   </div>
                 )}
@@ -631,10 +631,10 @@ function BasedOnCartCarousel({ items: itemsProp, loading, guardedNav, title = 'B
   return (
     <div style={{ background: '#fff', borderRadius: 4, border: '1px solid #ddd', padding: '16px 20px', marginBottom: 12, position: 'relative' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#0f1111', margin: 0 }}>{title}</h2>
+        <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#1f2937', margin: 0 }}>{title}</h2>
         <button
           onClick={() => guardedNav('/products')}
-          style={{ background: 'none', border: 'none', color: '#007185', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', padding: 0 }}
+          style={{ background: 'none', border: 'none', color: '#2a5298', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', padding: 0 }}
         >See more →</button>
       </div>
 
@@ -1064,7 +1064,7 @@ export default function Home({ isGuest = false }) {
 
         .hk-deal-card { background:#fff; border-radius:6px; padding:16px; transition:box-shadow 0.2s, border-color 0.2s; cursor:pointer; border-color: #ddd; }
         .hk-deal-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.18); border-color: #c0c0c0; }
-        .hk-deal-card h3 { font-size: 0.95rem; font-weight: 800; color: #0f1111; margin-bottom: 10px; line-height: 1.35; }
+        .hk-deal-card h3 { font-size: 0.95rem; font-weight: 800; color: #1f2937; margin-bottom: 10px; line-height: 1.35; }
         .hk-deal-card .hk-sub-item { border-radius: 6px; transition: transform 0.15s; }
         .hk-deal-card .hk-sub-item:hover { transform: scale(1.02); }
         .hk-deal-card .hk-sub-item > div:first-child { background: #f7f8fa !important; }
@@ -1097,13 +1097,13 @@ export default function Home({ isGuest = false }) {
         .hk-arrow.left  { left: 0; border-radius: 0 4px 4px 0; }
         .hk-arrow.right { right: 0; border-radius: 4px 0 0 4px; }
 
-        .hk-see-more { color:#007185; font-size:0.8rem; font-weight:500; text-decoration:none; }
-        .hk-see-more:hover { color:#c7511f; text-decoration:underline; }
+        .hk-see-more { color:#2a5298; font-size:0.8rem; font-weight:500; text-decoration:none; }
+        .hk-see-more:hover { color:#1e3c72; text-decoration:underline; }
 
-        .hk-cta { display:inline-block; background:linear-gradient(180deg,#f7dfa5,#f0c14b); border:1px solid #a88734; border-radius:3px; padding:9px 24px; font-size:0.88rem; font-weight:700; color:#111; cursor:pointer; margin-top:14px; transition:background 0.15s; font-family:inherit; }
-        .hk-cta:hover { background:linear-gradient(180deg,#f5d78e,#e8b842); }
-        .hk-cta-blue { background:linear-gradient(180deg,#7ac6e6,#4ba3cc); border-color:#367c96; color:#fff; }
-        .hk-cta-blue:hover { background:linear-gradient(180deg,#6ab8da,#3a95be); }
+        .hk-cta { display:inline-block; background:linear-gradient(135deg,#FF6B00,#E85D04); border:1px solid #E85D04; border-radius:6px; padding:9px 24px; font-size:0.88rem; font-weight:700; color:#fff; cursor:pointer; margin-top:14px; transition:opacity 0.15s; font-family:inherit; }
+        .hk-cta:hover { opacity:0.88; }
+        .hk-cta-blue { background:linear-gradient(135deg,#2a5298,#1e3c72); border-color:#1e3c72; color:#fff; }
+        .hk-cta-blue:hover { opacity:0.88; }
 
         .hk-brands-track { display:flex; animation:brandScroll 30s linear infinite; width:max-content; }
         .hk-brands-track:hover { animation-play-state:paused; }
@@ -1247,7 +1247,7 @@ export default function Home({ isGuest = false }) {
 
       {/* ════════════ TOP ACCENT BAR ════════════ */}
       <div className="hk-accent-bar" style={{ background: slide.accentBar, padding: '7px 0', textAlign: 'center' }}>
-        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: slide.accentBar === '#febd69' ? '#111' : '#fff', letterSpacing: 0.3 }}>
+        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: slide.accentBar === '#16213e' ? '#fff' : '#1f2937', letterSpacing: 0.3 }}>
           {slide.topLabel}
         </span>
       </div>
@@ -1277,7 +1277,7 @@ export default function Home({ isGuest = false }) {
         >
           {dealSections.map((sec) => (
             <div key={sec.id} className="hk-deal-card" onClick={() => guardedNav(sec.link)} style={{ border: '1px solid #ddd' }}>
-              <h3 style={{ fontWeight: 800, fontSize: '0.98rem', color: '#0f1111', marginBottom: 12, lineHeight: 1.3, minHeight: 42 }}>{sec.title}</h3>
+              <h3 style={{ fontWeight: 800, fontSize: '0.98rem', color: '#1f2937', marginBottom: 12, lineHeight: 1.3, minHeight: 42 }}>{sec.title}</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 {sec.items.map((item) => (
                   <div key={item.label} className="hk-sub-item" style={{ background: '#f7f7f7', borderRadius: 4, overflow: 'hidden', textAlign: 'center', cursor: 'pointer' }}>
@@ -1292,8 +1292,8 @@ export default function Home({ isGuest = false }) {
                       )}
                     </div>
                     <div style={{ padding: '6px 6px 8px' }}>
-                      <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0f1111', lineHeight: 1.3 }}>{item.label}</div>
-                      <div style={{ fontSize: '0.65rem', color: '#565959', marginTop: 2 }}>{item.sub}</div>
+                      <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1f2937', lineHeight: 1.3 }}>{item.label}</div>
+                      <div style={{ fontSize: '0.65rem', color: '#6b7280', marginTop: 2 }}>{item.sub}</div>
                     </div>
                   </div>
                 ))}
@@ -1319,7 +1319,7 @@ export default function Home({ isGuest = false }) {
           <div style={{ marginBottom: 12 }}>
             <div style={{ background: '#fff', borderRadius: 4, padding: '16px 16px 8px', border: '1px solid #ddd' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#0f1111' }}>🎯 {isGuest ? 'Hold Deals — Group Buy & Save' : 'My Hold Deals'}</h2>
+                <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#1f2937' }}>🎯 {isGuest ? 'Hold Deals — Group Buy & Save' : 'My Hold Deals'}</h2>
                 <button onClick={() => guardedNav('/campaigns')} className="hk-see-more" style={{ fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}>See all campaigns →</button>
               </div>
               <div className="hk-camp-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 12 }}>
@@ -1368,7 +1368,7 @@ export default function Home({ isGuest = false }) {
                         <p style={{ fontSize: '0.68rem', color: '#6b7280', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                           {c.category || 'Hold Deal'}
                         </p>
-                        <p style={{ fontWeight: 600, fontSize: '0.88rem', color: '#0f1111', marginBottom: 4, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', minHeight: '2.3em' }}>
+                        <p style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1f2937', marginBottom: 4, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', minHeight: '2.3em' }}>
                           {c.product_name}
                         </p>
                         <div style={{ marginBottom: 5 }}>
@@ -1388,14 +1388,14 @@ export default function Home({ isGuest = false }) {
                         </div>
                         <div style={{ marginBottom: 8, marginTop: 'auto' }}>
                           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                            <span style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0f1111' }}>₹{displayPrice.toLocaleString('en-IN')}</span>
+                            <span style={{ fontSize: '1.05rem', fontWeight: 700, color: '#1f2937' }}>₹{displayPrice.toLocaleString('en-IN')}</span>
                             {discountPct > 0 && <span style={{ fontSize: '0.78rem', color: '#9ca3af', textDecoration: 'line-through' }}>₹{retailPrice.toLocaleString('en-IN')}</span>}
                           </div>
                           <p style={{ fontSize: '0.65rem', color: '#6b7280', marginTop: 1 }}>Inclusive of all taxes</p>
                         </div>
                         <button
                           onClick={e => { e.stopPropagation(); guardedNav(detailPath); }}
-                          style={{ width: '100%', padding: '7px 0', background: '#f0c14b', border: '1px solid #a88734', borderRadius: 4, fontWeight: 700, fontSize: '0.82rem', color: '#111', cursor: 'pointer' }}
+                          style={{ width: '100%', padding: '7px 0', background: 'rgb(240 127 34)', border: '1px solid #994917', borderRadius: 4, fontWeight: 700, fontSize: '0.82rem', color: '#fff', cursor: 'pointer' }}
                         >
                           View Deal
                         </button>
@@ -1501,8 +1501,8 @@ export default function Home({ isGuest = false }) {
         <div style={{ background: '#fff', borderRadius: 4, border: '1px solid #ddd', padding: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div>
-              <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#0f1111' }}>Top Picks For You</h2>
-              <p style={{ fontSize: '0.75rem', color: '#565959', marginTop: 3 }}>Based on your browsing & order history</p>
+              <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#1f2937' }}>Top Picks For You</h2>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: 3 }}>Based on your browsing & order history</p>
             </div>
             <button onClick={() => guardedNav('/products')} className="hk-see-more" style={{ fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}>See all products →</button>
           </div>
@@ -1547,7 +1547,7 @@ export default function Home({ isGuest = false }) {
         </div>
 
         {/* ── Trust badges ── */}
-        <div className="hk-trust-bar" style={{ background: '#232f3e', borderRadius: 4, marginTop: 12, padding: '18px 28px', display: 'flex', justifyContent: 'center', gap: 40, flexWrap: 'wrap' }}>
+        <div className="hk-trust-bar" style={{ background: '#1e3c72', borderRadius: 4, marginTop: 12, padding: '18px 28px', display: 'flex', justifyContent: 'center', gap: 40, flexWrap: 'wrap' }}>
           {[
             { icon: '✅', t: 'Quality Certified', s: 'Every item verified' },
             { icon: '🚚', t: 'Fast Delivery',      s: 'Pan India shipping' },

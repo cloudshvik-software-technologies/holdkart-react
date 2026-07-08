@@ -126,7 +126,7 @@ function cityMatchesDistrict(cityInput, district) {
 const inputStyle = {
   width: '100%', padding: '9px 12px',
   border: '1px solid #d1d5db', borderRadius: 4,
-  fontSize: '0.9rem', color: '#0f1111',
+  fontSize: '0.9rem', color: '#1f2937',
   outline: 'none', background: '#fff',
   boxSizing: 'border-box', fontFamily: 'inherit',
   transition: 'border-color 0.15s, box-shadow 0.15s',
@@ -403,21 +403,21 @@ export default function BuyNow() {
 
         {/* Header */}
         <div style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '14px 18px' }}>
-          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f1111', margin: 0 }}>Price Details</h3>
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', color: '#1f2937', margin: 0 }}>Price Details</h3>
         </div>
 
         {/* Item list */}
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #e5e7eb' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: '0.82rem', color: '#0f1111', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <p style={{ fontSize: '0.82rem', color: '#1f2937', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {item.name}
               </p>
               <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: 0 }}>
                 ₹{price.toLocaleString('en-IN')} × {qty}
               </p>
             </div>
-            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#0f1111', flexShrink: 0 }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1f2937', flexShrink: 0 }}>
               ₹{lineTotal.toLocaleString('en-IN')}
             </span>
           </div>
@@ -431,7 +431,7 @@ export default function BuyNow() {
           </div>
 
           {savings > 0 && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#007600', fontWeight: 600, marginBottom: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#16a34a', fontWeight: 600, marginBottom: 8 }}>
               <span>{item.hasGroupDeal ? 'Group Deal Savings' : 'Product Discount'}</span>
               <span>−₹{savings.toLocaleString('en-IN')}</span>
             </div>
@@ -451,7 +451,7 @@ export default function BuyNow() {
                 {deliveryCharge === null
                   ? <span style={{ color: '#6b7280', fontSize: '0.8rem' }}>Select courier</span>
                   : deliveryCharge === 0
-                    ? <span style={{ color: '#007600' }}>FREE</span>
+                    ? <span style={{ color: '#16a34a' }}>FREE</span>
                     : `₹${deliveryCharge}`
                 }
               </span>
@@ -467,7 +467,7 @@ export default function BuyNow() {
                   <span style={{ width: 14, height: 14, borderRadius: '50%', background: '#6b7280', color: '#fff', fontSize: '0.65rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'default', userSelect: 'none' }}>i</span>
                   {showFees && (
                     <div style={{ position: 'absolute', bottom: '120%', left: '50%', transform: 'translateX(-50%)', width: 220, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px 14px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 999, pointerEvents: 'none' }}>
-                      <p style={{ fontWeight: 700, fontSize: '0.82rem', color: '#0f1111', marginBottom: 6 }}>Platform Fee</p>
+                      <p style={{ fontWeight: 700, fontSize: '0.82rem', color: '#1f2937', marginBottom: 6 }}>Platform Fee</p>
                       <p style={{ fontSize: '0.78rem', color: '#6b7280', lineHeight: 1.5 }}>A non-refundable fee charged to help keep the platform running smoothly and support app improvements.</p>
                       <div style={{ position: 'absolute', bottom: -6, left: '50%', transform: 'translateX(-50%)', width: 10, height: 10, background: '#fff', border: '1px solid #e5e7eb', borderTop: 'none', borderLeft: 'none', rotate: '45deg' }} />
                     </div>
@@ -478,9 +478,9 @@ export default function BuyNow() {
             </div>
           </div>
 
-          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1.05rem', color: '#0f1111' }}>
+          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1.05rem', color: '#1f2937' }}>
             <span>{depositPaid > 0 ? 'Amount Due' : 'Order Total'}</span>
-            <span style={{ color: depositPaid > 0 ? '#2a5298' : '#0f1111' }}>₹{total.toLocaleString('en-IN')}</span>
+            <span style={{ color: depositPaid > 0 ? '#2a5298' : '#1f2937' }}>₹{total.toLocaleString('en-IN')}</span>
           </div>
           <p style={{ fontSize: '0.68rem', color: '#6b7280', marginTop: 4 }}>Inclusive of all taxes</p>
           {depositPaid > 0 && (
@@ -560,13 +560,13 @@ export default function BuyNow() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: addrDone ? 4 : 0 }}>
                     <span style={{
                       width: 22, height: 22, borderRadius: '50%',
-                      background: addrDone ? '#007600' : '#2a5298',
+                      background: addrDone ? '#16a34a' : '#2a5298',
                       color: '#fff', display: 'inline-flex', alignItems: 'center',
                       justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, flexShrink: 0,
                     }}>
                       {addrDone ? '✓' : '!'}
                     </span>
-                    <span style={{ fontWeight: 700, fontSize: '0.88rem', color: addrDone ? '#007600' : '#2a5298' }}>
+                    <span style={{ fontWeight: 700, fontSize: '0.88rem', color: addrDone ? '#16a34a' : '#2a5298' }}>
                       Delivery Address
                     </span>
                   </div>
@@ -628,7 +628,7 @@ export default function BuyNow() {
                             onChange={e => set('city', e.target.value)}
                             disabled={!address.state}
                             onFocus={onF('city')} onBlur={onB}
-                            style={{ ...inp('city'), background: !address.state ? '#f9fafb' : '#fff', color: !address.state ? '#9ca3af' : '#0f1111' }}
+                            style={{ ...inp('city'), background: !address.state ? '#f9fafb' : '#fff', color: !address.state ? '#9ca3af' : '#1f2937' }}
                           />
                         )}
                       </Field>
@@ -698,7 +698,7 @@ export default function BuyNow() {
                   />
                 </div>
                 <div style={{ minWidth: 0 }}>
-                  <p style={{ fontSize: '0.88rem', fontWeight: 500, color: '#0f1111', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <p style={{ fontSize: '0.88rem', fontWeight: 500, color: '#1f2937', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {item.name}
                   </p>
                   <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0 0 4px' }}>Qty: {qty}</p>
@@ -713,11 +713,11 @@ export default function BuyNow() {
                   )}
                 </div>
                 <div className="hk-bn-item-price" style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <p style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f1111', margin: '0 0 2px' }}>
+                  <p style={{ fontWeight: 700, fontSize: '0.95rem', color: '#1f2937', margin: '0 0 2px' }}>
                     ₹{lineTotal.toLocaleString('en-IN')}
                   </p>
                   {savings > 0 && (
-                    <p style={{ fontSize: '0.72rem', color: '#007600', margin: 0, fontWeight: 600 }}>
+                    <p style={{ fontSize: '0.72rem', color: '#16a34a', margin: 0, fontWeight: 600 }}>
                       Save ₹{savings.toLocaleString('en-IN')}
                     </p>
                   )}
@@ -797,11 +797,11 @@ export default function BuyNow() {
                                 </div>
 
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                  <p style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0f1111', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  <p style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1f2937', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {c.courierName}
                                   </p>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.72rem', color: '#6b7280', whiteSpace: 'nowrap' }}>
-                                    <span style={{ color: c.rate === 0 ? '#007600' : '#0f1111', fontWeight: 700 }}>
+                                    <span style={{ color: c.rate === 0 ? '#16a34a' : '#1f2937', fontWeight: 700 }}>
                                       {c.rate === 0 ? 'FREE' : `₹${c.rate}`}
                                     </span>
                                     <span style={{ color: '#d1d5db' }}>•</span>
@@ -824,7 +824,7 @@ export default function BuyNow() {
 
             {/* ── PAYMENT METHOD ── */}
             <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '20px 24px', marginBottom: 16 }}>
-              <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#0f1111', margin: '0 0 18px' }}>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#1f2937', margin: '0 0 18px' }}>
                 Payment Method
               </h2>
 
@@ -854,7 +854,7 @@ export default function BuyNow() {
                       <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>{icon}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontWeight: 600, fontSize: '0.92rem', color: '#0f1111' }}>{label}</span>
+                          <span style={{ fontWeight: 600, fontSize: '0.92rem', color: '#1f2937' }}>{label}</span>
                           {badge && allowed && <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#dcfce7', color: '#15803d', padding: '2px 7px', borderRadius: 3 }}>{badge}</span>}
                         </div>
                         <div style={{ fontSize: '0.78rem', color: allowed ? '#6b7280' : '#dc2626', marginTop: 2 }}>
@@ -873,10 +873,10 @@ export default function BuyNow() {
                 disabled={placing || (address.paymentMethod === 'COD' ? !codAllowed : !onlineAllowed)}
                 style={{
                   width: '100%', padding: '13px',
-                  background: placing ? '#e5e7eb' : '#f0c14b',
-                  border: placing ? '1px solid #d1d5db' : '1px solid #a88734',
+                  background: placing ? '#e5e7eb' : 'rgb(240 127 34)',
+                  border: placing ? '1px solid #d1d5db' : '1px solid #994917',
                   borderRadius: 4, fontWeight: 700, fontSize: '1rem',
-                  color: placing ? '#9ca3af' : '#111',
+                  color: placing ? '#9ca3af' : '#fff',
                   cursor: placing ? 'not-allowed' : 'pointer',
                   fontFamily: 'inherit', transition: 'background 0.15s',
                 }}

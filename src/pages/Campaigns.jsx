@@ -49,7 +49,7 @@ function ProgressBar({ current, target }) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: 4 }}>
         <span style={{ color: '#6b7280' }}>
-          <b style={{ color: '#0f1111', fontWeight: 700 }}>{current}</b> / {target} members joined
+          <b style={{ color: '#1f2937', fontWeight: 700 }}>{current}</b> / {target} members joined
         </span>
         <span style={{ fontWeight: 700, color }}>{pct}%</span>
       </div>
@@ -127,7 +127,7 @@ function CampaignRow({ item, leaving, onLeave }) {
             onClick={e => { e.stopPropagation(); navigate(`/product/${item.product_id}`); }}
             title="View product"
             style={{
-              fontWeight: 400, fontSize: '0.97rem', color: '#007185',
+              fontWeight: 400, fontSize: '0.97rem', color: '#2a5298',
               cursor: 'pointer', margin: 0, lineHeight: 1.35,
               display: '-webkit-box', WebkitLineClamp: 2,
               WebkitBoxOrient: 'vertical', overflow: 'hidden',
@@ -261,13 +261,13 @@ export default function Campaigns() {
     <div style={{ background: '#f4f6fa', minHeight: '100vh', paddingTop: 112, paddingBottom: 60 }}>
       <div style={{ maxWidth: 480, margin: '60px auto', textAlign: 'center', padding: '0 16px' }}>
         <div style={{ fontSize: '3.5rem', marginBottom: 16 }}>🔒</div>
-        <h2 style={{ fontWeight: 700, color: '#0f1111', marginBottom: 8 }}>Sign in to view your deals</h2>
+        <h2 style={{ fontWeight: 700, color: '#1f2937', marginBottom: 8 }}>Sign in to view your deals</h2>
         <p style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: 24 }}>
           Your joined group deals will appear here.
         </p>
         <button
           onClick={() => navigate('/login')}
-          style={{ padding: '10px 32px', background: '#f0c14b', border: '1px solid #a88734', borderRadius: 4, fontWeight: 700, color: '#111', fontSize: '0.9rem', cursor: 'pointer' }}
+          style={{ padding: '10px 32px', background: 'rgb(240 127 34)', border: '1px solid #994917', borderRadius: 4, fontWeight: 700, color: '#fff', fontSize: '0.9rem', cursor: 'pointer' }}
         >
           Sign In
         </button>
@@ -289,7 +289,7 @@ export default function Campaigns() {
 
         {/* ── Page header ── */}
         <div style={{ marginBottom: 20 }}>
-          <h1 style={{ fontSize: '1.6rem', fontWeight: 400, color: '#0f1111', marginBottom: 4 }}>
+          <h1 style={{ fontSize: '1.6rem', fontWeight: 400, color: '#1f2937', marginBottom: 4 }}>
             My Group Deals
           </h1>
           <p style={{ fontSize: '0.82rem', color: '#6b7280' }}>
@@ -302,7 +302,7 @@ export default function Campaigns() {
           <div className="hk-camp-summary-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
             {[
               { label: 'Total Joined', value: mine.length,      icon: '', color: '#2a5298' },
-              { label: 'Active Deals', value: activeCount,       icon: '', color: '#007600' },
+              { label: 'Active Deals', value: activeCount,       icon: '', color: '#16a34a' },
               { label: 'Cancelled',    value: cancelledCount,    icon: '', color: '#991b1b' },
             ].map(s => (
               <div key={s.label} className="hk-camp-stat" style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -333,7 +333,7 @@ export default function Campaigns() {
                     borderBottom: active ? '2px solid #2a5298' : '2px solid transparent',
                     fontWeight: active ? 700 : 400,
                     fontSize: '0.85rem',
-                    color: active ? '#0f1111' : '#6b7280',
+                    color: active ? '#1f2937' : '#6b7280',
                     cursor: 'pointer',
                     fontFamily: 'inherit',
                     whiteSpace: 'nowrap',
@@ -368,13 +368,13 @@ export default function Campaigns() {
           /* Empty */
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '60px 40px', textAlign: 'center' }}>
             <div style={{ fontSize: '3.5rem', marginBottom: 16 }}>🤝</div>
-            <h2 style={{ fontWeight: 700, color: '#0f1111', marginBottom: 8, fontSize: '1.1rem' }}>No group deals yet</h2>
+            <h2 style={{ fontWeight: 700, color: '#1f2937', marginBottom: 8, fontSize: '1.1rem' }}>No group deals yet</h2>
             <p style={{ color: '#6b7280', fontSize: '0.88rem', marginBottom: 24, maxWidth: 340, margin: '0 auto 24px' }}>
               Join a group deal on any product page and track your savings progress right here.
             </p>
             <button
               onClick={() => navigate('/products')}
-              style={{ padding: '10px 28px', background: '#f0c14b', border: '1px solid #a88734', borderRadius: 4, fontWeight: 700, color: '#111', fontSize: '0.9rem', cursor: 'pointer' }}
+              style={{ padding: '10px 28px', background: 'rgb(240 127 34)', border: '1px solid #994917', borderRadius: 4, fontWeight: 700, color: '#fff', fontSize: '0.9rem', cursor: 'pointer' }}
             >
               Browse Products
             </button>

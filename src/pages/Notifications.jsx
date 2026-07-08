@@ -142,7 +142,7 @@ export default function Notifications() {
       <div style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f1111', margin: 0 }}>
+            <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1f2937', margin: 0 }}>
               Notifications
             </h1>
             <p style={{ color: '#6b7280', fontSize: '0.85rem', marginTop: 4 }}>
@@ -307,7 +307,7 @@ export default function Notifications() {
                         <span style={{
                           fontSize: '0.9rem',
                           fontWeight: read ? 500 : 700,
-                          color: read ? '#374151' : '#0f1111',
+                          color: read ? '#374151' : '#1f2937',
                           lineHeight: 1.3,
                         }}>
                           {n.title}

@@ -143,7 +143,7 @@ export default function JoinDealModal({ product, bestGroupPrice, maxDiscountPct,
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
               <span style={{ fontSize: '1.3rem' }}>🤝</span>
-              <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f1111', margin: 0 }}>Join Group Deal</h2>
+              <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1f2937', margin: 0 }}>Join Group Deal</h2>
             </div>
             <p style={{ fontSize: '0.78rem', color: '#6b7280', margin: 0 }}>{product.name}</p>
             {variantLabel && (

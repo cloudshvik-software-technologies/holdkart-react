@@ -404,7 +404,7 @@ function ListProductCard({ product, alreadyJoined = false }) {
                 </button>
               ) : (
                 <button onClick={handleJoin}
-                  style={{ padding: '8px 18px', background: '#f0c14b', border: '1px solid #a88734', borderRadius: 6, fontWeight: 600, fontSize: '0.85rem', color: '#111', cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  style={{ padding: '8px 18px', background: 'rgb(240 127 34)', border: '1px solid #994917', borderRadius: 6, fontWeight: 600, fontSize: '0.85rem', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   🤝 Join
                 </button>
               )

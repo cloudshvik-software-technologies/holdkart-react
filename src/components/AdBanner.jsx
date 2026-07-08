@@ -229,7 +229,7 @@ export function ScrollBannerAd({ style = {}, children }) {
           background: rgba(0,0,0,0.18); border: none; cursor: pointer; padding: 0;
           transition: all 0.3s;
         }
-        .hk-sb-dot.active { background: #2874f0; width: 22px; border-radius: 4px; }
+        .hk-sb-dot.active { background: #2a5298; width: 22px; border-radius: 4px; }
 
         /* ── Mobile/responsive only: shrink the fixed 600px scroll-banner cards
              so they fit the screen instead of overflowing almost entirely off it ── */
