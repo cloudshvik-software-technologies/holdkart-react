@@ -236,7 +236,7 @@ export default function ProductCard({ product, alreadyJoined = false }) {
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f1111', margin: 0 }}>Variants on deal</h3>
+              <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#1f2937', margin: 0 }}>Variants on deal</h3>
               <button
                 onClick={() => setShowVariantPopover(false)}
                 style={{ background: 'none', border: 'none', fontSize: '1.4rem', color: '#9ca3af', cursor: 'pointer', lineHeight: 1 }}
@@ -334,7 +334,7 @@ export default function ProductCard({ product, alreadyJoined = false }) {
             {product.category}
           </p>
           <p style={{
-            fontWeight: 500, fontSize: '0.88rem', color: '#0f1111',
+            fontWeight: 500, fontSize: '0.88rem', color: '#1f2937',
             marginBottom: 3, lineHeight: 1.3,
             display: '-webkit-box', WebkitLineClamp: 2,
             WebkitBoxOrient: 'vertical', overflow: 'hidden', minHeight: '2.3em',
@@ -414,7 +414,7 @@ export default function ProductCard({ product, alreadyJoined = false }) {
             <div style={{ fontSize: '0.68rem', marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 5, minHeight: '2.3em' }}>
               {hasGroupDeal ? (
                 <>
-                  <span style={{ color: '#0f1111', fontWeight: 700, fontSize: '0.67rem' }}>Best price on hold</span>
+                  <span style={{ color: '#1f2937', fontWeight: 700, fontSize: '0.67rem' }}>Best price on hold</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <span style={{ color: '#dc2626', fontWeight: 800 }}>₹{bestGroupPrice.toLocaleString('en-IN')}</span>
                     <span className="hk-discount-badge" style={{ background: '#dc2626', color: '#fff', borderRadius: 3, padding: '1px 4px', whiteSpace: 'nowrap', flexShrink: 0 }}>{maxDiscountPct}% off</span>
@@ -430,7 +430,7 @@ export default function ProductCard({ product, alreadyJoined = false }) {
           {/* Price */}
           <div style={{ marginBottom: 6, marginTop: 'auto' }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0f1111' }}>
+              <span style={{ fontSize: '1.05rem', fontWeight: 700, color: '#1f2937' }}>
                 ₹{displayPrice.toLocaleString('en-IN')}
               </span>
             </div>
@@ -456,9 +456,9 @@ export default function ProductCard({ product, alreadyJoined = false }) {
                   className="hk-card-btn"
                   style={{
                     flex: 1, padding: '6px 8px', whiteSpace: 'nowrap',
-                    background: '#f0c14b', border: '1px solid #a88734',
+                    background: 'rgb(240 127 34)', border: '1px solid #994917',
                     borderRadius: 4, fontWeight: 700, fontSize: '0.78rem',
-                    color: '#111', cursor: 'pointer',
+                    color: '#fff', cursor: 'pointer',
                     minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
                   }}
                 >

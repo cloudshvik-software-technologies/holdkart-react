@@ -109,7 +109,7 @@ export default function Cart() {
       <div style={inner}>
 
         {/* Page heading */}
-        <h1 className="hk-cart-page-title" style={{ fontSize: '1.7rem', fontWeight: 400, color: '#0f1111', marginBottom: 16 }}>
+        <h1 className="hk-cart-page-title" style={{ fontSize: '1.7rem', fontWeight: 400, color: '#1f2937', marginBottom: 16 }}>
           Shopping Cart
         </h1>
 
@@ -124,9 +124,9 @@ export default function Cart() {
           /* ── Empty cart ── */
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '60px 40px', textAlign: 'center' }}>
             <div style={{ fontSize: '4rem', marginBottom: 16 }}>🛒</div>
-            <h2 style={{ fontWeight: 700, color: '#0f1111', marginBottom: 8 }}>Your cart is empty</h2>
+            <h2 style={{ fontWeight: 700, color: '#1f2937', marginBottom: 8 }}>Your cart is empty</h2>
             <p style={{ color: '#6b7280', marginBottom: 24, fontSize: '0.9rem' }}>Looks like you haven't added anything yet.</p>
-            <Link to="/products" style={{ display: 'inline-block', padding: '10px 28px', background: '#f0c14b', border: '1px solid #a88734', borderRadius: 20, fontWeight: 700, color: '#111', fontSize: '0.9rem', textDecoration: 'none' }}>Browse Products</Link>
+            <Link to="/products" style={{ display: 'inline-block', padding: '10px 28px', background: 'rgb(240 127 34)', border: '1px solid #994917', borderRadius: 20, fontWeight: 700, color: '#fff', fontSize: '0.9rem', textDecoration: 'none' }}>Browse Products</Link>
           </div>
         ) : (
           /* ── Cart layout ── */
@@ -178,11 +178,11 @@ export default function Cart() {
                       <div>
                         <p
                           onClick={() => navigate(`/product/${item.productId}`)}
-                          style={{ fontWeight: 400, fontSize: '1rem', color: '#0f1111', marginBottom: 4, lineHeight: 1.4, cursor: 'pointer' }}
+                          style={{ fontWeight: 400, fontSize: '1rem', color: '#1f2937', marginBottom: 4, lineHeight: 1.4, cursor: 'pointer' }}
                         >
                           {item.name}
                         </p>
-                        <p style={{ fontSize: '0.78rem', color: '#007600', fontWeight: 600, marginBottom: 4 }}>
+                        <p style={{ fontSize: '0.78rem', color: '#16a34a', fontWeight: 600, marginBottom: 4 }}>
                           In Stock
                         </p>
                         {item.category && (
@@ -256,7 +256,7 @@ export default function Cart() {
 
                       {/* Price column */}
                       <div className="hk-cart-item-price" style={{ textAlign: 'right', minWidth: 110 }}>
-                        <p style={{ fontWeight: 700, fontSize: '1.1rem', color: '#0f1111', marginBottom: 2 }}>
+                        <p style={{ fontWeight: 700, fontSize: '1.1rem', color: '#1f2937', marginBottom: 2 }}>
                           ₹{itemTotal.toLocaleString('en-IN')}
                         </p>
                         {saved > 0 && (
@@ -264,7 +264,7 @@ export default function Cart() {
                             <p style={{ fontSize: '0.78rem', color: '#9ca3af', textDecoration: 'line-through', marginBottom: 2 }}>
                               ₹{mrpTotal.toLocaleString('en-IN')}
                             </p>
-                            <p style={{ fontSize: '0.75rem', color: '#007600', fontWeight: 600 }}>
+                            <p style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600 }}>
                               You save ₹{saved.toLocaleString('en-IN')}
                             </p>
                           </>
@@ -280,12 +280,12 @@ export default function Cart() {
 
               {/* Subtotal row at bottom of list */}
               <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderTop: 'none', borderRadius: '0 0 4px 4px', padding: '16px 20px', textAlign: 'right' }}>
-                <span style={{ fontSize: '1rem', color: '#0f1111' }}>
+                <span style={{ fontSize: '1rem', color: '#1f2937' }}>
                   Subtotal ({itemCount} item{itemCount !== 1 ? 's' : ''}):{' '}
                   <strong style={{ fontSize: '1.15rem' }}>₹{subtotalEff.toLocaleString('en-IN')}</strong>
                 </span>
                 {totalSavings > 0 && (
-                  <span style={{ fontSize: '0.82rem', color: '#007600', fontWeight: 600, marginLeft: 12 }}>
+                  <span style={{ fontSize: '0.82rem', color: '#16a34a', fontWeight: 600, marginLeft: 12 }}>
                     (You save ₹{totalSavings.toLocaleString('en-IN')})
                   </span>
                 )}
@@ -307,7 +307,7 @@ export default function Cart() {
                 </div>
               )}
 
-              <p style={{ fontSize: '1rem', color: '#0f1111', marginBottom: 14 }}>
+              <p style={{ fontSize: '1rem', color: '#1f2937', marginBottom: 14 }}>
                 Subtotal ({itemCount} item{itemCount !== 1 ? 's' : ''}):&nbsp;
                 <strong style={{ fontSize: '1.15rem' }}>₹{subtotalEff.toLocaleString('en-IN')}</strong>
               </p>
@@ -332,7 +332,7 @@ export default function Cart() {
                     <span>M.R.P. Total</span>
                     <span style={{ textDecoration: 'line-through' }}>₹{subtotalMRP.toLocaleString('en-IN')}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#007600', fontWeight: 600, marginBottom: 4 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#16a34a', fontWeight: 600, marginBottom: 4 }}>
                     <span>Group Deal Savings</span>
                     <span>−₹{totalSavings.toLocaleString('en-IN')}</span>
                   </div>
@@ -347,14 +347,14 @@ export default function Cart() {
 
 
               <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, marginBottom: 16 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1rem', color: '#0f1111', marginBottom: totalPrepaid > 0 ? 6 : 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1rem', color: '#1f2937', marginBottom: totalPrepaid > 0 ? 6 : 0 }}>
                   <span>Order Total</span>
-                  <span style={{ textDecoration: totalPrepaid > 0 ? 'line-through' : 'none', color: totalPrepaid > 0 ? '#9ca3af' : '#0f1111', fontWeight: totalPrepaid > 0 ? 400 : 700, fontSize: totalPrepaid > 0 ? '0.9rem' : '1rem' }}>
+                  <span style={{ textDecoration: totalPrepaid > 0 ? 'line-through' : 'none', color: totalPrepaid > 0 ? '#9ca3af' : '#1f2937', fontWeight: totalPrepaid > 0 ? 400 : 700, fontSize: totalPrepaid > 0 ? '0.9rem' : '1rem' }}>
                     ₹{subtotalEff.toLocaleString('en-IN')}
                   </span>
                 </div>
                 {totalPrepaid > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1.05rem', color: '#0f1111' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1.05rem', color: '#1f2937' }}>
                     <span>Amount Due</span>
                     <span style={{ color: '#2a5298' }}>₹{amountDue.toLocaleString('en-IN')}</span>
                   </div>
@@ -368,7 +368,7 @@ export default function Cart() {
               </div>
 
               <button
-                style={{ width: '100%', padding: '11px', background: '#f0c14b', border: '1px solid #a88734', borderRadius: 20, fontWeight: 700, fontSize: '0.92rem', color: '#111', cursor: 'pointer', marginBottom: 10 }}
+                style={{ width: '100%', padding: '11px', background: 'rgb(240 127 34)', border: '1px solid #994917', borderRadius: 20, fontWeight: 700, fontSize: '0.92rem', color: '#fff', cursor: 'pointer', marginBottom: 10 }}
                 onClick={() => { if (!isAuthenticated) { toast.error('Please sign in to checkout'); navigate('/login'); return; } navigate('/checkout'); }}
               >
                 Proceed to Checkout →
@@ -410,7 +410,7 @@ export default function Cart() {
             </div>
 
             {/* Product name */}
-            <p style={{ margin: '0 0 12px', fontWeight: 600, color: '#0f1111', fontSize: '0.95rem' }}>
+            <p style={{ margin: '0 0 12px', fontWeight: 600, color: '#1f2937', fontSize: '0.95rem' }}>
               {dealRemoveItem.name}
             </p>
 

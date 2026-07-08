@@ -141,7 +141,7 @@ const S = {
     fontSize: '1.45rem',
     fontWeight: 400,
     lineHeight: 1.35,
-    color: '#0f1111',
+    color: '#1f2937',
     marginBottom: 10,
   },
   ratingRow: {
@@ -388,7 +388,7 @@ const S = {
   stockStatus: (inStock) => ({
     fontSize: '1rem',
     fontWeight: 600,
-    color: inStock ? '#007600' : '#b12704',
+    color: inStock ? '#16a34a' : '#b12704',
     marginBottom: 12,
   }),
   qtyRow: {
@@ -440,12 +440,12 @@ const S = {
   addToCartBtn: {
     width: '100%',
     padding: '10px',
-    background: '#f0c14b',
-    border: '1px solid #a88734',
+    background: 'rgb(240 127 34)', 
+    border: '1px solid #994917',
     borderRadius: 20,
     fontWeight: 700,
     fontSize: '0.9rem',
-    color: '#111',
+    color: '#fff',
     cursor: 'pointer',
     marginBottom: 8,
     transition: 'background 0.15s',
@@ -512,7 +512,7 @@ const S = {
     padding: '14px 22px',
     fontWeight: active ? 700 : 400,
     fontSize: '0.9rem',
-    color: active ? '#0f1111' : '#6b7280',
+    color: active ? '#1f2937' : '#6b7280',
     borderTop: 'none',
     borderLeft: 'none',
     borderRight: 'none',
@@ -550,7 +550,7 @@ const S = {
     flexShrink: 0,
   },
   specsValue: {
-    color: '#0f1111',
+    color: '#1f2937',
     fontWeight: 700,
     fontSize: '1.05rem',
   },
@@ -595,7 +595,7 @@ function GroupBuySection({ product, localHold, onJoin, onLeave, onAddProduct, jo
       </div>
 
       <div style={{ fontSize: '0.8rem', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-        <span style={{ fontWeight: 700, color: '#0f1111' }}>Best price on hold</span>
+        <span style={{ fontWeight: 700, color: '#1f2937' }}>Best price on hold</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontWeight: 800, color: '#dc2626' }}>₹{finalPrice.toLocaleString('en-IN')}</span>
           <span style={{ background: '#dc2626', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: '0.75rem' }}>{discountPctFull}% off</span>
@@ -617,7 +617,7 @@ function GroupBuySection({ product, localHold, onJoin, onLeave, onAddProduct, jo
         </button>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <p style={{ fontSize: '0.78rem', color: '#0f1111', margin: 0 }}>
+          <p style={{ fontSize: '0.78rem', color: '#1f2937', margin: 0 }}>
             {remaining > 0
               ? `${remaining} more member${remaining !== 1 ? 's' : ''} needed to unlock the price`
               : '\uD83C\uDF89 Target reached \u2014 deal unlocked!'}
@@ -1375,7 +1375,7 @@ export default function ProductDetail() {
       </div>
 
       <div style={{ fontSize: '0.8rem', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-        <span style={{ fontWeight: 700, color: '#0f1111' }}>No group deal needed</span>
+        <span style={{ fontWeight: 700, color: '#1f2937' }}>No group deal needed</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ background: '#16a34a', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: '0.75rem' }}>In stock</span>
         </div>
@@ -1474,7 +1474,7 @@ export default function ProductDetail() {
               <span>›</span>
             </>
           )}
-          <span style={{ color: '#0f1111', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ color: '#1f2937', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {product.name}
           </span>
         </div>
@@ -1570,7 +1570,7 @@ export default function ProductDetail() {
                 {variantColors.length > 0 && (
                   <div style={{ marginBottom: sizesForColor.length ? 14 : 0 }}>
                     <p style={{ fontSize: '0.85rem', color: '#374151', marginBottom: 8 }}>
-                      Colour: <strong style={{ color: '#0f1111' }}>{selectedColor || 'Select'}</strong>
+                      Colour: <strong style={{ color: '#1f2937' }}>{selectedColor || 'Select'}</strong>
                     </p>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                       {variantColors.map(color => {
@@ -1614,7 +1614,7 @@ export default function ProductDetail() {
                 {sizesForColor.length > 0 && (
                   <div>
                     <p style={{ fontSize: '0.85rem', color: '#374151', marginBottom: 8 }}>
-                      Size: <strong style={{ color: '#0f1111' }}>{selectedSize || 'Select'}</strong>
+                      Size: <strong style={{ color: '#1f2937' }}>{selectedSize || 'Select'}</strong>
                     </p>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                       {[...new Set(sizesForColor)].map(size => {
@@ -1631,7 +1631,7 @@ export default function ProductDetail() {
                               background: outOfStock ? '#f3f4f6' : '#fff', fontFamily: 'inherit',
                               border: active ? '2px solid #2a5298' : '1px solid #d1d5db',
                               boxShadow: active ? '0 0 0 1px #2a5298' : 'none',
-                              color: outOfStock ? '#9ca3af' : '#0f1111',
+                              color: outOfStock ? '#9ca3af' : '#1f2937',
                               fontWeight: 600, fontSize: '0.85rem',
                               cursor: outOfStock ? 'not-allowed' : 'pointer',
                               textDecoration: outOfStock ? 'line-through' : 'none',
@@ -1834,12 +1834,12 @@ export default function ProductDetail() {
 
           {tab === 'desc' && (
             <div style={S.descCard}>
-              <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f1111', marginBottom: 16 }}>Product Description</h2>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1f2937', marginBottom: 16 }}>Product Description</h2>
               <p style={{ lineHeight: 1.8, color: '#374151' }}>{product.description || 'No description available.'}</p>
 
               {product.specs && Object.keys(product.specs).length > 0 && (
                 <>
-                  <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f1111', margin: '24px 0 16px' }}>Product Details</h2>
+                  <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1f2937', margin: '24px 0 16px' }}>Product Details</h2>
                   <div className="hk-pd-specs-grid" style={S.specsGrid}>
                     {Object.entries(product.specs)
                       .filter(([key, value]) => value !== '' && value != null && !key.toLowerCase().startsWith('ship'))
@@ -1857,14 +1857,14 @@ export default function ProductDetail() {
 
           {tab === 'reviews' && (
             <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '0 0 4px 4px', padding: 24 }}>
-              <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f1111', marginBottom: 20 }}>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1f2937', marginBottom: 20 }}>
                 Customer Reviews
               </h2>
 
               {reviews.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 0', borderBottom: '1px solid #e5e7eb', marginBottom: 20 }}>
                   <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: '3rem', fontWeight: 700, color: '#0f1111', lineHeight: 1 }}>{avgRating.toFixed(1)}</div>
+                    <div style={{ fontSize: '3rem', fontWeight: 700, color: '#1f2937', lineHeight: 1 }}>{avgRating.toFixed(1)}</div>
                     <StarRating rating={avgRating} />
                     <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 4 }}>out of 5</div>
                   </div>
@@ -1889,7 +1889,7 @@ export default function ProductDetail() {
               {/* Review form — only for customers who purchased this product */}
               {isAuthenticated && canWriteReview && (
                 <div style={{ ...S.reviewCard, marginBottom: 24, background: '#fafbfc', border: '1px solid #e0e7ff' }}>
-                  <h3 style={{ fontWeight: 700, marginBottom: 4, fontSize: '0.95rem', color: '#0f1111' }}>Write a Review</h3>
+                  <h3 style={{ fontWeight: 700, marginBottom: 4, fontSize: '0.95rem', color: '#1f2937' }}>Write a Review</h3>
                   <p style={{ fontSize: '0.78rem', color: '#6b7280', marginBottom: 14 }}>
                     ✅ Verified Purchase — you can review this product
                   </p>
@@ -1961,8 +1961,8 @@ export default function ProductDetail() {
                     </div>
 
                     <button type="submit"
-                      style={{ padding: '9px 24px', background: '#f0c14b', border: '1px solid #a88734',
-                        borderRadius: 20, fontWeight: 700, fontSize: '0.88rem', cursor: submittingReview ? 'not-allowed' : 'pointer',
+                      style={{ padding: '9px 24px', background: 'rgb(240 127 34)', border: '1px solid #994917',
+                        borderRadius: 20, fontWeight: 700, fontSize: '0.88rem', color: '#fff', cursor: submittingReview ? 'not-allowed' : 'pointer',
                         opacity: submittingReview ? 0.7 : 1 }}
                       disabled={submittingReview}>
                       {submittingReview ? 'Submitting…' : 'Submit Review'}
@@ -1991,7 +1991,7 @@ export default function ProductDetail() {
                               justifyContent: 'center', flexShrink: 0 }}>
                               {(r.customerName || 'C')[0].toUpperCase()}
                             </div>
-                            <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f1111' }}>
+                            <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1f2937' }}>
                               {r.customerName || 'Customer'}
                             </span>
                           </div>
@@ -2136,8 +2136,8 @@ export default function ProductDetail() {
                     <div style={{ textAlign: 'center', marginTop: 8, paddingTop: 16, borderTop: '1px solid #f0f0f0' }}>
                       <button
                         onClick={() => setShowAllReviews(p => !p)}
-                        style={{ background: 'none', border: '1.5px solid #e47911', borderRadius: 20,
-                          color: '#e47911', fontWeight: 700, fontSize: '0.88rem',
+                        style={{ background: 'none', border: '1.5px solid #FF6B00', borderRadius: 20,
+                          color: '#FF6B00', fontWeight: 700, fontSize: '0.88rem',
                           padding: '8px 28px', cursor: 'pointer', fontFamily: 'inherit' }}
                       >
                         {showAllReviews ? 'Show less' : `See all ${reviews.length} reviews`}
@@ -2185,7 +2185,7 @@ export default function ProductDetail() {
                     onError={e => { e.target.src = FALLBACK_IMG; }} />
                 </div>
                 <div style={{ padding: '10px 10px 12px' }}>
-                  <p style={{ fontSize: '0.8rem', color: '#0f1111', fontWeight: 500, lineHeight: 1.35,
+                  <p style={{ fontSize: '0.8rem', color: '#1f2937', fontWeight: 500, lineHeight: 1.35,
                     marginBottom: 6, display: '-webkit-box', WebkitLineClamp: 2,
                     WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                     {item.name}
@@ -2237,7 +2237,7 @@ export default function ProductDetail() {
           return (
             <div style={{ marginTop: 28 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f1111', margin: 0 }}>
+                <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1f2937', margin: 0 }}>
                   {currentIsEarphone ? '🎧 More Earphones & Headphones' : 'Similar Products'}
                 </h2>
                 <span
@@ -2299,7 +2299,7 @@ export default function ProductDetail() {
             <div style={{ marginTop: 36 }}>
               {/* Header */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#0f1111', margin: 0 }}>Recently Viewed</h2>
+                <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1f2937', margin: 0 }}>Recently Viewed</h2>
                 <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#111', display: 'flex',
                   alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
                   onClick={() => navigate('/products')}>
@@ -2365,14 +2365,14 @@ export default function ProductDetail() {
                             <div style={{ position: 'absolute', bottom: 8, left: 8, background: 'rgba(0,0,0,0.72)',
                               color: '#fff', fontSize: '0.72rem', fontWeight: 700, padding: '3px 7px',
                               borderRadius: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                              {item.avgRating.toFixed(1)} <span style={{ color: '#f0c14b' }}>★</span>
+                              {item.avgRating.toFixed(1)} <span style={{ color: '#ca8a04' }}>★</span>
                               {item.reviewCount > 0 && <span style={{ color: '#bbb', fontWeight: 400 }}>({item.reviewCount})</span>}
                             </div>
                           )}
                         </div>
                         {/* Info */}
                         <div style={{ padding: '10px 10px 12px' }}>
-                          <p style={{ fontSize: '0.8rem', color: '#0f1111', fontWeight: 500, lineHeight: 1.35,
+                          <p style={{ fontSize: '0.8rem', color: '#1f2937', fontWeight: 500, lineHeight: 1.35,
                             marginBottom: 6, display: '-webkit-box', WebkitLineClamp: 2,
                             WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                             {item.name}
@@ -2383,7 +2383,7 @@ export default function ProductDetail() {
                             </p>
                           )}
                           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f1111' }}>
+                            <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1f2937' }}>
                               ₹{discPrice.toLocaleString('en-IN')}
                             </span>
                             {discPct > 0 && (
@@ -2422,7 +2422,7 @@ export default function ProductDetail() {
           return (
             <div style={{ marginTop: 36, marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#0f1111', margin: 0 }}>You May Also Like</h2>
+                <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1f2937', margin: 0 }}>You May Also Like</h2>
                 <span style={{ fontSize: '0.7rem', fontWeight: 700, background: '#e5e7eb', color: '#6b7280',
                   padding: '2px 8px', borderRadius: 4, letterSpacing: '0.04em' }}>AD</span>
               </div>
@@ -2468,12 +2468,12 @@ export default function ProductDetail() {
                             <div style={{ position: 'absolute', bottom: 8, left: 8, background: 'rgba(0,0,0,0.72)',
                               color: '#fff', fontSize: '0.72rem', fontWeight: 700, padding: '3px 7px',
                               borderRadius: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                              {item.avgRating.toFixed(1)} <span style={{ color: '#f0c14b' }}>★</span>
+                              {item.avgRating.toFixed(1)} <span style={{ color: '#ca8a04' }}>★</span>
                             </div>
                           )}
                         </div>
                         <div style={{ padding: '10px 10px 12px' }}>
-                          <p style={{ fontSize: '0.8rem', color: '#0f1111', fontWeight: 500, lineHeight: 1.35,
+                          <p style={{ fontSize: '0.8rem', color: '#1f2937', fontWeight: 500, lineHeight: 1.35,
                             marginBottom: 6, display: '-webkit-box', WebkitLineClamp: 2,
                             WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                             {item.name}
@@ -2484,7 +2484,7 @@ export default function ProductDetail() {
                             </p>
                           )}
                           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f1111' }}>
+                            <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1f2937' }}>
                               ₹{discPrice.toLocaleString('en-IN')}
                             </span>
                             {discPct > 0 && (
@@ -2535,8 +2535,8 @@ export default function ProductDetail() {
           >
             {/* Header: IMAGES tab only + close */}
             <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #e5e7eb', padding: '0 24px', flexShrink: 0 }}>
-              <button style={{ padding: '16px 20px', fontWeight: 700, fontSize: '0.95rem', color: '#0f1111',
-                background: 'none', borderTop: 'none', borderLeft: 'none', borderRight: 'none', cursor: 'default', borderBottom: '2.5px solid #0f1111', marginBottom: -1 }}>
+              <button style={{ padding: '16px 20px', fontWeight: 700, fontSize: '0.95rem', color: '#1f2937',
+                background: 'none', borderTop: 'none', borderLeft: 'none', borderRight: 'none', cursor: 'default', borderBottom: '2.5px solid #1f2937', marginBottom: -1 }}>
                 IMAGES
               </button>
               <button
@@ -2596,12 +2596,12 @@ export default function ProductDetail() {
               {/* Right panel: title + thumbnail grid */}
               <div className="hk-pd-lightbox-panel" style={{ width: 320, borderLeft: '1px solid #e5e7eb', padding: '24px 20px',
                 overflowY: 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
-                <p style={{ fontSize: '1rem', color: '#0f1111', fontWeight: 500, lineHeight: 1.5, margin: 0 }}>
+                <p style={{ fontSize: '1rem', color: '#1f2937', fontWeight: 500, lineHeight: 1.5, margin: 0 }}>
                   {product.name}
                 </p>
                 {product.category && (
                   <p style={{ fontSize: '0.82rem', color: '#6b7280', margin: 0 }}>
-                    Category: <strong style={{ color: '#0f1111' }}>{product.category}</strong>
+                    Category: <strong style={{ color: '#1f2937' }}>{product.category}</strong>
                   </p>
                 )}
                 <div style={{ height: 1, background: '#e5e7eb' }} />
@@ -2671,7 +2671,7 @@ export default function ProductDetail() {
               <div key={i} onClick={e => { e.stopPropagation(); setLightbox(lb => ({ ...lb, index: i })); }}
                 style={{ width: 56, height: 56, borderRadius: 6, overflow: 'hidden', flexShrink: 0,
                   cursor: 'pointer', opacity: i === lightbox.index ? 1 : 0.6, transition: 'all 0.15s',
-                  border: i === lightbox.index ? '2.5px solid #f0c14b' : '2px solid rgba(255,255,255,0.25)' }}>
+                  border: i === lightbox.index ? '2.5px solid #FF6B00' : '2px solid rgba(255,255,255,0.25)' }}>
                 <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               </div>
             ))}
@@ -2696,7 +2696,7 @@ export default function ProductDetail() {
 
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f1111', margin: 0 }}>Select delivery address</h3>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1f2937', margin: 0 }}>Select delivery address</h3>
             <button onClick={() => setShowAddressModal(false)}
               style={{ background: 'none', border: 'none', fontSize: '1.3rem', color: '#6b7280', cursor: 'pointer', lineHeight: 1 }}>✕</button>
           </div>
@@ -2714,7 +2714,7 @@ export default function ProductDetail() {
                 value={manualPincode}
                 onChange={e => setManualPincode(e.target.value.replace(/\D/g, ''))}
                 style={{ border: 'none', background: 'none', outline: 'none', fontSize: '0.9rem',
-                  color: '#0f1111', width: '100%', padding: '10px 0' }}
+                  color: '#1f2937', width: '100%', padding: '10px 0' }}
               />
             </div>
             <button

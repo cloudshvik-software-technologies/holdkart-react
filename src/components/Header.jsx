@@ -311,7 +311,7 @@ export default function Header() {
               fontFamily: "'Plus Jakarta Sans',sans-serif",
               fontWeight: 900, fontSize: '1.1rem', color: '#fff',
             }}>
-              Hold<span style={{ color: '#FF6B00' }}>Kart</span>
+              Hold<span style={{ color: 'rgb(240 127 34)' }}>Kart</span>
             </span>
           </div>
           <button
@@ -497,7 +497,7 @@ export default function Header() {
           >
             <div className="hk-logo-icon" style={{
               width: 36, height: 36, borderRadius: 9,
-              background: 'linear-gradient(135deg, #FF6B00, #E85D04)',
+              background: 'rgb(240 127 34)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: '1.1rem', boxShadow: '0 3px 10px rgba(255,107,0,0.4)',
               flexShrink: 0,
@@ -544,14 +544,14 @@ export default function Header() {
               placeholder="Search for products, brands and more…"
             />
             <button type="submit" style={{
-              width: 52, background: '#FF6B00', border: 'none', cursor: 'pointer',
+              width: 52, background: 'rgb(240 127 34)', border: 'none', cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               transition: 'background 0.15s', flexShrink: 0,
             }}
               onMouseEnter={e => e.currentTarget.style.background = '#E85D04'}
-              onMouseLeave={e => e.currentTarget.style.background = '#FF6B00'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgb(240 127 34)'}
             >
-              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
             </button>
