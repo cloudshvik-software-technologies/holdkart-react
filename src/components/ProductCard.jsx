@@ -202,7 +202,9 @@ export default function ProductCard({ product, alreadyJoined = false }) {
   const maxDiscountPct = hasGroupDeal && product.retailPrice > 0
     ? Math.round(((product.retailPrice - product.holdPrice) / product.retailPrice) * 100)
     : 0;
-  const displayPrice   = product.retailPrice;
+  const displayPrice   = hasGroupDeal && safeHold > 0 && product.holdTarget > 0
+    ? Math.round(product.retailPrice - (product.retailPrice - bestGroupPrice) * (safeHold / product.holdTarget))
+    : product.retailPrice;
 
   return (
     <>

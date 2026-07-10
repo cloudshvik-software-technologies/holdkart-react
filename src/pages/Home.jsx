@@ -1330,10 +1330,26 @@ export default function Home({ isGuest = false }) {
                   const target       = c.target || 0;
                   const retailPrice  = Number(c.retail_price) || 0;
                   const holdPrice    = Number(c.hold_price)   || 0;
-                  const discountPct  = currentHold;
-                  const displayPrice = discountPct > 0 ? Math.round(retailPrice * (1 - discountPct / 100)) : retailPrice;
-                  const maxDiscountPct = target;
-                  const bestGroupPrice = target > 0 ? Math.round(retailPrice * (1 - maxDiscountPct / 100)) : holdPrice;
+                  // BUG FIX: this card previously used the raw participant COUNTS
+                  // (currentHold = 3, target = 5) directly as discount PERCENTAGES —
+                  // producing nonsense like "3% off" scaling toward "5% off" instead
+                  // of the real deal discount (e.g. 18%). The real max discount comes
+                  // from comparing holdPrice to retailPrice, same as the product
+                  // detail page and the home listing card.
+                  const maxDiscountPct = retailPrice > 0 && holdPrice > 0 && holdPrice < retailPrice
+                    ? Math.round((1 - holdPrice / retailPrice) * 100)
+                    : 0;
+                  const bestGroupPrice = target > 0 && holdPrice > 0 ? holdPrice : retailPrice;
+                  // Price shown scales progressively from retail toward the group
+                  // price as more members join — same formula as the detail page —
+                  // instead of the old retail*(1 - currentHold/100) nonsense.
+                  const safeCurrentHold = Math.min(currentHold, target || 0);
+                  const displayPrice = target > 0 && safeCurrentHold > 0
+                    ? Math.round(retailPrice - (retailPrice - bestGroupPrice) * (safeCurrentHold / target))
+                    : retailPrice;
+                  const discountPct = retailPrice > 0 && displayPrice < retailPrice
+                    ? Math.round(((retailPrice - displayPrice) / retailPrice) * 100)
+                    : 0;
                   const pct          = target > 0 ? Math.min(100, Math.round((currentHold / target) * 100)) : 0;
                   const FALLBACK    = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'%3E%3Crect width='400' height='300' fill='%23f0f4f8'/%3E%3Crect x='140' y='90' width='120' height='90' rx='10' fill='%23d1d9e6'/%3E%3Ccircle cx='200' cy='115' r='18' fill='%23a0aec0'/%3E%3Cpath d='M155 175 Q200 130 245 175Z' fill='%23a0aec0'/%3E%3Ctext x='200' y='225' text-anchor='middle' font-family='sans-serif' font-size='14' fill='%2394a3b8'%3ENo Image%3C/text%3E%3C/svg%3E";
                   const _rawImg     = c.image_url;
