@@ -81,7 +81,7 @@ const SLIDES = [
 const DEAL_SECTIONS_STATIC = [
   {
     id: 'audio',
-    title: 'Up to 75% off | Deals on headphones',
+    title: 'Deals on headphones',
     link: '/products?category=Audio',
     items: [
       { img: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200&q=80', label: 'Earphones',   sub: 'Wired & Wireless' },
@@ -103,7 +103,7 @@ const DEAL_SECTIONS_STATIC = [
   },
   {
     id: 'mobile',
-    title: 'Up to 60% off | Mobiles & Tablets',
+    title: 'Mobiles & Tablets',
     link: '/products?category=Mobile',
     items: [
       { img: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=200&q=80', label: 'Smartphones',  sub: 'All Brands' },
@@ -114,7 +114,7 @@ const DEAL_SECTIONS_STATIC = [
   },
   {
     id: 'cameras',
-    title: 'Up to 75% off | Cameras & Laptops',
+    title: 'Cameras & Laptops',
     link: '/products?category=Laptop',
     items: [
       { img: 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=200&q=80', label: 'DSLR Cameras', sub: 'All Megapixels' },
@@ -839,12 +839,11 @@ export default function Home({ isGuest = false }) {
                   const pid = cam.product_id;
                   if (seen.has(pid)) continue;
                   seen.add(pid);
-                  items.push({ img: resolveImg(cam.image_url), label: cam.product_name || cat, sub: cam.target > 0 ? `Up to ${cam.target}% off` : 'Group Deal', productId: pid });
+                  items.push({ img: resolveImg(cam.image_url), label: cam.product_name || cat, productId: pid });
                 }
                 const fallback = DEAL_SECTIONS_STATIC[idx]?.items || [];
                 while (items.length < 4 && fallback[items.length]) items.push(fallback[items.length]);
-                const maxDiscount = Math.max(...cams.map(c => c.target || 0));
-                return { id: `cat-${cat}`, title: maxDiscount > 0 ? `Up to ${maxDiscount}% off | ${cat}` : cat, link: `/products?category=${encodeURIComponent(cat)}`, items };
+                return { id: `cat-${cat}`, title: cat, link: `/products?category=${encodeURIComponent(cat)}`, items };
               });
               if (sections.length > 0) setDealSections(sections);
             }
@@ -909,7 +908,6 @@ export default function Home({ isGuest = false }) {
                   items.push({
                     img,
                     label: cam.product_name || cat,
-                    sub: cam.target > 0 ? `Up to ${cam.target}% off` : 'Group Deal',
                     productId: pid,
                   });
                 }
@@ -917,10 +915,9 @@ export default function Home({ isGuest = false }) {
                 while (items.length < 4 && fallback[items.length]) {
                   items.push(fallback[items.length]);
                 }
-                const maxDiscount = Math.max(...cams.map(c => c.target || 0));
                 return {
                   id: `cat-${cat}`,
-                  title: maxDiscount > 0 ? `Up to ${maxDiscount}% off | ${cat}` : cat,
+                  title: cat,
                   link: `/products?category=${encodeURIComponent(cat)}`,
                   items,
                 };
@@ -1293,7 +1290,6 @@ export default function Home({ isGuest = false }) {
                     </div>
                     <div style={{ padding: '6px 6px 8px' }}>
                       <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1f2937', lineHeight: 1.3 }}>{item.label}</div>
-                      <div style={{ fontSize: '0.65rem', color: '#6b7280', marginTop: 2 }}>{item.sub}</div>
                     </div>
                   </div>
                 ))}
@@ -1513,6 +1509,25 @@ export default function Home({ isGuest = false }) {
             />
         }
 
+        {/* ── Trust badges ── */}
+        <div className="hk-trust-bar" style={{ background: '#1e3c72', borderRadius: 4, padding: '18px 28px', display: 'flex', justifyContent: 'center', gap: 40, flexWrap: 'wrap' }}>
+          {[
+            { icon: '✅', t: 'Quality Certified', s: 'Every item verified' },
+            { icon: '🚚', t: 'Fast Delivery',      s: 'Pan India shipping' },
+            { icon: '🔄', t: 'Easy Returns',        s: '7-day return policy' },
+            { icon: '🛡️', t: 'Secure Payments',    s: '100% safe checkout' },
+            { icon: '💬', t: '24/7 Support',        s: 'Always here to help' },
+          ].map(b => (
+            <div key={b.t} style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#fff' }}>
+              <span style={{ fontSize: '1.5rem' }}>{b.icon}</span>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.82rem' }}>{b.t}</div>
+                <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.55)', marginTop: 1 }}>{b.s}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
         {/* ── Featured products ── */}
         <div style={{ background: '#fff', borderRadius: 4, border: '1px solid #ddd', padding: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -1537,11 +1552,7 @@ export default function Home({ isGuest = false }) {
                 {featured.map((p, i) => (
                   <React.Fragment key={p.productId}>
                     {i === 4 && (
-                      <div style={{ borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9f9f9', minHeight: 250 }}>
-                        <div className="hk-sidebar-ad-wrap" style={{ width: 300, height: 250, flexShrink: 0, overflow: 'hidden' }}>
-                          <SidebarBoxAd style={{ marginTop: 0, marginLeft: 0, marginRight: 0 }} />
-                        </div>
-                      </div>
+                      <SidebarBoxAd style={{ marginTop: 0, marginLeft: 0, marginRight: 0, height: 250, minHeight: 250 }} />
                     )}
                     <div className="hk-prod-wrap">
                       <ProductCard product={p} alreadyJoined={joinedProductIds.has(Number(p.productId))} />
@@ -1560,25 +1571,6 @@ export default function Home({ isGuest = false }) {
               )}
             </>
           )}
-        </div>
-
-        {/* ── Trust badges ── */}
-        <div className="hk-trust-bar" style={{ background: '#1e3c72', borderRadius: 4, marginTop: 12, padding: '18px 28px', display: 'flex', justifyContent: 'center', gap: 40, flexWrap: 'wrap' }}>
-          {[
-            { icon: '✅', t: 'Quality Certified', s: 'Every item verified' },
-            { icon: '🚚', t: 'Fast Delivery',      s: 'Pan India shipping' },
-            { icon: '🔄', t: 'Easy Returns',        s: '7-day return policy' },
-            { icon: '🛡️', t: 'Secure Payments',    s: '100% safe checkout' },
-            { icon: '💬', t: '24/7 Support',        s: 'Always here to help' },
-          ].map(b => (
-            <div key={b.t} style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#fff' }}>
-              <span style={{ fontSize: '1.5rem' }}>{b.icon}</span>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: '0.82rem' }}>{b.t}</div>
-                <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.55)', marginTop: 1 }}>{b.s}</div>
-              </div>
-            </div>
-          ))}
         </div>
 
       </div>

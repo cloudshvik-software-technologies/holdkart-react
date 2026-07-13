@@ -14,6 +14,7 @@ const readCart = () => {
 
 const writeCart = (items) => {
   setStorage(GUEST_CART_KEY, JSON.stringify(items));
+  window.dispatchEvent(new Event('hk:cart-changed'));
 };
 
 export const getGuestCart = () => readCart();
