@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { profileService } from '../services/index.js';
+import { profileService, addressService } from '../services/index.js';
 import { deleteProfileImage } from '../services/profile.service.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import toast from 'react-hot-toast';
 import DeactivateAccountModal from '../components/DeactivateAccountModal.jsx';
+import AddressFormModal from '../components/AddressFormModal.jsx';
 
 const CUSTOMER_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081';
 
@@ -56,8 +57,6 @@ function cityMatchesDistrict(cityInput, district) {
 const NAV_ITEMS = [
   { key: 'profile',    label: 'My Profile' },
   { key: 'addresses',   label: 'Saved Addresses' },
-  { key: 'cards',        label: 'Saved Cards' },
-  { key: 'coupons',       label: 'My Coupons' },
   { key: 'notifications', label: 'Notifications' },
   { key: 'orders',        label: 'Orders' },
   { key: 'wishlist',      label: 'Wishlist' },
@@ -83,6 +82,64 @@ export default function Profile() {
 
   // Deactivate account flow (seller-style 3-step modal)
   const [showDeactivateModal, setShowDeactivateModal] = useState(false);
+
+  // Saved addresses (multiple), managed via customer_address table
+  const [addresses, setAddresses]         = useState([]);
+  const [addressesLoading, setAddressesLoading] = useState(true);
+  const [showAddressModal, setShowAddressModal] = useState(false);
+  const [editingAddress, setEditingAddress]     = useState(null); // null = add new
+  const [addressSaving, setAddressSaving]       = useState(false);
+
+  const loadAddresses = () => {
+    setAddressesLoading(true);
+    addressService.listAddresses()
+      .then(list => setAddresses(list || []))
+      .catch(() => {})
+      .finally(() => setAddressesLoading(false));
+  };
+
+  useEffect(() => {
+    if (isAuthenticated) loadAddresses();
+  }, [isAuthenticated]);
+
+  const handleSaveAddress = async (data) => {
+    setAddressSaving(true);
+    try {
+      if (editingAddress?.id) {
+        await addressService.updateAddress(editingAddress.id, data);
+        toast.success('Address updated');
+      } else {
+        await addressService.createAddress(data);
+        toast.success('Address added');
+      }
+      setShowAddressModal(false);
+      setEditingAddress(null);
+      loadAddresses();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to save address');
+    } finally {
+      setAddressSaving(false);
+    }
+  };
+
+  const handleDeleteAddress = async (id) => {
+    try {
+      await addressService.deleteAddress(id);
+      toast.success('Address removed');
+      loadAddresses();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to delete address');
+    }
+  };
+
+  const handleSetDefaultAddress = async (id) => {
+    try {
+      await addressService.setDefaultAddress(id);
+      loadAddresses();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to set default address');
+    }
+  };
 
   useEffect(() => {
     if (!isAuthenticated) { navigate('/login'); return; }
@@ -221,8 +278,8 @@ export default function Profile() {
       setProfileImg(res.imageUrl || '');
       setImgFile(null);
       toast.success('Profile photo updated!');
-    } catch {
-      toast.error('Failed to upload photo');
+    } catch (e) {
+      toast.error(e?.response?.data?.message || 'Failed to upload photo');
     } finally {
       setUploading(false);
     }
@@ -668,8 +725,8 @@ export default function Profile() {
                       className="myn-input"
                       placeholder="10-digit mobile number"
                       value={form.mobile}
-                      maxLength={10}
-                      onChange={e => setForm(p => ({ ...p, mobile: e.target.value.replace(/\D/g, '') }))}
+                      readOnly
+                      style={{ background: '#f8f8f8', color: '#999', cursor: 'not-allowed' }}
                     />
                   </div>
                 </div>
@@ -748,68 +805,81 @@ export default function Profile() {
           {/* SAVED ADDRESSES */}
           {activeTab === 'addresses' && (
             <div>
-              <div className="myn-section-head">Saved Addresses</div>
-              {form.address || form.city ? (
-                <div style={{
-                  border: '1px solid #eaeaec', borderRadius: 8, padding: '20px 24px',
-                  position: 'relative', maxWidth: 500,
-                }}>
-                  <div style={{ display: 'inline-block', background: '#f4f4f5', color: '#282c3f', fontSize: '0.72rem', fontWeight: 700, borderRadius: 3, padding: '2px 10px', marginBottom: 10, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                    Home
-                  </div>
-                  <div style={{ fontWeight: 700, color: '#282c3f', marginBottom: 4 }}>{form.name}</div>
-                  <div style={{ color: '#555', fontSize: '0.9rem', lineHeight: 1.6 }}>
-                    {form.address}{form.address && (form.city || form.state || form.pincode) ? ', ' : ''}
-                    {form.city}{form.city && (form.state || form.pincode) ? ', ' : ''}
-                    {form.state} {form.pincode}
-                  </div>
-                  {form.mobile && (
-                    <div style={{ color: '#888', fontSize: '0.85rem', marginTop: 8 }}>Mobile: {form.mobile}</div>
-                  )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div className="myn-section-head" style={{ marginBottom: 0 }}>Saved Addresses</div>
+                {addresses.length > 0 && (
                   <button
-                    onClick={() => setActiveTab('profile')}
-                    style={{
-                      marginTop: 14, color: MYNTRA_PINK, border: `1px solid ${MYNTRA_PINK}`,
-                      background: 'none', borderRadius: 4, padding: '6px 20px',
-                      fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-                    }}>
-                    Edit
+                    onClick={() => { setEditingAddress(null); setShowAddressModal(true); }}
+                    style={{ background: MYNTRA_PINK, color: '#fff', border: 'none', borderRadius: 4, padding: '9px 20px', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    + Add New Address
                   </button>
+                )}
+              </div>
+
+              {addressesLoading ? (
+                <div style={{ color: '#999', fontSize: '0.9rem' }}>Loading addresses…</div>
+              ) : addresses.length > 0 ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
+                  {addresses.map(a => (
+                    <div key={a.id} style={{ border: '1px solid #eaeaec', borderRadius: 8, padding: '18px 20px', position: 'relative' }}>
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                        <span style={{ display: 'inline-block', background: '#f4f4f5', color: '#282c3f', fontSize: '0.72rem', fontWeight: 700, borderRadius: 3, padding: '2px 10px', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                          {a.label || 'Home'}
+                        </span>
+                        {a.is_default && (
+                          <span style={{ display: 'inline-block', background: '#eef2ff', color: MYNTRA_PINK, fontSize: '0.72rem', fontWeight: 700, borderRadius: 3, padding: '2px 10px' }}>
+                            DEFAULT
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontWeight: 700, color: '#282c3f', marginBottom: 4 }}>{a.name}</div>
+                      <div style={{ color: '#555', fontSize: '0.9rem', lineHeight: 1.6 }}>
+                        {a.address_line1}{a.address_line2 ? `, ${a.address_line2}` : ''}, {a.city}, {a.state} {a.pincode}
+                      </div>
+                      {a.mobile && (
+                        <div style={{ color: '#888', fontSize: '0.85rem', marginTop: 8 }}>Mobile: {a.mobile}</div>
+                      )}
+                      <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+                        <button
+                          onClick={() => { setEditingAddress(a); setShowAddressModal(true); }}
+                          style={{ color: MYNTRA_PINK, border: `1px solid ${MYNTRA_PINK}`, background: 'none', borderRadius: 4, padding: '6px 18px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteAddress(a.id)}
+                          style={{ color: '#dc2626', border: '1px solid #dc2626', background: 'none', borderRadius: 4, padding: '6px 18px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          Delete
+                        </button>
+                        {!a.is_default && (
+                          <button
+                            onClick={() => handleSetDefaultAddress(a.id)}
+                            style={{ color: '#555', border: '1px solid #d4d5d9', background: 'none', borderRadius: 4, padding: '6px 18px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                            Set as Default
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <div className="myn-placeholder-wrap">
                   <div className="myn-placeholder-icon">📍</div>
                   <div className="myn-placeholder-text">No saved addresses</div>
                   <div className="myn-placeholder-sub">Add an address to make checkout faster</div>
-                  <button onClick={() => setActiveTab('profile')} style={{ marginTop: 20, background: MYNTRA_PINK, color: '#fff', border: 'none', borderRadius: 4, padding: '11px 28px', fontSize: '0.88rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <button onClick={() => { setEditingAddress(null); setShowAddressModal(true); }} style={{ marginTop: 20, background: MYNTRA_PINK, color: '#fff', border: 'none', borderRadius: 4, padding: '11px 28px', fontSize: '0.88rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                     Add Address
                   </button>
                 </div>
               )}
-            </div>
-          )}
 
-          {/* SAVED CARDS */}
-          {activeTab === 'cards' && (
-            <div>
-              <div className="myn-section-head">Saved Cards</div>
-              <div className="myn-placeholder-wrap">
-                <div className="myn-placeholder-icon">💳</div>
-                <div className="myn-placeholder-text">No saved cards</div>
-                <div className="myn-placeholder-sub">Save your debit / credit card details for a faster checkout experience</div>
-              </div>
-            </div>
-          )}
-
-          {/* COUPONS */}
-          {activeTab === 'coupons' && (
-            <div>
-              <div className="myn-section-head">My Coupons</div>
-              <div className="myn-placeholder-wrap">
-                <div className="myn-placeholder-icon">🏷️</div>
-                <div className="myn-placeholder-text">No coupons available</div>
-                <div className="myn-placeholder-sub">Coupons and offers will appear here when available</div>
-              </div>
+              {showAddressModal && (
+                <AddressFormModal
+                  initial={editingAddress}
+                  saving={addressSaving}
+                  onClose={() => { setShowAddressModal(false); setEditingAddress(null); }}
+                  onSave={handleSaveAddress}
+                />
+              )}
             </div>
           )}
 

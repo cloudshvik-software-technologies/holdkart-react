@@ -86,10 +86,9 @@ export default function Header() {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate('/products?search=' + encodeURIComponent(searchQuery.trim()));
-      setMobileMenuOpen(false);
-    }
+    const query = searchQuery.trim();
+    navigate(query ? '/products?search=' + encodeURIComponent(query) : '/products');
+    setMobileMenuOpen(false);
   };
 
   const isActive = (path) => {

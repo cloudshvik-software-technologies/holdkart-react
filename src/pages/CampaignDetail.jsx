@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { campaignService } from '../services/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import JoinDealModal from '../components/JoinDealModal.jsx';
 import toast from 'react-hot-toast';
 
 const FALLBACK_IMG =
@@ -96,8 +97,27 @@ export default function CampaignDetail() {
   const [joined, setJoined]     = useState(false);
   const [acting, setActing]     = useState(false);
   const [imgError, setImgError] = useState(false);
+  const [showJoinModal, setShowJoinModal] = useState(false);
 
   const countdown = useCountdown(campaign?.end_time);
+
+  // Reusable fetch — pulls fresh campaign data + this customer's join status.
+  // Used on initial mount and again after a successful join/leave so the
+  // progress ring, slot count, and joined state all reflect the server.
+  const load = useCallback(() => {
+    if (!id) return;
+    campaignService.getCampaignById(id)
+      .then(data => setCampaign(data))
+      .catch(() => {});
+    if (isAuthenticated) {
+      campaignService.getMyCampaigns()
+        .then(mine => {
+          const ids = new Set((Array.isArray(mine) ? mine : []).map(m => String(m.campaign_id)));
+          setJoined(ids.has(String(id)));
+        })
+        .catch(() => {});
+    }
+  }, [id, isAuthenticated]);
 
   // Fetch campaign data — split into two independent effects so that
   // auth state resolving doesn't re-fetch (and double-toast) the campaign.
@@ -123,17 +143,21 @@ export default function CampaignDetail() {
       .catch(() => {});
   }, [id, isAuthenticated]);
 
-  const handleJoin = async () => {
+  // Opens the deposit/advance-amount modal instead of joining instantly —
+  // consistent with every other "Join" entry point in the app (product
+  // card, product detail), which all collect the advance amount via
+  // JoinDealModal first.
+  const handleJoin = () => {
     if (!isAuthenticated) { navigate('/login'); return; }
-    setActing(true);
-    try {
-      await campaignService.joinCampaign({ campaignId: Number(id) });
-      toast.success('You joined the group deal!');
-      window.dispatchEvent(new CustomEvent('campaignJoined', { detail: { campaignId: Number(id), campaign } }));
-      load();
-    } catch (e) {
-      toast.error(e?.response?.data?.message || 'Failed to join');
-    } finally { setActing(false); }
+    setShowJoinModal(true);
+  };
+
+  const handleJoinSuccess = (qty) => {
+    setShowJoinModal(false);
+    setJoined(true);
+    toast.success('You joined the group deal!');
+    window.dispatchEvent(new CustomEvent('campaignJoined', { detail: { campaignId: Number(id), campaign } }));
+    load();
   };
 
   const handleLeave = async () => {
@@ -172,6 +196,15 @@ export default function CampaignDetail() {
   const imgSrc   = imgError ? FALLBACK_IMG : resolveImg(campaign.image_url);
   const isActive = campaign.status === 'ACTIVE' || !campaign.status;
   const isFull   = pct >= 100;
+
+  // Props for the deposit modal — built from the campaign row itself so the
+  // amount charged matches this exact deal (a campaign can override the
+  // product's default retail/hold price).
+  const retailPrice    = Number(campaign.retail_price) || 0;
+  const holdPrice      = Number(campaign.hold_price) || 0;
+  const maxDiscountPct = retailPrice > 0 ? Math.round(((retailPrice - holdPrice) / retailPrice) * 100) : 0;
+  const remainingSlots = Math.max(0, Number(campaign.target) - Number(campaign.current_hold));
+  const variantLabel   = [campaign.variant_color, campaign.variant_size].filter(Boolean).join(' / ') || null;
 
   return (
     <div className="page-wrap">
@@ -416,6 +449,22 @@ export default function CampaignDetail() {
           .campaign-detail-right { position: static !important; top: auto !important; }
         }
       `}</style>
+
+      {showJoinModal && (
+        <JoinDealModal
+          product={{ productId: campaign.product_id, name: campaign.product_name, retailPrice }}
+          bestGroupPrice={holdPrice}
+          maxDiscountPct={maxDiscountPct}
+          remainingSlots={remainingSlots}
+          variantLabel={variantLabel}
+          variantId={campaign.variant_id || null}
+          onClose={() => setShowJoinModal(false)}
+          onJoinSuccess={handleJoinSuccess}
+          campaignAction={(qty, { cashfreeOrderId, depositAmount }) =>
+            campaignService.joinCampaign({ campaignId: Number(id), quantity: qty, cashfreeOrderId, depositAmount })
+          }
+        />
+      )}
     </div>
   );
 }
