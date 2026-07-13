@@ -656,6 +656,7 @@ export default function ProductDetail() {
   const [product, setProduct]   = useState(null);
   // ── Variants (colour / size selector) ─────────────────────────────────────
   const [variants, setVariants]             = useState([]);
+  const [variantsLoading, setVariantsLoading] = useState(false);
   const [selectedColor, setSelectedColor]   = useState(null);
   const [selectedSize, setSelectedSize]     = useState(null);
   const [variantWarning, setVariantWarning] = useState(false);
@@ -758,7 +759,18 @@ export default function ProductDetail() {
     if (!p) throw new Error('Product not found');
     setProduct(p);
     setLocalHold(p.currentHold || 0);
-    setMainImg(p.images?.[0] || '');
+    // BUG FIX: this used to always set mainImg to p.images[0] — the base
+    // product's default/first-uploaded photo (e.g. Green) — immediately on
+    // load. For variant products, the correct variant (e.g. Blue, via a
+    // ?variant= deep link or an active campaign) is only known once the
+    // separate getVariants() call resolves a moment later. That gap caused a
+    // visible flash: Green shows first, then swaps to Blue ~1s later once
+    // variants finish loading. For products WITH variants, leave mainImg
+    // blank here and let the variant-resolution effect (which fires as soon
+    // as variants load) set it exactly once — so the wrong colour never
+    // renders at all. Non-variant products are unaffected since there's
+    // nothing to resolve.
+    setMainImg(p.hasVariants ? '' : (p.images?.[0] || ''));
     setReviews((Array.isArray(r) ? r : []).map(rv => ({ ...rv, likes: rv.likes ?? 0, userVote: rv.userVote ?? null })));
     return p;
   };
@@ -803,6 +815,24 @@ export default function ProductDetail() {
   };
 
   useEffect(() => {
+    // BUG FIX: this is a client-side route change (the ProductDetail component
+    // stays mounted; only the `id` param changes), and `loading` was only ever
+    // set back to false in the finally below — never reset to true here. So on
+    // every navigation AFTER the first (e.g. clicking a Recently Viewed or
+    // You May Also Like card), the previous product's fully-rendered page —
+    // old name, old price, old mainImg/colour — stayed on screen for as long
+    // as the new product's network calls took, THEN swapped over. That's the
+    // "shows the wrong product/variant for a second" flash. Resetting loading
+    // and the product-scoped state immediately (before any await) makes the
+    // page show its loading skeleton right away on every navigation, exactly
+    // like a fresh page load, so nothing stale is ever visible.
+    setLoading(true);
+    setProduct(null);
+    setVariants([]);
+    setVariantsLoading(false);
+    setMainImg('');
+    setSelectedColor(null);
+    setSelectedSize(null);
     (async () => {
       try {
         const p = await loadProduct();
@@ -846,13 +876,20 @@ export default function ProductDetail() {
             }
           } catch { /* non-critical */ }
         }
-        // Track this product in Recently Viewed (localStorage, max 10)
+        // Track this product in Recently Viewed (localStorage, max 10).
+        // NOTE: at this point in the load sequence, variants/selectedColor/selectedSize
+        // haven't resolved yet (they're set by a separate effect after this one runs),
+        // so we can't know the exact variant being viewed here. A dedicated effect below
+        // (keyed on product/selectedColor/selectedSize/mainImg) fills in the correct
+        // variant image/id once that selection has actually settled.
         try {
           const stored = JSON.parse(localStorage.getItem('hk_recently_viewed') || '[]');
           const entry = {
             productId: p.productId, name: p.name, retailPrice: p.retailPrice,
-            holdTarget: p.holdTarget, images: p.images, avgRating: p.avgRating,
+            holdTarget: p.holdTarget, holdPrice: p.holdPrice, hasCampaign: p.hasCampaign,
+            images: p.images, avgRating: p.avgRating,
             reviewCount: p.reviewCount, category: p.category,
+            variantId: null, variantImage: null, variantColor: null, variantSize: null,
           };
           const filtered = stored.filter(x => String(x.productId) !== String(p.productId));
           const updated = [entry, ...filtered].slice(0, 10);
@@ -906,7 +943,8 @@ export default function ProductDetail() {
   // falling back to the first variant otherwise, mirroring the seller portal's variant selector.
   // The customer can still freely switch colour/size afterwards.
   useEffect(() => {
-    if (!product?.productId || !product?.hasVariants) { setVariants([]); return; }
+    if (!product?.productId || !product?.hasVariants) { setVariants([]); setVariantsLoading(false); return; }
+    setVariantsLoading(true);
     (async () => {
       try {
         const list = await productService.getVariants(product.productId);
@@ -919,11 +957,19 @@ export default function ProductDetail() {
           const requestedVariant = requestedVariantId
             ? arr.find(v => String(v.id) === String(requestedVariantId))
             : null;
-          const dealVariantIds = new Set(
-            (product.campaigns || []).filter(c => c.variantId != null).map(c => c.variantId)
-          );
-          const dealVariant = dealVariantIds.size
-            ? arr.find(v => dealVariantIds.has(v.id))
+          const dealCampaigns = (product.campaigns || []).filter(c => c.variantId != null);
+          // BUG FIX: previously picked the first variant found in array order that
+          // had ANY active deal — which could be a different variant than the one
+          // the backend's top-level price fields (holdPrice/retailPrice) actually
+          // reflect, since those are now resolved by highest current_hold (see
+          // productService.js getProduct). Sorting by currentHold here too keeps
+          // both in agreement, so the displayed variant/image always matches the
+          // price shown for it.
+          const bestDealCampaign = dealCampaigns.length
+            ? [...dealCampaigns].sort((a, b) => (b.currentHold || 0) - (a.currentHold || 0))[0]
+            : null;
+          const dealVariant = bestDealCampaign
+            ? arr.find(v => v.id === bestDealCampaign.variantId)
             : null;
           const defaultVariant = requestedVariant || dealVariant || arr[0];
           setSelectedColor(defaultVariant.color || null);
@@ -931,16 +977,68 @@ export default function ProductDetail() {
         }
       } catch {
         setVariants([]);
+      } finally {
+        setVariantsLoading(false);
       }
     })();
   }, [product?.productId, product?.hasVariants, product?.campaigns]);
 
-  // Switch the main image to the selected variant's own photo, if it has one
-  // (e.g. picking "Red" jumps the gallery to the red product shots).
+  // Switch the main image to the selected variant's own photo whenever the
+  // colour/size selection changes (e.g. picking "Red" jumps the gallery to
+  // the red product shots).
+  //
+  // BUG FIX: previously this only called setMainImg() when the newly
+  // selected variant had at least one image of its own
+  // (`if (v?.images?.length) setMainImg(...)`). If a variant had NO photo
+  // uploaded for it — e.g. the seller only added a photo for "Blue" but not
+  // "Green" — clicking "Green" left mainImg untouched, so the page kept
+  // showing whatever was on screen before (Blue's photo), even though the
+  // selected colour, price and stock had all correctly switched to Green.
+  // That's what looked like "clicking Green redirects to Blue".
+  //
+  // Fix: always resolve and set an image on every colour/size change, using
+  // the same fallback chain as `galleryImages` below (variant photo → base
+  // product photo), so mainImg is never left stale.
   useEffect(() => {
     const v = variants.find(v => (v.color || null) === selectedColor && (v.size || null) === selectedSize);
-    if (v?.images?.length) setMainImg(v.images[0].url);
-  }, [variants, selectedColor, selectedSize]);
+    const fallbackImages = product?.images || [];
+    const resolvedImg = v?.images?.length ? v.images[0].url : (fallbackImages[0] || '');
+    setMainImg(resolvedImg);
+  }, [variants, selectedColor, selectedSize, product?.images]);
+
+  // Fill in the exact variant (colour/size/image/id) on the Recently Viewed entry
+  // once the variant selection has settled — see the load-time effect above for why
+  // this can't be done at initial save time. Runs for both variant and non-variant
+  // products; for non-variant products selectedVariant is null and this just skips.
+  //
+  // BUG FIX: this used to read the `mainImg` state variable directly. Because state
+  // updates aren't applied synchronously, on the very render where selectedColor just
+  // switched (e.g. to Blue via a campaign/deep-link), this effect could still see the
+  // PREVIOUS render's mainImg (e.g. Green) — a one-render-behind race. Normally a
+  // second pass would self-correct it once mainImg finished updating, but if the
+  // shopper navigated away before that second pass ran, the stale (wrong) image got
+  // permanently saved to Recently Viewed. Fix: compute the resolved image directly
+  // from variants/product here (same fallback chain as the mainImg effect above),
+  // instead of depending on the mainImg state — so there's nothing to race.
+  useEffect(() => {
+    if (!product?.productId) return;
+    const v = variants.find(v => (v.color || null) === selectedColor && (v.size || null) === selectedSize) || null;
+    if (variants.length > 0 && !v) return; // variants exist but selection hasn't resolved yet
+    const resolvedImg = v?.images?.length ? v.images[0].url : ((product?.images || [])[0] || null);
+    try {
+      const stored = JSON.parse(localStorage.getItem('hk_recently_viewed') || '[]');
+      const idx = stored.findIndex(x => String(x.productId) === String(product.productId));
+      if (idx === -1) return;
+      stored[idx] = {
+        ...stored[idx],
+        variantId: v?.id ?? null,
+        variantImage: resolvedImg,
+        variantColor: selectedColor || null,
+        variantSize: selectedSize || null,
+      };
+      localStorage.setItem('hk_recently_viewed', JSON.stringify(stored));
+    } catch { /* localStorage unavailable */ }
+  }, [product?.productId, product?.images, variants, selectedColor, selectedSize]);
 
   // Separately handle auth-dependent data (canReview) without re-fetching the whole product
   useEffect(() => {
@@ -1177,33 +1275,6 @@ export default function ProductDetail() {
     }
   };
 
-  /* Add more units when already joined */
-  const handleAddProduct = async () => {
-    if (!isAuthenticated) { toast.error('Please sign in'); navigate('/login'); return; }
-    setJoinLoading(true);
-    try {
-      await campaignService.addToDeal({ productId: product.productId, variantId: selectedVariant?.id || null });
-      const p = await productService.getProduct(id);
-      setProduct(p);
-      const refreshedCampaign = hasVariants
-        ? (p.campaigns || []).find(c => c.variantId != null && selectedVariant && c.variantId === selectedVariant.id)
-        : (p.campaigns || []).find(c => c.variantId == null);
-      const realHold = refreshedCampaign?.currentHold ?? 0;
-      setLocalHold(realHold);
-      window.dispatchEvent(new CustomEvent('campaignJoined', { detail: { productId: product.productId } }));
-      if (realHold >= campaignHoldTarget) {
-        stopPolling();
-        toast.success('🎉 Target reached! Redirecting to your cart…', { duration: 3000 });
-        setTimeout(() => navigate('/cart'), 2000);
-      } else {
-        toast.success('Added to deal! You\'ll be redirected to cart once the target is reached.');
-        await loadCampaignStatus(p);
-      }
-    } catch(e) {
-      toast.error(e?.response?.data?.message || 'Failed to add to deal');
-    } finally { setJoinLoading(false); }
-  };
-
   const handleLeave = async () => {
     if (!matchedCampaign) return;
     setJoinLoading(true);
@@ -1384,7 +1455,7 @@ export default function ProductDetail() {
       localHold={localHold}
       onJoin={openJoinModal}
       onLeave={handleLeave}
-      onAddProduct={handleAddProduct}
+      onAddProduct={openAddMoreModal}
       joinLoading={joinLoading}
       hasJoined={hasJoined}
     />
@@ -1517,17 +1588,26 @@ export default function ProductDetail() {
 
           {/* ── Col 1: Images ── */}
           <div className="hk-pd-img-col" style={S.imageCol}>
-            <div
-              style={{ position: 'relative', cursor: 'zoom-in' }}
-              onClick={() => setProductLightbox({ index: galleryImages?.indexOf(mainImg) >= 0 ? galleryImages.indexOf(mainImg) : 0 })}
-            >
-              <img
-                src={resolveSellerImg(mainImg)}
-                alt={product.name}
-                style={S.mainImg}
-                onError={e => { e.target.src = FALLBACK_IMG; }}
-              />
-            </div>
+            {variantsLoading ? (
+              // While the variant fetch is still resolving (e.g. a ?variant= deep
+              // link or an active campaign is about to select a specific colour),
+              // show a neutral skeleton instead of any image — avoids a brief flash
+              // of the wrong/default variant photo before the real one is ready.
+              <div style={{ ...S.mainImg, background: 'linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 37%, #f3f4f6 63%)', backgroundSize: '400% 100%', animation: 'hkImgSkeleton 1.4s ease infinite', borderRadius: 8 }} />
+            ) : (
+              <div
+                style={{ position: 'relative', cursor: 'zoom-in' }}
+                onClick={() => setProductLightbox({ index: galleryImages?.indexOf(mainImg) >= 0 ? galleryImages.indexOf(mainImg) : 0 })}
+              >
+                <img
+                  src={resolveSellerImg(mainImg)}
+                  alt={product.name}
+                  style={S.mainImg}
+                  onError={e => { e.target.src = FALLBACK_IMG; }}
+                />
+              </div>
+            )}
+            <style>{`@keyframes hkImgSkeleton { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }`}</style>
             {/* Click to see full view */}
             <div
               onClick={() => setProductLightbox({ index: galleryImages?.indexOf(mainImg) >= 0 ? galleryImages.indexOf(mainImg) : 0 })}
@@ -2317,7 +2397,14 @@ export default function ProductDetail() {
 
         {/* ── Recently Viewed ── */}
         {recentlyViewed.length > 0 && (() => {
-          const goToProduct = (pid) => { window.scrollTo({ top: 0, behavior: 'instant' }); navigate(`/product/${pid}`); };
+          // BUG FIX: previously navigated with no variant, so clicking a Recently
+          // Viewed card (e.g. the Green shirt the shopper actually looked at) could
+          // land on the product page defaulting to a different colour. Pass the
+          // stored variantId along, same as the campaign deep-link elsewhere.
+          const goToProduct = (pid, variantId) => {
+            window.scrollTo({ top: 0, behavior: 'instant' });
+            navigate(`/product/${pid}${variantId ? `?variant=${variantId}` : ''}`);
+          };
           // Each card is exactly 1/5 of container minus gaps; scroll by one full "page" of 5
           const CARD_W = 'calc((100% - 48px) / 5)'; // 4 gaps × 12px = 48px
           const SCROLL_AMT = 900;
@@ -2355,14 +2442,25 @@ export default function ProductDetail() {
                   <style>{`#${rvScrollId}::-webkit-scrollbar{display:none}`}</style>
 
                   {recentlyViewed.map(item => {
-                    const img = resolveSellerImg(item.images?.[0] || '');
-                    const hasDiscount = item.holdTarget > 0;
-                    const discPrice = hasDiscount ? Math.round(item.retailPrice * (1 - item.holdTarget / 100)) : item.retailPrice;
-                    const discPct = hasDiscount ? item.holdTarget : 0;
+                    // BUG FIX: previously always used item.images?.[0] — the base
+                    // product's default photo — ignoring which variant the shopper
+                    // actually viewed. Use the stored variantImage (captured from the
+                    // exact colour/size they had selected) first, falling back to the
+                    // base product image only for non-variant products / old entries
+                    // saved before this fix.
+                    const img = resolveSellerImg(item.variantImage || item.images?.[0] || '');
+                    // BUG FIX: previously used item.holdTarget (number of participants
+                    // needed, e.g. 5) as a discount PERCENTAGE. Compute the real
+                    // discount from holdPrice vs retailPrice instead.
+                    const hasDiscount = item.hasCampaign && item.holdPrice > 0 && item.retailPrice > 0 && item.holdPrice < item.retailPrice;
+                    const discPrice = hasDiscount ? item.holdPrice : item.retailPrice;
+                    const discPct = hasDiscount
+                      ? Math.round(((item.retailPrice - item.holdPrice) / item.retailPrice) * 100)
+                      : 0;
                     const isTrending = item.reviewCount > 10;
                     const isBestseller = item.avgRating >= 4.5;
                     return (
-                      <div key={item.productId} className="hk-pd-rv-card" onClick={() => goToProduct(item.productId)}
+                      <div key={item.productId} className="hk-pd-rv-card" onClick={() => goToProduct(item.productId, item.variantId)}
                         style={{ minWidth: CARD_W, maxWidth: CARD_W, flexShrink: 0,
                           background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
                           overflow: 'hidden', cursor: 'pointer',
@@ -2473,10 +2571,26 @@ export default function ProductDetail() {
                   <style>{`#${ymalScrollId}::-webkit-scrollbar{display:none}`}</style>
 
                   {youMayAlsoLike.map(item => {
-                    const img = resolveSellerImg(item.images?.[0] || '');
-                    const hasDiscount = item.holdTarget > 0;
-                    const discPrice = hasDiscount ? Math.round(item.retailPrice * (1 - item.holdTarget / 100)) : item.retailPrice;
-                    const discPct = hasDiscount ? item.holdTarget : 0;
+                    // BUG FIX (image): this card used item.images?.[0] — the product's
+                    // raw/default image list — which always shows whichever photo the
+                    // seller uploaded first (e.g. Green), regardless of which variant's
+                    // deal is actually running or how many people have joined it.
+                    // item.imageUrl is the field the backend already resolves correctly
+                    // (campaignVariantImage || images[0]) — i.e. the photo of whichever
+                    // variant has the highest-joined ACTIVE campaign (see BEST_CAMPAIGN_ID
+                    // in productService.js, ORDER BY current_hold DESC). Use that instead
+                    // so the card always shows the same variant a customer would land on.
+                    const img = resolveSellerImg(item.imageUrl || item.images?.[0] || '');
+                    // BUG FIX (discount %): this previously treated item.holdTarget — the
+                    // number of participants needed to complete the group deal (e.g. 5) —
+                    // as if it were a discount PERCENTAGE, producing nonsense like "5% OFF"
+                    // for a deal that's actually 18% off. Compute the real discount from
+                    // holdPrice vs retailPrice instead, same as the main ProductCard does.
+                    const hasDiscount = item.hasCampaign && item.holdPrice > 0 && item.retailPrice > 0 && item.holdPrice < item.retailPrice;
+                    const discPrice = hasDiscount ? item.holdPrice : item.retailPrice;
+                    const discPct = hasDiscount
+                      ? Math.round(((item.retailPrice - item.holdPrice) / item.retailPrice) * 100)
+                      : 0;
                     return (
                       <div key={item.productId} className="hk-pd-ymal-card" onClick={() => goToProduct(item.productId)}
                         style={{ minWidth: CARD_W, maxWidth: CARD_W, flexShrink: 0,

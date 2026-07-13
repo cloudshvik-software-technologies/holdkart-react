@@ -202,7 +202,9 @@ export default function ProductCard({ product, alreadyJoined = false }) {
   const maxDiscountPct = hasGroupDeal && product.retailPrice > 0
     ? Math.round(((product.retailPrice - product.holdPrice) / product.retailPrice) * 100)
     : 0;
-  const displayPrice   = product.retailPrice;
+  const displayPrice   = hasGroupDeal && safeHold > 0 && product.holdTarget > 0
+    ? Math.round(product.retailPrice - (product.retailPrice - bestGroupPrice) * (safeHold / product.holdTarget))
+    : product.retailPrice;
 
   return (
     <>
@@ -292,7 +294,8 @@ export default function ProductCard({ product, alreadyJoined = false }) {
         style={{
           background: '#fff', borderRadius: 4, border: '1px solid #e3e6e6',
           overflow: 'hidden', cursor: 'pointer', display: 'flex',
-          flexDirection: 'column', transition: 'box-shadow 0.2s, border-color 0.2s',
+          flexDirection: 'column', height: '100%',
+          transition: 'box-shadow 0.2s, border-color 0.2s',
           position: 'relative',
         }}
         onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.14)'; e.currentTarget.style.borderColor = '#c9cdd2'; }}
@@ -341,21 +344,19 @@ export default function ProductCard({ product, alreadyJoined = false }) {
           }}>
             {product.name}
           </p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4, height: '1rem', overflow: 'hidden' }}>
-            {product.avgRating > 0 ? (
-              <>
-                <StarRating rating={product.avgRating} size="0.8rem" />
-                <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>({product.reviewCount})</span>
-              </>
-            ) : <span style={{ display: 'block' }} />}
-          </div>
 
           {/* Which variant this card's deal price/photo belongs to, and whether other
-              variants of the same product also have a deal running right now. */}
+              variants of the same product also have a deal running right now.
+              Placed right under the product name so it reads as part of "what
+              product/variant is this" rather than being mixed in with the buttons. */}
           {hasGroupDeal && (product.campaignVariantLabel || product.otherVariantDealsCount > 0) && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 3 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, flexWrap: 'nowrap', marginTop: 4, marginBottom: 10, minWidth: 0 }}>
               {product.campaignVariantLabel && (
-                <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#374151', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 3, padding: '1px 5px' }}>
+                <span style={{
+                  fontSize: '0.66rem', fontWeight: 700, color: '#374151', background: '#f3f4f6',
+                  border: '1px solid #e5e7eb', borderRadius: 3, padding: '1px 5px',
+                  whiteSpace: 'nowrap', flexShrink: 0,
+                }}>
                   {product.campaignVariantLabel}
                 </span>
               )}
@@ -365,21 +366,33 @@ export default function ProductCard({ product, alreadyJoined = false }) {
                   className="hk-variant-deal-badge"
                   title="See all variants running a deal"
                   style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 4,
-                    fontSize: '0.68rem', fontWeight: 800, color: '#fff',
+                    display: 'flex', alignItems: 'center', gap: 3,
+                    fontSize: '0.66rem', fontWeight: 800, color: '#fff',
                     background: 'linear-gradient(135deg, #f97316, #dc2626)',
-                    border: 'none', borderRadius: 20, padding: '3px 9px 3px 7px',
+                    border: 'none', borderRadius: 20, padding: '3px 8px 3px 6px',
                     cursor: 'pointer', boxShadow: '0 1px 4px rgba(220,38,38,0.35)',
                     animation: 'hkVariantPulse 1.8s ease-in-out infinite',
+                    minWidth: 0, flex: '0 1 auto', overflow: 'hidden',
                   }}
                 >
-                  <span aria-hidden="true">🔥</span>
-                  {product.otherVariantDealsCount} more variant{product.otherVariantDealsCount > 1 ? 's' : ''} on deal
-                  <span aria-hidden="true" style={{ marginLeft: 1 }}>›</span>
+                  <span aria-hidden="true" style={{ flexShrink: 0 }}>🔥</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                    +{product.otherVariantDealsCount} more deal{product.otherVariantDealsCount > 1 ? 's' : ''}
+                  </span>
                 </button>
               )}
             </div>
           )}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4, height: '1rem', overflow: 'hidden' }}>
+            {product.avgRating > 0 ? (
+              <>
+                <StarRating rating={product.avgRating} size="0.8rem" />
+                <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>({product.reviewCount})</span>
+              </>
+            ) : <span style={{ display: 'block' }} />}
+          </div>
+
 
           {/* Group Deal progress (deal products) / stock & shipping info (non-deal products) —
               same skeleton sizing in both cases so the Price/Buttons row stays aligned
@@ -428,7 +441,7 @@ export default function ProductCard({ product, alreadyJoined = false }) {
 
 
           {/* Price */}
-          <div style={{ marginBottom: 6, marginTop: 'auto' }}>
+          <div style={{ marginBottom: 6 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
               <span style={{ fontSize: '1.05rem', fontWeight: 700, color: '#1f2937' }}>
                 ₹{displayPrice.toLocaleString('en-IN')}
@@ -437,8 +450,10 @@ export default function ProductCard({ product, alreadyJoined = false }) {
             <p style={{ fontSize: '0.65rem', color: '#6b7280', marginTop: 1 }}>Inclusive of all taxes</p>
           </div>
 
-          {/* Buttons */}
-          <div className="hk-card-btn-row" style={{ display: 'flex', gap: 6, minWidth: 0 }}>
+          {/* Buttons — pinned to the bottom of the card (marginTop: 'auto') so Join/Add
+              to Cart line up across every card in a grid row, no matter how much
+              badge/variant content ("Blue / L", "+1 more deal", etc.) sits above them. */}
+          <div className="hk-card-btn-row" style={{ display: 'flex', gap: 6, minWidth: 0, marginTop: 'auto' }}>
             {hasGroupDeal && (
               hasJoined ? (
                 <button disabled className="hk-card-btn" style={{
