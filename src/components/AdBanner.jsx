@@ -273,7 +273,7 @@ export function ScrollBannerAd({ style = {}, children }) {
 }
 
 // ── Sidebar Box Ad — cycles ALL active ads every 10 seconds ───────────────────
-// Always renders a placeholder so the sidebar layout doesn't collapse.
+// Renders nothing if there are no active ads (no placeholder shown).
 export function SidebarBoxAd({ style = {} }) {
   const [ads,    setAds]    = useState([]);
   const [idx,    setIdx]    = useState(0);
@@ -293,27 +293,7 @@ export function SidebarBoxAd({ style = {} }) {
     return () => clearInterval(timerRef.current);
   }, [ads]);
 
-  if (!ads.length) return (
-    <div className="hk-sidebar-ad-box" style={{
-      width: 300, marginTop: 16, borderRadius: 6,
-      overflow: 'hidden', border: '1px dashed #d1d5db',
-      background: 'linear-gradient(135deg,#f0f4ff,#e8f0fe)',
-      marginLeft: 'auto', marginRight: 'auto',
-      display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-      height: 250, gap: 8,
-      ...style
-    }}>
-      <div style={{ fontSize: '2rem' }}>📢</div>
-      <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#2a5298' }}>Your Ad Here</div>
-      <div style={{ fontSize: '0.72rem', color: '#6b7280', textAlign: 'center', padding: '0 16px' }}>300 × 250 px · Sidebar Box</div>
-      <style>{`
-        @media (max-width: 768px) {
-          .hk-sidebar-ad-box { width: 100% !important; max-width: 300px !important; height: auto !important; aspect-ratio: 300 / 190 !important; }
-        }
-      `}</style>
-    </div>
-  );
+  if (!ads.length) return null;
 
   const ad = ads[idx];
   const imgEl = (

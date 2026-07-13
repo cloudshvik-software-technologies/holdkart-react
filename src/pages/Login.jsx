@@ -116,11 +116,11 @@ export default function Login() {
         .lp-logo-text {
           font-size: 1.45rem;
           font-weight: 700;
-          color: #1a1a2e;
+          color: rgb(42,82,152);
           letter-spacing: -0.5px;
         }
         .lp-logo-text span {
-          color: #3b5bdb;
+          color: rgb(255,107,0);
         }
         .lp-logo-sub {
           font-size: 0.7rem;
@@ -349,9 +349,9 @@ export default function Login() {
         {/* Left brand panel */}
         <div className="lp-brand">
           <div>
-            <div className="lp-logo-mark">
+            <Link to="/" className="lp-logo-mark" style={{ textDecoration: 'none', display: 'inline-block' }}>
               <div className="lp-logo-text">Hold<span>Kart</span></div>
-            </div>
+            </Link>
             <div className="lp-logo-sub">Commerce Platform</div>
           </div>
 

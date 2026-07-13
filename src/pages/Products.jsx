@@ -266,7 +266,7 @@ function ListProductCard({ product, alreadyJoined = false }) {
      flag, which can go stale) before deciding to navigate. */
   const handleJoin = async (e) => {
     e.stopPropagation();
-    if (!isAuthenticated) { toast.error('Please sign in to join the group deal'); return; }
+    if (!isAuthenticated) { toast.error('Please sign in to join the group deal'); navigate('/login'); return; }
     if (product.hasVariants) {
       try {
         const list = await productService.getVariants(product.productId);

@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
+import { CartProvider } from './context/CartContext.jsx';
 import SessionGuard from './components/SessionGuard.jsx';
 import LoginNudge   from './components/LoginNudge.jsx';
 import Header from './components/Header.jsx';
@@ -142,7 +143,9 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppRoutes />
+      <CartProvider>
+        <AppRoutes />
+      </CartProvider>
     </AuthProvider>
   );
 }
