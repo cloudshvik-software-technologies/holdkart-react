@@ -74,14 +74,20 @@ function CampaignRow({ item, leaving, onLeave }) {
   const target       = Number(item.target         || 0);
   const status       = item.campaignStatus || 'ACTIVE';
 
-  /* discount = currentHold % off (N joined = N% off) */
-  const safeHold     = Math.min(currentHold, target);
-  const discountPct  = safeHold;
-  const effectivePrice = discountPct > 0
-    ? Math.round(retailPrice * (1 - discountPct / 100))
-    : retailPrice;
-  const maxDiscountPct  = target;
-  const bestPrice       = Math.round(retailPrice * (1 - maxDiscountPct / 100));
+  /* Use the real hold_price from the backend (same value shown on the
+     campaign detail and product pages) instead of deriving a fake
+     discount from the raw "members joined" count. The deal's price is
+     locked to holdPrice once the target is met; until then the product
+     is still bought at retailPrice, matching CampaignDetail.jsx / product page. */
+  const reachedTarget   = target > 0 && currentHold >= target;
+  const effectivePrice  = reachedTarget && holdPrice > 0 ? holdPrice : retailPrice;
+  const discountPct     = retailPrice > 0 && effectivePrice < retailPrice
+    ? Math.round((1 - effectivePrice / retailPrice) * 100)
+    : 0;
+  const bestPrice        = holdPrice > 0 ? holdPrice : retailPrice;
+  const maxDiscountPct   = retailPrice > 0 && bestPrice < retailPrice
+    ? Math.round((1 - bestPrice / retailPrice) * 100)
+    : 0;
   const joined_date     = item.joined_date
     ? new Date(item.joined_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
     : '';
