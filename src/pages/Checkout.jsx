@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { cartService, orderService, paymentService, profileService } from '../services/index.js';
+import { cartService, orderService, paymentService, profileService, addressService } from '../services/index.js';
 import { getAvailableCouriers } from '../services/shipping.service.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import toast from 'react-hot-toast';
@@ -170,6 +170,12 @@ export default function Checkout() {
     address: '', city: '', state: '', pincode: '', paymentMethod: 'COD',
   });
   const [focused, setFocused] = useState('');
+  // Saved addresses (from Profile > Saved Addresses); user picks one manually
+  // (no auto-selection of a "default" — see product decision) or falls back
+  // to entering a fresh address below.
+  const [savedAddresses, setSavedAddresses]   = useState([]);
+  const [selectedSavedId, setSelectedSavedId] = useState(null);
+  const [addressMode, setAddressMode]         = useState('new'); // 'saved' | 'new'
   // Verifies the entered pincode actually belongs to the selected state/city —
   // status: 'idle' | 'checking' | 'ok' | 'mismatch' | 'error'
   const [pincodeCheck, setPincodeCheck] = useState({ status: 'idle', detectedState: '', detectedDistrict: '' });
@@ -179,9 +185,10 @@ export default function Checkout() {
     if (!isAuthenticated) { navigate('/login'); return; }
     (async () => {
       try {
-        const [cartRes, profileRes] = await Promise.allSettled([
+        const [cartRes, profileRes, addressesRes] = await Promise.allSettled([
           cartService.getCart(),
           profileService.getProfile(),
+          addressService.listAddresses(),
         ]);
         if (cartRes.status === 'fulfilled') {
           setCart(Array.isArray(cartRes.value) ? cartRes.value : []);
@@ -198,6 +205,12 @@ export default function Checkout() {
             state:   profileRes.value.state   || '',
             pincode: profileRes.value.pincode || '',
           }));
+        }
+        if (addressesRes.status === 'fulfilled' && Array.isArray(addressesRes.value)) {
+          setSavedAddresses(addressesRes.value);
+          // Show the picker by default when the customer has saved addresses;
+          // nothing is pre-selected — they choose which one to use each time.
+          if (addressesRes.value.length > 0) setAddressMode('saved');
         }
       } finally { setLoading(false); }
     })();
@@ -296,6 +309,17 @@ export default function Checkout() {
   }, [address.pincode, address.state, address.city]);
 
   const set = (field, val) => setAddress(prev => ({ ...prev, [field]: val }));
+
+  const selectSavedAddress = (a) => {
+    setSelectedSavedId(a.id);
+    setAddress(prev => ({
+      ...prev,
+      address: a.address_line1 + (a.address_line2 ? `, ${a.address_line2}` : ''),
+      city: a.city,
+      state: a.state,
+      pincode: a.pincode,
+    }));
+  };
 
   /* use effectivePrice (group-deal discounted) when available, else retailPrice */
   const itemPrice = (item) => item.effectivePrice ?? item.retailPrice;
@@ -572,7 +596,53 @@ export default function Checkout() {
                 {/* Expanded form */}
                 {addrExpanded && (
                   <div style={{ borderTop: '1px solid #f3f4f6', padding: '20px 24px' }}>
+
+                    {addressMode === 'saved' && savedAddresses.length > 0 && (
+                      <div style={{ marginBottom: 20 }}>
+                        <div style={{ display: 'grid', gap: 10 }}>
+                          {savedAddresses.map(a => (
+                            <label key={a.id} style={{
+                              display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer',
+                              border: `1px solid ${selectedSavedId === a.id ? '#2a5298' : '#e5e7eb'}`,
+                              background: selectedSavedId === a.id ? '#eef2ff' : '#fff',
+                              borderRadius: 6, padding: '12px 14px',
+                            }}>
+                              <input type="radio" name="savedAddress" checked={selectedSavedId === a.id}
+                                onChange={() => selectSavedAddress(a)} style={{ marginTop: 3 }} />
+                              <div>
+                                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+                                  <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', background: '#f4f4f5', color: '#282c3f', borderRadius: 3, padding: '2px 8px' }}>{a.label || 'Home'}</span>
+                                  <span style={{ fontWeight: 700, color: '#1f2937', fontSize: '0.88rem' }}>{a.name}</span>
+                                </div>
+                                <div style={{ fontSize: '0.82rem', color: '#374151' }}>
+                                  {a.address_line1}{a.address_line2 ? `, ${a.address_line2}` : ''}, {a.city}, {a.state} — {a.pincode}
+                                </div>
+                                {a.mobile && <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 2 }}>Mobile: {a.mobile}</div>}
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                        <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+                          <button type="button" onClick={() => setAddrExpanded(false)} disabled={!selectedSavedId}
+                            style={{ padding: '9px 24px', background: selectedSavedId ? '#2a5298' : '#c7d2e8', border: 'none', borderRadius: 4, fontWeight: 700, fontSize: '0.88rem', color: '#fff', cursor: selectedSavedId ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+                            Deliver Here
+                          </button>
+                          <button type="button" onClick={() => setAddressMode('new')}
+                            style={{ padding: '9px 20px', background: 'none', border: '1px solid #d1d5db', borderRadius: 4, fontWeight: 600, fontSize: '0.88rem', color: '#374151', cursor: 'pointer', fontFamily: 'inherit' }}>
+                            + Enter a New Address
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {addressMode === 'new' && (
                     <form onSubmit={handleAddressSave}>
+                      {savedAddresses.length > 0 && (
+                        <button type="button" onClick={() => setAddressMode('saved')}
+                          style={{ background: 'none', border: 'none', color: '#2a5298', fontWeight: 600, fontSize: '0.82rem', cursor: 'pointer', padding: 0, marginBottom: 14, fontFamily: 'inherit' }}>
+                          ← Choose from saved addresses
+                        </button>
+                      )}
                       <Field label="Street Address, Area, Landmark" required>
                         <textarea
                           rows={2} required
@@ -645,6 +715,7 @@ export default function Checkout() {
                         </button>
                       </div>
                     </form>
+                    )}
                   </div>
                 )}
               </div>

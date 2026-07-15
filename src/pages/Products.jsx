@@ -474,19 +474,27 @@ export default function Products() {
     setFilters(f => ({ ...f, search, category }));
   }, [searchParams]);
 
-  /* ── client-side sort helper ── */
+  /* ── client-side sort helper ──
+     Products only have `retailPrice` and (when an active group deal is
+     running) `holdPrice` — there's no `price`/`originalPrice`/`createdAt`
+     field, so sorting has to use the real field names the API returns. */
+  const getEffectivePrice = (p) =>
+    p.hasCampaign && p.holdPrice ? Number(p.holdPrice) : Number(p.retailPrice) || 0;
+
+  const getDiscountPct = (p) => {
+    if (!p.hasCampaign || !p.holdPrice || !p.retailPrice) return 0;
+    return p.retailPrice > 0 ? (1 - p.holdPrice / p.retailPrice) : 0;
+  };
+
   const sortProducts = useCallback((list, sortKey) => {
     const arr = [...list];
     switch (sortKey) {
-      case 'price_asc':  return arr.sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
-      case 'price_desc': return arr.sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
-      case 'newest':     return arr.sort((a, b) => new Date(b.createdAt ?? 0) - new Date(a.createdAt ?? 0));
+      case 'price_asc':  return arr.sort((a, b) => getEffectivePrice(a) - getEffectivePrice(b));
+      case 'price_desc': return arr.sort((a, b) => getEffectivePrice(b) - getEffectivePrice(a));
+      // No createdAt field is returned — higher productId means more recently added.
+      case 'newest':     return arr.sort((a, b) => Number(b.productId) - Number(a.productId));
       case 'rating':     return arr.sort((a, b) => (b.avgRating ?? 0) - (a.avgRating ?? 0));
-      case 'discount':   return arr.sort((a, b) => {
-        const da = a.originalPrice > a.price ? (1 - a.price / a.originalPrice) : 0;
-        const db = b.originalPrice > b.price ? (1 - b.price / b.originalPrice) : 0;
-        return db - da;
-      });
+      case 'discount':   return arr.sort((a, b) => getDiscountPct(b) - getDiscountPct(a));
       default: return arr;
     }
   }, []);

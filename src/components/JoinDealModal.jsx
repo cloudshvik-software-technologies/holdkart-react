@@ -121,7 +121,7 @@ export default function JoinDealModal({ product, bestGroupPrice, maxDiscountPct,
 
   const modal = (
     <div
-      onClick={onClose}
+      onClick={() => { if (!paying) onClose(); }}
       style={{
         position: 'fixed', inset: 0, zIndex: 99999,
         background: 'rgba(0,0,0,0.55)',
@@ -152,9 +152,10 @@ export default function JoinDealModal({ product, bestGroupPrice, maxDiscountPct,
           </div>
           <button
             onClick={onClose}
+            disabled={paying}
             style={{
               background: 'none', border: 'none', fontSize: '1.5rem',
-              color: '#9ca3af', cursor: 'pointer', lineHeight: 1,
+              color: paying ? '#e5e7eb' : '#9ca3af', cursor: paying ? 'default' : 'pointer', lineHeight: 1,
               padding: '0 0 0 12px', flexShrink: 0,
             }}
           >×</button>
@@ -221,7 +222,7 @@ export default function JoinDealModal({ product, bestGroupPrice, maxDiscountPct,
             style={{
               flex: 1, padding: '10px 0', background: '#fff',
               border: '1px solid #d1d5db', borderRadius: 8,
-              fontWeight: 600, fontSize: '0.86rem', color: '#374151',
+              fontWeight: 600, fontSize: '0.86rem', color: paying ? '#d1d5db' : '#374151',
               cursor: paying ? 'default' : 'pointer',
             }}
           >Cancel</button>
