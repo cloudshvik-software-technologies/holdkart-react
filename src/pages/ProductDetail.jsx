@@ -2747,11 +2747,19 @@ export default function ProductDetail() {
               style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #d1d5db', background: '#fff', fontSize: '1.1rem', fontWeight: 700, color: leaveQty >= (myJoinedQty || 1) ? '#d1d5db' : '#1f2937', cursor: leaveQty >= (myJoinedQty || 1) ? 'default' : 'pointer' }}
             >+</button>
           </div>
-          <p style={{ margin: '0 0 18px', fontSize: '0.78rem', color: '#9ca3af', textAlign: 'center' }}>
+          <p style={{ margin: '0 0 14px', fontSize: '0.78rem', color: '#9ca3af', textAlign: 'center' }}>
             {leaveQty >= myJoinedQty
               ? "You'll leave the deal completely."
               : `You'll still have ${myJoinedQty - leaveQty} ${myJoinedQty - leaveQty === 1 ? 'unit' : 'units'} in this deal.`}
           </p>
+          {/* Refund warning — the initial/advance amount paid when joining is
+              not returned when a customer leaves a hold deal. */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '10px 12px', marginBottom: 18 }}>
+            <span style={{ fontSize: '1rem', lineHeight: 1 }}>⚠️</span>
+            <p style={{ margin: 0, fontSize: '0.76rem', color: '#92400e', lineHeight: 1.45 }}>
+              Your initial payment for the unit(s) you're leaving will <strong>not be refunded</strong>.
+            </p>
+          </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <button
               type="button"

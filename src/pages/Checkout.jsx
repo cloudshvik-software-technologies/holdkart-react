@@ -913,15 +913,17 @@ export default function Checkout() {
                       label: 'Pay Online',
                       sub: 'UPI · Credit/Debit Card · Net Banking · Wallets via Cashfree',
                       badge: 'Instant confirmation',
+                      note: 'Choosing Cash on Delivery may involve extra handling at your doorstep — pay online for a faster, hassle-free checkout.',
                       allowed: onlineAllowed,
                       disabledMsg: onlineDisabledItems.length === 1
                         ? `Online payment is not available for "${onlineDisabledItems[0].name}"`
                         : 'Online payment is not available for one or more items in your cart',
                     },
-                  ].map(({ val, icon, label, sub, badge, allowed, disabledMsg }) => {
+                  ].map(({ val, icon, label, sub, badge, note, allowed, disabledMsg }) => {
                     const selected = address.paymentMethod === val;
                     return (
-                      <label key={val}
+                      <div key={val}>
+                      <label
                         onClick={() => allowed ? set('paymentMethod', val) : toast.error(disabledMsg)}
                         style={{
                           display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px',
@@ -958,6 +960,19 @@ export default function Checkout() {
                           </div>
                         </div>
                       </label>
+                      {note && allowed && (
+                        <div style={{
+                          display: 'flex', alignItems: 'flex-start', gap: 8,
+                          background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6,
+                          padding: '10px 12px', marginTop: 8,
+                        }}>
+                          <span style={{ fontSize: '0.95rem', lineHeight: 1 }}>⚠️</span>
+                          <span style={{ fontSize: '0.78rem', color: '#92400e', lineHeight: 1.45, fontWeight: 600 }}>
+                            {note}
+                          </span>
+                        </div>
+                      )}
+                      </div>
                     );
                   })}
                 </div>
