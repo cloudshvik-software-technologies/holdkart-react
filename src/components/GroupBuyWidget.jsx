@@ -44,7 +44,7 @@ export default function GroupBuyWidget({ productId }) {
   const joinedIds = new Set(mine.map(m => String(m.campaign_id)));
 
   const handleJoin = async (campaignId) => {
-    if (!isAuthenticated) { toast.error('Please sign in to join'); return; }
+    if (!isAuthenticated) { toast.error('Please sign in to join'); navigate('/login'); return; }
     try {
       await campaignService.joinCampaign({ campaignId });
       toast.success('Joined the group deal!');

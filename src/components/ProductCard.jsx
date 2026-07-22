@@ -119,7 +119,7 @@ export default function ProductCard({ product, alreadyJoined = false }) {
 
   const handleJoin = async (e) => {
     e.stopPropagation();
-    if (!isAuthenticated) { toast.error('Please sign in to join the group deal'); return; }
+    if (!isAuthenticated) { toast.error('Please sign in to join the group deal'); navigate('/login'); return; }
     if (product.hasVariants) {
       // Confirm the product actually still has variant options configured
       // (the hasVariants flag can be stale) before sending the shopper to
@@ -322,13 +322,35 @@ export default function ProductCard({ product, alreadyJoined = false }) {
         </button>
 
         {/* Image */}
-        <div className="hk-prodcard-img" style={{ background: '#f9fafb', overflow: 'hidden', height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="hk-prodcard-img" style={{ background: '#f9fafb', overflow: 'hidden', height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
           <img
             src={imgSrc}
             alt={product.name}
             onError={() => setImgSrc(FALLBACK_IMG)}
             style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
           />
+          {hasGroupDeal && product.otherVariantDealsCount > 0 && (
+            <button
+              onClick={handleShowVariantDeals}
+              className="hk-variant-deal-badge"
+              title="See all variants running a deal"
+              style={{
+                position: 'absolute', bottom: 8, right: 8, zIndex: 5,
+                display: 'flex', alignItems: 'center', gap: 3,
+                fontSize: '0.66rem', fontWeight: 800, color: '#fff',
+                background: 'linear-gradient(135deg, #f97316, #dc2626)',
+                border: 'none', borderRadius: 20, padding: '3px 8px 3px 6px',
+                cursor: 'pointer', boxShadow: '0 1px 4px rgba(220,38,38,0.35)',
+                animation: 'hkVariantPulse 1.8s ease-in-out infinite',
+                minWidth: 0, maxWidth: '90%', overflow: 'hidden',
+              }}
+            >
+              <span aria-hidden="true" style={{ flexShrink: 0 }}>🔥</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                +{product.otherVariantDealsCount} more deal{product.otherVariantDealsCount > 1 ? 's' : ''}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Body */}
@@ -344,45 +366,6 @@ export default function ProductCard({ product, alreadyJoined = false }) {
           }}>
             {product.name}
           </p>
-
-          {/* Which variant this card's deal price/photo belongs to, and whether other
-              variants of the same product also have a deal running right now.
-              Placed right under the product name so it reads as part of "what
-              product/variant is this" rather than being mixed in with the buttons. */}
-          {hasGroupDeal && (product.campaignVariantLabel || product.otherVariantDealsCount > 0) && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, flexWrap: 'nowrap', marginTop: 4, marginBottom: 10, minWidth: 0 }}>
-              {product.campaignVariantLabel && (
-                <span style={{
-                  fontSize: '0.66rem', fontWeight: 700, color: '#374151', background: '#f3f4f6',
-                  border: '1px solid #e5e7eb', borderRadius: 3, padding: '1px 5px',
-                  whiteSpace: 'nowrap', flexShrink: 0,
-                }}>
-                  {product.campaignVariantLabel}
-                </span>
-              )}
-              {product.otherVariantDealsCount > 0 && (
-                <button
-                  onClick={handleShowVariantDeals}
-                  className="hk-variant-deal-badge"
-                  title="See all variants running a deal"
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 3,
-                    fontSize: '0.66rem', fontWeight: 800, color: '#fff',
-                    background: 'linear-gradient(135deg, #f97316, #dc2626)',
-                    border: 'none', borderRadius: 20, padding: '3px 8px 3px 6px',
-                    cursor: 'pointer', boxShadow: '0 1px 4px rgba(220,38,38,0.35)',
-                    animation: 'hkVariantPulse 1.8s ease-in-out infinite',
-                    minWidth: 0, flex: '0 1 auto', overflow: 'hidden',
-                  }}
-                >
-                  <span aria-hidden="true" style={{ flexShrink: 0 }}>🔥</span>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
-                    +{product.otherVariantDealsCount} more deal{product.otherVariantDealsCount > 1 ? 's' : ''}
-                  </span>
-                </button>
-              )}
-            </div>
-          )}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4, height: '1rem', overflow: 'hidden' }}>
             {product.avgRating > 0 ? (

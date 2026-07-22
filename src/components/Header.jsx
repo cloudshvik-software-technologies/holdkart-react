@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useCart } from '../context/CartContext.jsx';
 import { authService } from '../services/index.js';
 import { getNotifications } from '../services/notification.service.js';
 import toast from 'react-hot-toast';
@@ -21,6 +22,7 @@ const AUTH_PAGES = ['/login', '/register', '/forgot', '/reset-password'];
 
 export default function Header() {
   const { customer, isAuthenticated, logout } = useAuth();
+  const { cartCount } = useCart();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -84,10 +86,9 @@ export default function Header() {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate('/products?search=' + encodeURIComponent(searchQuery.trim()));
-      setMobileMenuOpen(false);
-    }
+    const query = searchQuery.trim();
+    navigate(query ? '/products?search=' + encodeURIComponent(query) : '/products');
+    setMobileMenuOpen(false);
   };
 
   const isActive = (path) => {
@@ -605,7 +606,7 @@ export default function Header() {
                         { icon: '👤', label: 'My Profile',      to: '/profile' },
                         { icon: '📦', label: 'My Orders',       to: '/orders' },
                         { icon: '❤️', label: 'Wishlist',        to: '/wishlist' },
-                        { icon: '🛒', label: 'My Cart',         to: '/cart' },
+                        { icon: '🛒', label: 'My Cart',         to: '/cart', badge: cartCount > 0 ? cartCount : null },
                         { icon: '🎯', label: 'Hold Deals',      to: '/campaigns' },
                         { icon: '🔔', label: 'Notifications',   to: '/notifications', badge: unread > 0 ? unread : null },
                         { icon: '💬', label: 'Support',         to: '/complaints' },
@@ -677,10 +678,23 @@ export default function Header() {
                   onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,107,0,0.22)'; e.currentTarget.style.borderColor = '#FF6B00'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,107,0,0.12)'; e.currentTarget.style.borderColor = 'rgba(255,107,0,0.3)'; }}
                 >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FF6B00" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
-                    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
-                  </svg>
+                  <div style={{ position: 'relative' }}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FF6B00" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+                      <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+                    </svg>
+                    {cartCount > 0 && (
+                      <span style={{
+                        position: 'absolute', top: -8, right: -8,
+                        background: '#FF6B00', color: '#fff', borderRadius: 99,
+                        fontSize: '0.6rem', fontWeight: 800, padding: '1px 5px',
+                        lineHeight: 1.4, minWidth: 16, textAlign: 'center',
+                        border: '1.5px solid #fff',
+                      }}>
+                        {cartCount > 9 ? '9+' : cartCount}
+                      </span>
+                    )}
+                  </div>
                   <span className="hk-cart-label" style={{ fontWeight: 800, fontSize: '0.92rem', color: '#FF6B00', fontFamily: "'Plus Jakarta Sans',sans-serif" }}>Cart</span>
                 </Link>
               </>
@@ -786,10 +800,23 @@ export default function Header() {
                   onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,107,0,0.22)'; e.currentTarget.style.borderColor = '#FF6B00'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,107,0,0.12)'; e.currentTarget.style.borderColor = 'rgba(255,107,0,0.3)'; }}
                 >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FF6B00" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
-                    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
-                  </svg>
+                  <div style={{ position: 'relative' }}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FF6B00" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+                      <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+                    </svg>
+                    {cartCount > 0 && (
+                      <span style={{
+                        position: 'absolute', top: -8, right: -8,
+                        background: '#FF6B00', color: '#fff', borderRadius: 99,
+                        fontSize: '0.6rem', fontWeight: 800, padding: '1px 5px',
+                        lineHeight: 1.4, minWidth: 16, textAlign: 'center',
+                        border: '1.5px solid #fff',
+                      }}>
+                        {cartCount > 9 ? '9+' : cartCount}
+                      </span>
+                    )}
+                  </div>
                   <span className="hk-cart-label" style={{ fontWeight: 800, fontSize: '0.92rem', color: '#FF6B00', fontFamily: "'Plus Jakarta Sans',sans-serif" }}>Cart</span>
                 </button>
               </>

@@ -92,10 +92,10 @@ export default function Register() {
         .rp-logo-text {
           font-size: 1.45rem;
           font-weight: 700;
-          color: #1a1a2e;
+          color: rgb(42,82,152);
           letter-spacing: -0.5px;
         }
-        .rp-logo-text span { color: #3b5bdb; }
+        .rp-logo-text span { color: rgb(255,107,0); }
         .rp-logo-sub {
           font-size: 0.7rem;
           color: #9da3ae;
@@ -340,7 +340,7 @@ export default function Register() {
         {/* Left brand panel */}
         <div className="rp-brand">
           <div>
-            <div className="rp-logo-text">Hold<span>Kart</span></div>
+            <Link to="/" className="rp-logo-text" style={{ textDecoration: 'none', display: 'inline-block' }}>Hold<span>Kart</span></Link>
             <div className="rp-logo-sub">Commerce Platform</div>
           </div>
 

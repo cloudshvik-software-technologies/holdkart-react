@@ -159,20 +159,27 @@ export default function Footer() {
         {/* ── Brand column ── */}
         <div className="hk-footer-brand-col">
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-              <div style={{
-                width: 36, height: 36, borderRadius: 9, flexShrink: 0,
-                background: 'linear-gradient(135deg,#FF6B00,#E85D04)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '1.1rem', boxShadow: '0 3px 10px rgba(255,107,0,0.35)',
-              }}>🛒</div>
-              <div className="hk-footer-brand">
-                Hold<span style={{ color: '#FF6B00' }}>Kart</span>
-              </div>
-            </div>
-            <p className="hk-footer-tagline">
-              Premium refurbished electronics with quality assurance and great savings.
-            </p>
+            {/* ── Brand column ── */}
+<div className="hk-footer-brand-col">
+  <div>
+    <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, textDecoration: 'none' }}>
+      <div style={{
+        width: 36, height: 36, borderRadius: 9, flexShrink: 0,
+        background: 'linear-gradient(135deg,#FF6B00,#E85D04)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: '1.1rem', boxShadow: '0 3px 10px rgba(255,107,0,0.35)',
+      }}>🛒</div>
+      <div className="hk-footer-brand">
+        Hold<span style={{ color: '#FF6B00' }}>Kart</span>
+      </div>
+    </Link>
+    <p className="hk-footer-tagline">
+      Premium refurbished electronics with quality assurance and great savings.
+    </p>
+    {/* social icons unchanged */}
+  </div>
+</div>
+
 
             {/* Social icons */}
             <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>

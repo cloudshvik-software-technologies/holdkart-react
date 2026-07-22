@@ -616,22 +616,27 @@ function GroupBuySection({ product, localHold, onJoin, onLeave, onAddProduct, jo
           {joinLoading ? 'Joining\u2026' : 'Join Group Deal'}
         </button>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <p style={{ fontSize: '0.78rem', color: '#1f2937', margin: 0 }}>
             {remaining > 0
               ? `${remaining} more member${remaining !== 1 ? 's' : ''} needed to unlock the price`
               : '\uD83C\uDF89 Target reached \u2014 deal unlocked!'}
           </p>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <div style={{ flex: 1, padding: '7px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, fontSize: '0.82rem', fontWeight: 700, color: '#15803d' }}>
-               Joined this deal
-            </div>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px',
+            background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6,
+            fontSize: '0.82rem', fontWeight: 700, color: '#15803d', whiteSpace: 'nowrap',
+          }}>
+            <span style={{ fontSize: '0.85rem', lineHeight: 1 }}>✓</span>
+            Joined this deal
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
             {remaining > 0 && (
-              <button onClick={onAddProduct} disabled={joinLoading} style={S.joinBtn(joinLoading)}>
+              <button onClick={onAddProduct} disabled={joinLoading} style={{ ...S.joinBtn(joinLoading), flex: 1 }}>
                 {joinLoading ? 'Adding\u2026' : 'Add More'}
               </button>
             )}
-            <button onClick={onLeave} disabled={joinLoading} style={S.leaveBtn}>Leave</button>
+            <button onClick={onLeave} disabled={joinLoading} style={{ ...S.leaveBtn, flex: remaining > 0 ? '0 0 auto' : 1 }}>Leave</button>
           </div>
         </div>
       )}
@@ -687,6 +692,11 @@ export default function ProductDetail() {
   // per campaign — not just per product — otherwise joining one colour's deal
   // would incorrectly show every other colour/size as already joined too.
   const [myJoinedCampaignIds, setMyJoinedCampaignIds] = useState([]);
+  // How many units the customer joined the current campaign with (mySlots
+  // from getMyCampaigns) — used as the max for the "how many to leave" stepper.
+  const [myJoinedQty, setMyJoinedQty] = useState(0);
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [leaveQty, setLeaveQty] = useState(1);
   const [joinLoading, setJoinLoading]       = useState(false);
   const [localHold, setLocalHold]           = useState(0);
   const [showJoinModal, setShowJoinModal]   = useState(false);
@@ -806,6 +816,8 @@ export default function ProductDetail() {
           ? mine.filter(m => Number(m.product_id) === Number(p.productId) && (m.campaignStatus === 'ACTIVE' || m.campaignStatus === 'PAUSED'))
           : [];
         setMyJoinedCampaignIds(mineForProduct.map(m => Number(m.campaignRowId)));
+        const matchedMine = mineForProduct.find(m => Number(m.campaignRowId) === Number(campaign?.id));
+        setMyJoinedQty(matchedMine ? (Number(matchedMine.mySlots) || 1) : 0);
         // Start polling for all users who are already in the deal (only when ACTIVE)
         if (mineForProduct.length && campaign) startPolling(p.productId, p.holdTarget, campaign.variant_id || null);
       }
@@ -1275,14 +1287,40 @@ export default function ProductDetail() {
     }
   };
 
-  const handleLeave = async () => {
+  const openLeaveModal = async () => {
+    if (!matchedCampaign) return;
+    // BUG FIX: myJoinedQty (set inside loadCampaignStatus) is resolved against a
+    // campaign row found via a separate listCampaigns() call/matching path, which
+    // can disagree with `matchedCampaign` (resolved from product.campaigns) when a
+    // product has more than one campaign row — e.g. after an auto-renew reset, or
+    // right after the product/campaign was edited. When the two disagree, the
+    // modal showed "0 units" even though the customer really holds slots. Refetch
+    // fresh here, scoped to the exact matchedCampaign.id that Leave will actually
+    // submit, so this can never drift out of sync again.
+    let qty = myJoinedQty;
+    try {
+      const mine = await campaignService.getMyCampaigns();
+      const mineEntry = Array.isArray(mine)
+        ? mine.find(m => Number(m.campaignRowId) === Number(matchedCampaign.id))
+        : null;
+      if (mineEntry) qty = Number(mineEntry.mySlots) || 1;
+    } catch { /* fall back to whatever we already had */ }
+    setMyJoinedQty(qty);
+    setLeaveQty(qty > 1 ? qty : 1);
+    setShowLeaveModal(true);
+  };
+
+  const handleLeave = async (qty) => {
     if (!matchedCampaign) return;
     setJoinLoading(true);
     stopPolling(); // Stop polling — user no longer in deal
     try {
-      await campaignService.leaveCampaign({ campaignId: matchedCampaign.id });
-      toast.success('Left group deal');
-      setMyJoinedCampaignIds(prev => prev.filter(id => id !== Number(matchedCampaign.id)));
+      const res = await campaignService.leaveCampaign({ campaignId: matchedCampaign.id, quantity: qty });
+      toast.success(res?.message || 'Left group deal');
+      setShowLeaveModal(false);
+      if (!res?.remainingQuantity) {
+        setMyJoinedCampaignIds(prev => prev.filter(id => id !== Number(matchedCampaign.id)));
+      }
       const p = await productService.getProduct(id);
       setProduct(p);
       const refreshedCampaign = hasVariants
@@ -1454,7 +1492,7 @@ export default function ProductDetail() {
       product={{ ...product, retailPrice: effectiveRetailPrice, holdPrice: campaignHoldPrice, holdTarget: campaignHoldTarget }}
       localHold={localHold}
       onJoin={openJoinModal}
-      onLeave={handleLeave}
+      onLeave={openLeaveModal}
       onAddProduct={openAddMoreModal}
       joinLoading={joinLoading}
       hasJoined={hasJoined}
@@ -1728,15 +1766,18 @@ export default function ProductDetail() {
                         const active = size === selectedSize;
                         const variantForSize = variants.find(v => v.color === selectedColor && v.size === size);
                         const outOfStock = variantForSize && variantForSize.availableStock <= 0;
+                        const hasDeal = variantForSize && campaignVariantIds.has(variantForSize.id);
                         return (
                           <button
                             key={size}
                             disabled={outOfStock}
                             onClick={() => { setSelectedSize(size); setVariantWarning(false); }}
+                            title={hasDeal ? 'Group deal available on this size' : undefined}
                             style={{
+                              position: 'relative',
                               minWidth: 44, padding: '8px 14px', borderRadius: 6,
                               background: outOfStock ? '#f3f4f6' : '#fff', fontFamily: 'inherit',
-                              border: active ? '2px solid #2a5298' : '1px solid #d1d5db',
+                              border: active ? '2px solid #2a5298' : hasDeal ? '1px solid #16a34a' : '1px solid #d1d5db',
                               boxShadow: active ? '0 0 0 1px #2a5298' : 'none',
                               color: outOfStock ? '#9ca3af' : '#1f2937',
                               fontWeight: 600, fontSize: '0.85rem',
@@ -1745,10 +1786,29 @@ export default function ProductDetail() {
                             }}
                           >
                             {size}
+                            {hasDeal && !outOfStock && (
+                              <span style={{
+                                position: 'absolute', top: -7, right: -7,
+                                background: '#16a34a', color: '#fff',
+                                fontSize: '0.55rem', fontWeight: 700, lineHeight: 1,
+                                borderRadius: 8, padding: '2px 4px',
+                                whiteSpace: 'nowrap', boxShadow: '0 0 0 2px #fff',
+                              }}>
+                                DEAL
+                              </span>
+                            )}
                           </button>
                         );
                       })}
                     </div>
+                    {sizesForColor.some(size => {
+                      const v = variants.find(vv => vv.color === selectedColor && vv.size === size);
+                      return v && campaignVariantIds.has(v.id);
+                    }) && (
+                      <p style={{ fontSize: '0.72rem', color: '#16a34a', marginTop: 6, marginBottom: 0 }}>
+                        ● Sizes marked DEAL have an active group deal at a lower price
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -2656,6 +2716,67 @@ export default function ProductDetail() {
 
       </div>
     </div>
+
+    {/* ── Leave Group Deal Modal (choose how many units to leave) ── */}
+    {showLeaveModal && (
+      <div
+        onClick={() => !joinLoading && setShowLeaveModal(false)}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      >
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{ background: '#fff', borderRadius: 8, width: '100%', maxWidth: 380, padding: '24px 24px 20px' }}
+        >
+          <h3 style={{ margin: '0 0 8px', fontSize: '1.05rem', color: '#1f2937' }}>Leave Group Deal</h3>
+          <p style={{ margin: '0 0 18px', fontSize: '0.85rem', color: '#6b7280' }}>
+            You joined this deal with {myJoinedQty} {myJoinedQty === 1 ? 'unit' : 'units'}. How many would you like to leave?
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 22 }}>
+            <button
+              type="button"
+              onClick={() => setLeaveQty(q => Math.max(1, q - 1))}
+              disabled={leaveQty <= 1}
+              style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #d1d5db', background: '#fff', fontSize: '1.1rem', fontWeight: 700, color: leaveQty <= 1 ? '#d1d5db' : '#1f2937', cursor: leaveQty <= 1 ? 'default' : 'pointer' }}
+            >−</button>
+            <span style={{ fontSize: '1.3rem', fontWeight: 700, color: '#1f2937', minWidth: 30, textAlign: 'center' }}>{leaveQty}</span>
+            <button
+              type="button"
+              onClick={() => setLeaveQty(q => Math.min(myJoinedQty || 1, q + 1))}
+              disabled={leaveQty >= (myJoinedQty || 1)}
+              style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #d1d5db', background: '#fff', fontSize: '1.1rem', fontWeight: 700, color: leaveQty >= (myJoinedQty || 1) ? '#d1d5db' : '#1f2937', cursor: leaveQty >= (myJoinedQty || 1) ? 'default' : 'pointer' }}
+            >+</button>
+          </div>
+          <p style={{ margin: '0 0 14px', fontSize: '0.78rem', color: '#9ca3af', textAlign: 'center' }}>
+            {leaveQty >= myJoinedQty
+              ? "You'll leave the deal completely."
+              : `You'll still have ${myJoinedQty - leaveQty} ${myJoinedQty - leaveQty === 1 ? 'unit' : 'units'} in this deal.`}
+          </p>
+          {/* Refund warning — the initial/advance amount paid when joining is
+              not returned when a customer leaves a hold deal. */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '10px 12px', marginBottom: 18 }}>
+            <span style={{ fontSize: '1rem', lineHeight: 1 }}>⚠️</span>
+            <p style={{ margin: 0, fontSize: '0.76rem', color: '#92400e', lineHeight: 1.45 }}>
+              Your initial payment for the unit(s) you're leaving will <strong>not be refunded</strong>.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              type="button"
+              onClick={() => setShowLeaveModal(false)}
+              disabled={joinLoading}
+              style={{ flex: 1, padding: '10px 0', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: '#374151', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer', fontFamily: 'inherit' }}
+            >Cancel</button>
+            <button
+              type="button"
+              onClick={() => handleLeave(leaveQty)}
+              disabled={joinLoading}
+              style={{ flex: 1, padding: '10px 0', borderRadius: 4, border: 'none', background: '#dc2626', color: '#fff', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer', fontFamily: 'inherit' }}
+            >{joinLoading ? 'Leaving…' : 'Confirm'}</button>
+          </div>
+        </div>
+      </div>
+    )}
 
     {/* ── Product Image Lightbox Modal (Amazon-style) ── */}
     {productLightbox && galleryImages?.length > 0 && (() => {

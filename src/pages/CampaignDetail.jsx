@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { campaignService } from '../services/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import JoinDealModal from '../components/JoinDealModal.jsx';
 import toast from 'react-hot-toast';
 
 const FALLBACK_IMG =
@@ -94,10 +95,34 @@ export default function CampaignDetail() {
   const [campaign, setCampaign] = useState(null);
   const [loading, setLoading]   = useState(true);
   const [joined, setJoined]     = useState(false);
+  const [myJoinedQty, setMyJoinedQty] = useState(1);
   const [acting, setActing]     = useState(false);
   const [imgError, setImgError] = useState(false);
+  const [showJoinModal, setShowJoinModal] = useState(false);
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [leaveQty, setLeaveQty] = useState(1);
 
   const countdown = useCountdown(campaign?.end_time);
+
+  // Reusable fetch — pulls fresh campaign data + this customer's join status.
+  // Used on initial mount and again after a successful join/leave so the
+  // progress ring, slot count, and joined state all reflect the server.
+  const load = useCallback(() => {
+    if (!id) return;
+    campaignService.getCampaignById(id)
+      .then(data => setCampaign(data))
+      .catch(() => {});
+    if (isAuthenticated) {
+      campaignService.getMyCampaigns()
+        .then(mine => {
+          const list = Array.isArray(mine) ? mine : [];
+          const mineRow = list.find(m => String(m.campaign_id) === String(id));
+          setJoined(!!mineRow);
+          setMyJoinedQty(mineRow ? (Number(mineRow.mySlots) || 1) : 1);
+        })
+        .catch(() => {});
+    }
+  }, [id, isAuthenticated]);
 
   // Fetch campaign data — split into two independent effects so that
   // auth state resolving doesn't re-fetch (and double-toast) the campaign.
@@ -117,31 +142,45 @@ export default function CampaignDetail() {
     if (!isAuthenticated || !id) return;
     campaignService.getMyCampaigns()
       .then(mine => {
-        const ids = new Set((Array.isArray(mine) ? mine : []).map(m => String(m.campaign_id)));
-        setJoined(ids.has(String(id)));
+        const list = Array.isArray(mine) ? mine : [];
+        const mineRow = list.find(m => String(m.campaign_id) === String(id));
+        setJoined(!!mineRow);
+        setMyJoinedQty(mineRow ? (Number(mineRow.mySlots) || 1) : 1);
       })
       .catch(() => {});
   }, [id, isAuthenticated]);
 
-  const handleJoin = async () => {
+  // Opens the deposit/advance-amount modal instead of joining instantly —
+  // consistent with every other "Join" entry point in the app (product
+  // card, product detail), which all collect the advance amount via
+  // JoinDealModal first.
+  const handleJoin = () => {
     if (!isAuthenticated) { navigate('/login'); return; }
-    setActing(true);
-    try {
-      await campaignService.joinCampaign({ campaignId: Number(id) });
-      toast.success('You joined the group deal!');
-      window.dispatchEvent(new CustomEvent('campaignJoined', { detail: { campaignId: Number(id), campaign } }));
-      load();
-    } catch (e) {
-      toast.error(e?.response?.data?.message || 'Failed to join');
-    } finally { setActing(false); }
+    setShowJoinModal(true);
   };
 
-  const handleLeave = async () => {
-    if (!window.confirm('Leave this campaign? Your spot will be released.')) return;
+  const handleJoinSuccess = (qty) => {
+    setShowJoinModal(false);
+    setJoined(true);
+    toast.success('You joined the group deal!');
+    window.dispatchEvent(new CustomEvent('campaignJoined', { detail: { campaignId: Number(id), campaign } }));
+    load();
+  };
+
+  // Opens the same "how many units to leave" modal used on the product
+  // page, instead of a bare window.confirm — also resets the stepper to
+  // the customer's full joined quantity each time it's opened.
+  const handleLeave = () => {
+    setLeaveQty(myJoinedQty || 1);
+    setShowLeaveModal(true);
+  };
+
+  const handleConfirmLeave = async (qty) => {
     setActing(true);
     try {
-      await campaignService.leaveCampaign({ campaignId: Number(id) });
+      await campaignService.leaveCampaign({ campaignId: Number(id), quantity: qty });
       toast.success('Left campaign');
+      setShowLeaveModal(false);
       load();
     } catch (e) {
       toast.error(e?.response?.data?.message || 'Failed to leave');
@@ -172,6 +211,15 @@ export default function CampaignDetail() {
   const imgSrc   = imgError ? FALLBACK_IMG : resolveImg(campaign.image_url);
   const isActive = campaign.status === 'ACTIVE' || !campaign.status;
   const isFull   = pct >= 100;
+
+  // Props for the deposit modal — built from the campaign row itself so the
+  // amount charged matches this exact deal (a campaign can override the
+  // product's default retail/hold price).
+  const retailPrice    = Number(campaign.retail_price) || 0;
+  const holdPrice      = Number(campaign.hold_price) || 0;
+  const maxDiscountPct = retailPrice > 0 ? Math.round(((retailPrice - holdPrice) / retailPrice) * 100) : 0;
+  const remainingSlots = Math.max(0, Number(campaign.target) - Number(campaign.current_hold));
+  const variantLabel   = [campaign.variant_color, campaign.variant_size].filter(Boolean).join(' / ') || null;
 
   return (
     <div className="page-wrap">
@@ -416,6 +464,83 @@ export default function CampaignDetail() {
           .campaign-detail-right { position: static !important; top: auto !important; }
         }
       `}</style>
+
+      {showJoinModal && (
+        <JoinDealModal
+          product={{ productId: campaign.product_id, name: campaign.product_name, retailPrice }}
+          bestGroupPrice={holdPrice}
+          maxDiscountPct={maxDiscountPct}
+          remainingSlots={remainingSlots}
+          variantLabel={variantLabel}
+          variantId={campaign.variant_id || null}
+          onClose={() => setShowJoinModal(false)}
+          onJoinSuccess={handleJoinSuccess}
+          campaignAction={(qty, { cashfreeOrderId, depositAmount }) =>
+            campaignService.joinCampaign({ campaignId: Number(id), quantity: qty, cashfreeOrderId, depositAmount })
+          }
+        />
+      )}
+
+      {/* ── Leave Campaign Modal (choose how many units to leave) ── */}
+      {showLeaveModal && (
+        <div
+          onClick={() => !acting && setShowLeaveModal(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 8, width: '100%', maxWidth: 380, padding: '24px 24px 20px' }}
+          >
+            <h3 style={{ margin: '0 0 8px', fontSize: '1.05rem', color: '#1f2937' }}>Leave Campaign</h3>
+            <p style={{ margin: '0 0 18px', fontSize: '0.85rem', color: '#6b7280' }}>
+              You joined this deal with {myJoinedQty} {myJoinedQty === 1 ? 'unit' : 'units'}. How many would you like to leave?
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 18 }}>
+              <button
+                type="button"
+                onClick={() => setLeaveQty(q => Math.max(1, q - 1))}
+                disabled={leaveQty <= 1}
+                style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #d1d5db', background: '#fff', fontSize: '1.1rem', fontWeight: 700, color: leaveQty <= 1 ? '#d1d5db' : '#1f2937', cursor: leaveQty <= 1 ? 'default' : 'pointer' }}
+              >−</button>
+              <span style={{ fontSize: '1.3rem', fontWeight: 700, color: '#1f2937', minWidth: 30, textAlign: 'center' }}>{leaveQty}</span>
+              <button
+                type="button"
+                onClick={() => setLeaveQty(q => Math.min(myJoinedQty || 1, q + 1))}
+                disabled={leaveQty >= (myJoinedQty || 1)}
+                style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #d1d5db', background: '#fff', fontSize: '1.1rem', fontWeight: 700, color: leaveQty >= (myJoinedQty || 1) ? '#d1d5db' : '#1f2937', cursor: leaveQty >= (myJoinedQty || 1) ? 'default' : 'pointer' }}
+              >+</button>
+            </div>
+            <p style={{ margin: '0 0 14px', fontSize: '0.78rem', color: '#9ca3af', textAlign: 'center' }}>
+              {leaveQty >= myJoinedQty
+                ? "You'll leave the campaign completely."
+                : `You'll still have ${myJoinedQty - leaveQty} ${myJoinedQty - leaveQty === 1 ? 'unit' : 'units'} in this deal.`}
+            </p>
+            {/* Refund warning — the initial/advance amount paid when joining is
+                not returned when a customer leaves a hold campaign. */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '10px 12px', marginBottom: 18 }}>
+              <span style={{ fontSize: '1rem', lineHeight: 1 }}>⚠️</span>
+              <p style={{ margin: 0, fontSize: '0.76rem', color: '#92400e', lineHeight: 1.45 }}>
+                Your initial payment for the unit(s) you're leaving will <strong>not be refunded</strong>.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setShowLeaveModal(false)}
+                disabled={acting}
+                style={{ flex: 1, padding: '10px 0', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: '#374151', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer', fontFamily: 'inherit' }}
+              >Cancel</button>
+              <button
+                type="button"
+                onClick={() => handleConfirmLeave(leaveQty)}
+                disabled={acting}
+                style={{ flex: 1, padding: '10px 0', borderRadius: 4, border: 'none', background: '#dc2626', color: '#fff', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer', fontFamily: 'inherit' }}
+              >{acting ? 'Leaving…' : 'Confirm'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

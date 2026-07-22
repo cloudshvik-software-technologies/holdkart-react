@@ -112,9 +112,10 @@ export default function Invoice() {
   const qty      = order.quantity || 1;
   const prodAmt  = Number(order.order_amount)          || 0;   // item subtotal
   const shipFee  = Number(order.delivery_charge)       || 0;   // shipping
+  const platFee  = Number(order.platform_fee)          || 0;   // platform fee (charged at checkout, was missing from invoice)
   const phFee    = Number(order.payment_handling_fee)  || 0;   // payment handling fee (0 if not charged)
   const ppFee    = Number(order.protect_promise_fee)   || 0;   // protect promise fee (0 if not charged)
-  const grandTotal = prodAmt + shipFee + phFee + ppFee;        // EXACT same as OrderDetail
+  const grandTotal = prodAmt + shipFee + platFee + phFee + ppFee;  // EXACT same as OrderDetail
 
   /* ── GST breakdown (18% inclusive = 9% SGST + 9% CGST) ── */
   const gstExclusive = (amt) => +(amt / 1.18).toFixed(2);
@@ -129,6 +130,10 @@ export default function Invoice() {
   const shipSgst = halfTax(shipFee);
   const shipCgst = +(gstAmt(shipFee) - shipSgst).toFixed(2);
 
+  const platBase  = gstExclusive(platFee);
+  const platSgst  = halfTax(platFee);
+  const platCgst  = +(gstAmt(platFee) - platSgst).toFixed(2);
+
   const phBase   = gstExclusive(phFee);
   const phSgst   = halfTax(phFee);
   const phCgst   = +(gstAmt(phFee) - phSgst).toFixed(2);
@@ -138,9 +143,9 @@ export default function Invoice() {
   const ppCgst   = +(gstAmt(ppFee) - ppSgst).toFixed(2);
 
   const totGross   = grandTotal;
-  const totBase    = prodBase + shipBase + phBase + ppBase;
-  const totSgst    = prodSgst + shipSgst + phSgst + ppSgst;
-  const totCgst    = prodCgst + shipCgst + phCgst + ppCgst;
+  const totBase    = prodBase + shipBase + platBase + phBase + ppBase;
+  const totSgst    = prodSgst + shipSgst + platSgst + phSgst + ppSgst;
+  const totCgst    = prodCgst + shipCgst + platCgst + phCgst + ppCgst;
 
   const orderDate  = fmtDate(order.created_date || order.created_at);
   const invoiceNum = `INV-${order.order_number}`;
@@ -336,6 +341,24 @@ export default function Invoice() {
                   </tr>
                 )}
 
+                {/* Platform Fee */}
+                {platFee > 0 && (
+                  <tr style={{ background: '#fafafa' }}>
+                    <td style={tdL()}>
+                      <div style={{ fontWeight: 600 }}>Platform Fee</div>
+                      <div style={{ color: '#555', fontSize: '0.6rem' }}>SAC: 998599 | SGST: 9% | CGST: 9%</div>
+                    </td>
+                    <td style={tdC()}>998599</td>
+                    <td style={tdR()}>1</td>
+                    <td style={tdR()}>{fmt(platFee)}</td>
+                    <td style={tdR()}>0.00</td>
+                    <td style={tdR()}>{fmt(platBase)}</td>
+                    <td style={tdR()}>{fmt(platSgst)}</td>
+                    <td style={tdR()}>{fmt(platCgst)}</td>
+                    <td style={tdR({ fontWeight: 600 })}>{fmt(platFee)}</td>
+                  </tr>
+                )}
+
                 {/* Payment Handling Fee */}
                 {phFee > 0 && (
                   <tr style={{ background: '#fafafa' }}>
@@ -400,6 +423,7 @@ export default function Invoice() {
                 {[
                   ['Item Subtotal:', prodAmt],
                   ...(shipFee > 0 ? [['Shipping:', shipFee]] : []),
+                  ...(platFee > 0 ? [['Platform Fee:', platFee]] : []),
                   ...(phFee  > 0 ? [['Payment Handling:', phFee]]  : []),
                   ...(ppFee  > 0 ? [['Protect Promise:', ppFee]]   : []),
                 ].map(([label, val]) => (
