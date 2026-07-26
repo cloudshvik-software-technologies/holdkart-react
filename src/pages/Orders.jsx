@@ -690,6 +690,7 @@ export default function Orders() {
   const navigate = useNavigate();
   const [orders,      setOrders]      = useState([]);
   const [loading,     setLoading]     = useState(true);
+  const [fetchError,  setFetchError]  = useState(null);
   const [tab,         setTab]         = useState('all');
   const [period,      setPeriod]      = useState('3m');
   const [search,      setSearch]      = useState('');
@@ -700,6 +701,7 @@ export default function Orders() {
 
   const fetchOrders = async () => {
     try {
+      setFetchError(null);
       const data = await orderService.listOrders();
       const list = Array.isArray(data) ? data : [];
       setOrders(list);
@@ -707,8 +709,17 @@ export default function Orders() {
       list
         .filter(o => o.order_status === 'Delivered')
         .forEach(o => orderService.getOrder(o.id).catch(() => {}));
-    } catch {
-      setOrders([]);
+    } catch (err) {
+      // FIX: this used to swallow every error (network failure, 401, 500,
+      // bad response shape) and silently render the same "No orders found"
+      // empty state as a genuinely empty account — making a broken API call
+      // indistinguishable from "you have no orders." Surface the real
+      // message so it's actually debuggable, and don't clear existing
+      // orders out from under the user on a transient failure.
+      console.error('[Orders] failed to load orders:', err);
+      setFetchError(
+        err?.response?.data?.message || err?.message || 'Failed to load your orders. Please try again.'
+      );
     } finally {
       setLoading(false);
     }
@@ -996,6 +1007,19 @@ export default function Orders() {
                 </div>
               </div>
             ))}
+          </div>
+        ) : fetchError ? (
+          <div className="ord-empty">
+            <div style={{ fontSize: '3rem', marginBottom: 16 }}>⚠️</div>
+            <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#c40000', marginBottom: 8 }}>
+              Couldn't load your orders
+            </div>
+            <div style={{ color: '#6b7280', marginBottom: 24, fontSize: '0.9rem' }}>
+              {fetchError}
+            </div>
+            <button className="ord-btn-primary" onClick={() => { setLoading(true); fetchOrders(); }}>
+              Try again
+            </button>
           </div>
         ) : filtered.length === 0 ? (
           <div className="ord-empty">
