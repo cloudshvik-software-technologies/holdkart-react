@@ -339,7 +339,8 @@ export default function Checkout() {
   const deliveryCharge = Math.round(cart.reduce((sum, item) => sum + itemDeliveryCharge(item), 0) * 100) / 100;
   // null when pincode not entered yet (no couriers fetched)
   const effectiveDeliveryCharge = Object.keys(courierMap).length > 0 ? deliveryCharge : null;
-  const platformFee       = 10;  // Platform fee (same as cart)
+  const [platformFee, setPlatformFee] = useState(5);
+  useEffect(() => { fetch('/api/customer/config/platform-fee').then(r => r.json()).then(d => setPlatformFee(d.platformFee)).catch(() => {}); }, []);
   const totalFees         = (effectiveDeliveryCharge ?? 0) + platformFee;
   const total = Math.max(0, subtotalEff - totalPrepaid + totalFees);
   const itemCount    = cart.reduce((s, i) => s + i.quantity, 0);

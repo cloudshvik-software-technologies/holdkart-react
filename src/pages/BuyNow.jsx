@@ -266,7 +266,8 @@ export default function BuyNow() {
   const depositPaid    = item?.depositPaid || 0;
   // use selected courier rate × quantity; null until courier is selected
   const deliveryCharge = courier.selected ? Math.round(courier.selected.rate * qty * 100) / 100 : null;
-  const platformFee    = 10;
+  const [platformFee, setPlatformFee] = useState(5);
+  useEffect(() => { fetch('/api/customer/config/platform-fee').then(r => r.json()).then(d => setPlatformFee(d.platformFee)).catch(() => {}); }, []);
   const totalFees      = (deliveryCharge ?? 0) + platformFee;
   const total          = Math.max(0, lineTotal - depositPaid + totalFees);
 
