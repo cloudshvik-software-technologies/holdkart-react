@@ -525,7 +525,7 @@ function OrderCard({ order, onCancelClick, onReturnClick, onReviewClick }) {
   const productId = order.product_id || '';
   // What the customer actually paid for this product = item price (deal-locked
   // price minus deposit, if it was a deal) + shipping for this item.
-  const itemTotal = (Number(order.order_amount) || 0) + (Number(order.delivery_charge) || 0);
+  const itemTotal = (Number(order.order_amount) || 0) + (Number(order.advance_amount) || 0) + (Number(order.delivery_charge) || 0) + (Number(order.platform_fee) || 0);
 
   const isDelivered     = status === 'Delivered';
   const isCancelled     = status === 'Cancelled' || status === 'Returned';

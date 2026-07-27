@@ -110,21 +110,25 @@ export default function Invoice() {
 
   /* ── Amount values — exactly mirrors OrderDetail calculation ── */
   const qty      = order.quantity || 1;
-  const prodAmt  = Number(order.order_amount)          || 0;   // item subtotal
+  const prodAmt  = Number(order.order_amount)          || 0;   // balance due on THIS invoice
+  const advAmt   = Number(order.advance_amount)        || 0;   // deposit already paid at deal-hold time (0 for regular orders)
+  const fullItemPrice = prodAmt + advAmt;                       // true item price, for display only
   const shipFee  = Number(order.delivery_charge)       || 0;   // shipping
   const platFee  = Number(order.platform_fee)          || 0;   // platform fee (charged at checkout, was missing from invoice)
   const phFee    = Number(order.payment_handling_fee)  || 0;   // payment handling fee (0 if not charged)
   const ppFee    = Number(order.protect_promise_fee)   || 0;   // protect promise fee (0 if not charged)
-  const grandTotal = prodAmt + shipFee + platFee + phFee + ppFee;  // EXACT same as OrderDetail
+  const grandTotal = fullItemPrice + shipFee + platFee + phFee + ppFee;  // matches OrderDetail — item + shipping + fees, adds up cleanly
 
   /* ── GST breakdown (18% inclusive = 9% SGST + 9% CGST) ── */
   const gstExclusive = (amt) => +(amt / 1.18).toFixed(2);
   const gstAmt       = (amt) => +(amt - gstExclusive(amt)).toFixed(2);
   const halfTax      = (amt) => +(gstAmt(amt) / 2).toFixed(2);
 
-  const prodBase = gstExclusive(prodAmt);
-  const prodSgst = halfTax(prodAmt);
-  const prodCgst = +(gstAmt(prodAmt) - prodSgst).toFixed(2);
+  // Item row uses the FULL item price (advance + balance), not just the
+  // balance, so the invoice table's own numbers add up to grandTotal.
+  const prodBase = gstExclusive(fullItemPrice);
+  const prodSgst = halfTax(fullItemPrice);
+  const prodCgst = +(gstAmt(fullItemPrice) - prodSgst).toFixed(2);
 
   const shipBase = gstExclusive(shipFee);
   const shipSgst = halfTax(shipFee);
@@ -311,16 +315,21 @@ export default function Invoice() {
                       </div>
                     )}
                     {order.category && <div style={{ color: '#6b7280', fontSize: '0.62rem' }}>{order.category}</div>}
+                    {advAmt > 0 && (
+                      <div style={{ color: '#6b7280', fontSize: '0.6rem' }}>
+                        (includes ₹{fmt(advAmt)} advance already paid at deal-hold time)
+                      </div>
+                    )}
                     <div style={{ color: '#555', fontSize: '0.6rem' }}>SGST/UTGST: 9% | CGST: 9%</div>
                   </td>
                   <td style={tdC()}>85183019</td>
                   <td style={tdR()}>{qty}</td>
-                  <td style={tdR()}>{fmt(prodAmt)}</td>
+                  <td style={tdR()}>{fmt(fullItemPrice)}</td>
                   <td style={tdR()}>0.00</td>
                   <td style={tdR()}>{fmt(prodBase)}</td>
                   <td style={tdR()}>{fmt(prodSgst)}</td>
                   <td style={tdR()}>{fmt(prodCgst)}</td>
-                  <td style={tdR({ fontWeight: 600 })}>{fmt(prodAmt)}</td>
+                  <td style={tdR({ fontWeight: 600 })}>{fmt(fullItemPrice)}</td>
                 </tr>
 
                 {/* Shipping */}
@@ -421,7 +430,7 @@ export default function Invoice() {
               <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 200 }}>
                 {/* Fee breakdown summary */}
                 {[
-                  ['Item Subtotal:', prodAmt],
+                  [advAmt > 0 ? 'Item Price:' : 'Item Subtotal:', fullItemPrice],
                   ...(shipFee > 0 ? [['Shipping:', shipFee]] : []),
                   ...(platFee > 0 ? [['Platform Fee:', platFee]] : []),
                   ...(phFee  > 0 ? [['Payment Handling:', phFee]]  : []),

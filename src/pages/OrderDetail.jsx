@@ -10,6 +10,10 @@ const fmtDate = (d, short = false) => {
   return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
+// Always show 2 decimal places (₹50.00, not ₹50) — matches Invoice.jsx's fmt()
+// so amounts are formatted consistently across the order and invoice pages.
+const fmt = (v) => Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 /* Status metadata for cancelled/return-related states — mirrors the colors
    used on the Orders list page so the indication is consistent site-wide */
 const CANCEL_LIKE_META = {
@@ -153,14 +157,20 @@ export default function OrderDetail() {
   const isCOD = (order.payment_method || '').toUpperCase().includes('COD') || (order.payment_method || '').toUpperCase().includes('CASH');
 
   // What the customer actually paid for this product — deal-locked price minus
-  // deposit (if it was a deal) — plus shipping and any other applicable fees.
-  // Platform fee is intentionally excluded from this page.
+  // deposit (if it was a deal) — plus shipping, platform fee, and any other applicable fees.
   const prodAmt    = Number(order.order_amount) || 0;
+  const advAmt     = Number(order.advance_amount) || 0;   // deposit already paid at deal-hold time (0 for regular orders)
+  const fullItemPrice = prodAmt + advAmt;                  // true item price, for display only
   const shipFee    = Number(order.delivery_charge) || 0;
+  const platFee    = Number(order.platform_fee) || 0;
   const phFee      = Number(order.payment_handling_fee) || 0;
   const ppFee      = Number(order.protect_promise_fee)  || 0;
   const otherFees  = phFee + ppFee;
-  const grandTotal = prodAmt + shipFee + otherFees;
+  // Total = full item price (advance + balance) + shipping + platform fee +
+  // other fees — matches order.total_amount exactly, and keeps Item Price /
+  // Shipping / Platform Fee / Total internally consistent (they add up on
+  // the page, not just in the DB).
+  const grandTotal = fullItemPrice + shipFee + platFee + otherFees;
 
   const breadcrumb = [
     { label: 'Home', path: '/home' },
@@ -525,7 +535,7 @@ export default function OrderDetail() {
                       {CANCEL_LIKE_META[order.order_status].label}
                     </div>
                   )}
-                  <div className="od-prod-price">₹{grandTotal.toLocaleString('en-IN')}</div>
+                  <div className="od-prod-price">₹{fmt(grandTotal)}</div>
                 </div>
               </div>
           </div>
@@ -559,13 +569,21 @@ export default function OrderDetail() {
             </div>
             <div>
               <div className="od-summary-title">Order Summary</div>
-              <div className="od-price-row"><span>Item(s) Subtotal:</span><span>₹{prodAmt.toLocaleString('en-IN')}</span></div>
-              <div className="od-price-row"><span>Shipping:</span><span>₹{shipFee.toLocaleString('en-IN')}</span></div>
-              {otherFees > 0 && (
-                <div className="od-price-row"><span>Fees:</span><span>₹{otherFees.toLocaleString('en-IN')}</span></div>
+              <div className="od-price-row"><span>Item Price:</span><span>₹{fmt(fullItemPrice)}</span></div>
+              {advAmt > 0 && (
+                <div style={{ fontSize: '0.72rem', color: 'var(--muted)', margin: '-4px 0 6px' }}>
+                  (includes ₹{fmt(advAmt)} advance already paid at deal-hold time)
+                </div>
               )}
-              <div className="od-price-row"><span>Total:</span><span>₹{grandTotal.toLocaleString('en-IN')}</span></div>
-              <div className="od-price-total"><span>Grand Total:</span><span>₹{grandTotal.toLocaleString('en-IN')}</span></div>
+              <div className="od-price-row"><span>Shipping:</span><span>₹{fmt(shipFee)}</span></div>
+              {platFee > 0 && (
+                <div className="od-price-row"><span>Platform Fee:</span><span>₹{fmt(platFee)}</span></div>
+              )}
+              {otherFees > 0 && (
+                <div className="od-price-row"><span>Fees:</span><span>₹{fmt(otherFees)}</span></div>
+              )}
+              <div className="od-price-row"><span>Total:</span><span>₹{fmt(grandTotal)}</span></div>
+              <div className="od-price-total"><span>Grand Total:</span><span>₹{fmt(grandTotal)}</span></div>
             </div>
           </div>
 

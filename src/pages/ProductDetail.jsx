@@ -666,6 +666,7 @@ export default function ProductDetail() {
   const [selectedSize, setSelectedSize]     = useState(null);
   const [variantWarning, setVariantWarning] = useState(false);
   const variantSectionRef = useRef(null);
+  const reviewsSectionRef = useRef(null);
   const [reviews, setReviews]         = useState([]);
   const [showAllReviews, setShowAllReviews] = useState(false);
   const [lightbox, setLightbox] = useState(null); // { images: [...], index: 0, isReview: bool }
@@ -1681,7 +1682,15 @@ export default function ProductDetail() {
             {reviews.length > 0 && (
               <div style={S.ratingRow}>
                 <StarRating rating={avgRating} />
-                <span style={S.ratingCount} onClick={() => setTab('reviews')}>
+                <span
+                  style={{ ...S.ratingCount, cursor: 'pointer' }}
+                  onClick={() => {
+                    setTab('reviews');
+                    setTimeout(() => {
+                      reviewsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 0);
+                  }}
+                >
                   {avgRating.toFixed(1)} · {reviews.length} rating{reviews.length !== 1 ? 's' : ''}
                 </span>
               </div>
@@ -1992,7 +2001,7 @@ export default function ProductDetail() {
         </div>
 
         {/* ── Tabs: Description + Reviews ── */}
-        <div>
+        <div ref={reviewsSectionRef}>
           <div style={S.tabNav}>
             {[['desc', 'Product Description'], ['reviews', `Customer Reviews (${reviews.length})`]].map(([key, label]) => (
               <button key={key} style={S.tabBtn(tab === key)} onClick={() => setTab(key)}>{label}</button>
