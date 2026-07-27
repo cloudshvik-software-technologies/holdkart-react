@@ -188,7 +188,7 @@ function SuggestedForYou({ items: itemsProp, loading, guardedNav, title = 'Sugge
             const imgSrc  = resolveImg(p);
             const price   = Number(p.price || p.retailPrice || p.retail_price) || 0;
             const mrp     = Number(p.mrp || p.originalPrice || price) || price;
-            const upiPrice = price > 0 ? Math.round(price * 0.9) : 0;
+            const upiPrice = price > 0 ? (price * 0.9) : 0;
 
             return (
               <div
@@ -1341,7 +1341,7 @@ export default function Home({ isGuest = false }) {
                   // instead of the old retail*(1 - currentHold/100) nonsense.
                   const safeCurrentHold = Math.min(currentHold, target || 0);
                   const displayPrice = target > 0 && safeCurrentHold > 0
-                    ? Math.round(retailPrice - (retailPrice - bestGroupPrice) * (safeCurrentHold / target))
+                    ? (retailPrice - (retailPrice - bestGroupPrice) * (safeCurrentHold / target))
                     : retailPrice;
                   const discountPct = retailPrice > 0 && displayPrice < retailPrice
                     ? Math.round(((retailPrice - displayPrice) / retailPrice) * 100)

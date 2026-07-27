@@ -578,7 +578,7 @@ function GroupBuySection({ product, localHold, onJoin, onLeave, onAddProduct, jo
   const remaining       = holdTarget - safeHold;
   // Current effective price scales toward deal price as more people join
   const discountedPrice = safeHold > 0
-    ? Math.round(retailPrice - (retailPrice - finalPrice) * (safeHold / holdTarget))
+    ? (retailPrice - (retailPrice - finalPrice) * (safeHold / holdTarget))
     : retailPrice;
 
   return (
@@ -1465,7 +1465,7 @@ export default function ProductDetail() {
     : 0;
   // Display price scales toward deal price proportionally as slots fill
   const displayPrice = hasGroupBuy && safeHold > 0 && campaignHoldTarget > 0
-    ? Math.round(effectiveRetailPrice - (effectiveRetailPrice - bestGroupPrice) * (safeHold / campaignHoldTarget))
+    ? (effectiveRetailPrice - (effectiveRetailPrice - bestGroupPrice) * (safeHold / campaignHoldTarget))
     : effectiveRetailPrice;
   // If the campaign is PAUSED, treat product as out of stock for all customers.
   // remainingStock is the number of units available for regular Add to Cart
@@ -2342,7 +2342,7 @@ export default function ProductDetail() {
             const itemImg = resolveSellerImg(item.images?.[0] || '');
             const hasDiscount = item.holdTarget > 0;
             const discountedPrice = hasDiscount
-              ? Math.round(item.retailPrice * (1 - item.holdTarget / 100))
+              ? (item.retailPrice * (1 - item.holdTarget / 100))
               : item.retailPrice;
             return (
               <div
