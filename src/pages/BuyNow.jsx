@@ -196,7 +196,7 @@ export default function BuyNow() {
     const cod = paymentMethod === 'COD' ? 1 : 0;
     setCourier({ list: [], loading: true, error: null, selected: null });
     try {
-      const res  = await getAvailableCouriers(item.productId, pincode, 0.5, cod);
+      const res  = await getAvailableCouriers(item.productId, pincode, item.quantity, cod);
       const list = res?.couriers || [];
       setCourier({
         list,
@@ -264,8 +264,10 @@ export default function BuyNow() {
   const mrpTotal       = mrp * qty;
   const savings        = mrpTotal - lineTotal;
   const depositPaid    = item?.depositPaid || 0;
-  // use selected courier rate × quantity; null until courier is selected
-  const deliveryCharge = courier.selected ? Math.round(courier.selected.rate * qty * 100) / 100 : null;
+  // Use the selected courier rate as-is; null until courier is selected.
+  // The backend already computes this rate from product.weight × qty, so it
+  // must NOT be multiplied by qty again here.
+  const deliveryCharge = courier.selected ? Math.round(courier.selected.rate * 100) / 100 : null;
   const [platformFee, setPlatformFee] = useState(5);
   useEffect(() => { fetch('/api/customer/config/platform-fee').then(r => r.json()).then(d => setPlatformFee(d.platformFee)).catch(() => {}); }, []);
   const totalFees      = (deliveryCharge ?? 0) + platformFee;

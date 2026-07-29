@@ -646,14 +646,40 @@ function OrderCard({ order, onCancelClick, onReturnClick, onReviewClick }) {
           <div className="ord-prod-info">
             <div className="ord-prod-name"
               onClick={() => productId && navigate(`/product/${productId}`)}
-              style={{ cursor: productId ? 'pointer' : 'default' }}>
+              style={{ cursor: productId ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 8 }}>
               {order.product_name}
+              {/* Distinguish a converted campaign/deal order (had an advance
+                  deposit) from a normal, full-price order at a glance. */}
+              {Number(order.advance_amount) > 0 ? (
+                <span style={{
+                  fontSize: 11, fontWeight: 700, color: '#7c3aed', background: '#f5f3ff',
+                  border: '1px solid #ddd6fe', borderRadius: 999, padding: '2px 8px',
+                  whiteSpace: 'nowrap',
+                }}>
+                  🏷️ Campaign Deal
+                </span>
+              ) : (
+                <span style={{
+                  fontSize: 11, fontWeight: 700, color: '#374151', background: '#f3f4f6',
+                  border: '1px solid #e5e7eb', borderRadius: 999, padding: '2px 8px',
+                  whiteSpace: 'nowrap',
+                }}>
+                  Normal Order
+                </span>
+              )}
             </div>
             {order.category && <div className="ord-prod-meta">{order.category}</div>}
             <div className="ord-prod-meta">
               Qty: {order.quantity || 1}
               {order.size && <> &nbsp;·&nbsp; Size: {order.size}</>}
             </div>
+            {/* For a deal order, spell out the two-part payment right here so
+                the ₹ total on this card isn't a mystery next to a normal order. */}
+            {Number(order.advance_amount) > 0 && (
+              <div className="ord-prod-meta" style={{ color: '#7c3aed' }}>
+                Advance ₹{Number(order.advance_amount).toLocaleString('en-IN')} + Balance ₹{Number(order.order_amount || 0).toLocaleString('en-IN')}
+              </div>
+            )}
             {(order.variant_color || order.variant_size) && (
               <div className="ord-prod-meta" style={{ fontWeight: 600, color: '#374151' }}>
                 {[order.variant_color, order.variant_size].filter(Boolean).join(' / ')}
@@ -676,7 +702,15 @@ function OrderCard({ order, onCancelClick, onReturnClick, onReviewClick }) {
 
             <div className="ord-actions">
               {isDelivered && (
-                <button className="ord-btn-primary" onClick={() => navigate('/products')}>Buy it again</button>
+                // BUG FIX: this went to the generic /products listing page,
+                // ignoring which product the order was even for. Send the
+                // customer straight to the exact product they're re-buying.
+                <button
+                  className="ord-btn-primary"
+                  onClick={() => productId ? navigate(`/product/${productId}`) : navigate('/products')}
+                >
+                  Buy it again
+                </button>
               )}
               <button className="ord-btn-secondary" onClick={() => navigate(`/order/${orderId}`)}>
                 View order

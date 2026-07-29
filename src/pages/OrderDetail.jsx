@@ -70,6 +70,7 @@ export default function OrderDetail() {
   const [myReview, setMyReview] = useState(null);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [deletingReview, setDeletingReview] = useState(false);
+  const [editingReview, setEditingReview] = useState(false);
   const [writeReview, setWriteReview] = useState({ rating: 0, comment: '', submitting: false, hover: 0, images: [], previews: [] });
   const [tracking, setTracking]         = useState(null);
   const [trackingUrl, setTrackingUrl]   = useState(null);
@@ -84,7 +85,13 @@ export default function OrderDetail() {
   };
 
   const removeReviewImage = (i) => {
-    const images = writeReview.images.filter((_, idx) => idx !== i);
+    // In edit mode, previews can start with existing (already-uploaded) photo
+    // URLs that have no corresponding File in `images`. Only drop from
+    // `images` if the removed preview is one of the newly-added files.
+    const existingCount = writeReview.previews.length - writeReview.images.length;
+    const images = i < existingCount
+      ? writeReview.images
+      : writeReview.images.filter((_, idx) => idx !== i - existingCount);
     const previews = writeReview.previews.filter((_, idx) => idx !== i);
     setWriteReview(p => ({ ...p, images, previews }));
   };
@@ -100,11 +107,33 @@ export default function OrderDetail() {
       writeReview.images.forEach(img => fd.append('reviewImages', img));
       await reviewService.addReview(fd);
       await fetchMyReview(order.id);
+      setEditingReview(false);
+      setWriteReview({ rating: 0, comment: '', submitting: false, hover: 0, images: [], previews: [] });
     } catch {
       alert('Failed to submit review. Please try again.');
     } finally {
       setWriteReview(p => ({ ...p, submitting: false }));
     }
+  };
+
+  const handleEditReview = () => {
+    if (!myReview) return;
+    setWriteReview({
+      rating: myReview.rating || 0,
+      comment: myReview.comment || '',
+      submitting: false,
+      hover: 0,
+      images: [],
+      // Show existing photos as read-only previews; uploading new ones will
+      // replace them (the backend re-saves all images on every update).
+      previews: myReview.images || [],
+    });
+    setEditingReview(true);
+  };
+
+  const handleCancelEditReview = () => {
+    setEditingReview(false);
+    setWriteReview({ rating: 0, comment: '', submitting: false, hover: 0, images: [], previews: [] });
   };
 
   const fetchMyReview = async (orderId) => {
@@ -344,6 +373,17 @@ export default function OrderDetail() {
         }
         .od-delete-review-btn:hover { background: #fef2f2; }
         .od-delete-review-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .od-edit-review-btn {
+          background: #fff; color: #2a5298; border: 1px solid #2a5298; border-radius: 20px;
+          padding: 7px 18px; font-size: 0.84rem; font-weight: 600; cursor: pointer; font-family: inherit;
+        }
+        .od-edit-review-btn:hover { background: #eef3fb; }
+        .od-cancel-edit-review-btn {
+          margin-top: 12px; background: #fff; color: #6b7280; border: 1px solid #d1d5db; border-radius: 20px;
+          padding: 8px 22px; font-size: 0.88rem; font-weight: 600; cursor: pointer; font-family: inherit;
+        }
+        .od-cancel-edit-review-btn:hover:not(:disabled) { background: #f4f6fa; }
+        .od-cancel-edit-review-btn:disabled { opacity: 0.6; cursor: not-allowed; }
         .od-star-btn { background: none; border: none; font-size: 1.6rem; cursor: pointer; padding: 0 2px; line-height: 1; transition: transform 0.1s; }
         .od-star-btn:hover { transform: scale(1.2); }
         .od-review-textarea { width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 10px 12px; font-size: 0.88rem; font-family: inherit; resize: vertical; min-height: 80px; box-sizing: border-box; margin-top: 10px; }
@@ -635,7 +675,7 @@ export default function OrderDetail() {
             </div>
 
             {/* Rate your experience */}
-            {order.order_status === 'Delivered' && !reviewLoading && myReview && (
+            {order.order_status === 'Delivered' && !reviewLoading && myReview && !editingReview && (
               <div className="od-card">
                 <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 12 }}>Your Review</div>
                 <div className="od-review-box">
@@ -650,21 +690,29 @@ export default function OrderDetail() {
                   {myReview.created_date && (
                     <div className="od-review-meta">Reviewed on {fmtDate(myReview.created_date)}</div>
                   )}
-                  <button
-                    className="od-delete-review-btn"
-                    onClick={handleDeleteReview}
-                    disabled={deletingReview}
-                  >
-                    {deletingReview ? 'Deleting…' : 'Delete Review'}
-                  </button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      className="od-edit-review-btn"
+                      onClick={handleEditReview}
+                    >
+                      Edit Review
+                    </button>
+                    <button
+                      className="od-delete-review-btn"
+                      onClick={handleDeleteReview}
+                      disabled={deletingReview}
+                    >
+                      {deletingReview ? 'Deleting…' : 'Delete Review'}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
 
-            {order.order_status === 'Delivered' && !reviewLoading && !myReview && (
+            {order.order_status === 'Delivered' && !reviewLoading && (!myReview || editingReview) && (
               <div className="od-card">
-                <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 4 }}>Rate this product</div>
-                <div style={{ fontSize: '0.82rem', color: '#6b7280', marginBottom: 12 }}>Share your experience to help other buyers</div>
+                <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 4 }}>{editingReview ? 'Edit your review' : 'Rate this product'}</div>
+                <div style={{ fontSize: '0.82rem', color: '#6b7280', marginBottom: 12 }}>{editingReview ? 'Update your rating, comment, or photos' : 'Share your experience to help other buyers'}</div>
                 <div style={{ display: 'flex', gap: 2, marginBottom: 4 }}>
                   {[1,2,3,4,5].map(s => (
                     <button
@@ -704,13 +752,24 @@ export default function OrderDetail() {
                     </div>
                   )}
                 </div>
-                <button
-                  className="od-submit-review-btn"
-                  onClick={handleSubmitReview}
-                  disabled={writeReview.submitting || !writeReview.rating}
-                >
-                  {writeReview.submitting ? 'Submitting…' : 'Submit Review'}
-                </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    className="od-submit-review-btn"
+                    onClick={handleSubmitReview}
+                    disabled={writeReview.submitting || !writeReview.rating}
+                  >
+                    {writeReview.submitting ? 'Submitting…' : editingReview ? 'Update Review' : 'Submit Review'}
+                  </button>
+                  {editingReview && (
+                    <button
+                      className="od-cancel-edit-review-btn"
+                      onClick={handleCancelEditReview}
+                      disabled={writeReview.submitting}
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 

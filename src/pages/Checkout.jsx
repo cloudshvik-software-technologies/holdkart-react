@@ -240,7 +240,7 @@ export default function Checkout() {
 
     await Promise.all(cartItems.map(async (item) => {
       try {
-        const res = await getAvailableCouriers(item.productId, pincode, 0.5, cod);
+        const res = await getAvailableCouriers(item.productId, pincode, item.quantity, cod);
         if (seq !== courierFetchSeqRef.current) return; // a newer fetch has since started — ignore this stale result
         const list = res?.couriers || [];
         const prevSelected = prevSelections[item.cartId];
@@ -331,10 +331,14 @@ export default function Checkout() {
      Never derive from current cart quantity — that may differ from slots joined.      */
   const totalPrepaid = cart.reduce((s, i) => s + (i.depositPaid || 0), 0);
 
-  /* Delivery charge = sum of each item's selected courier rate × quantity */
+  /* Delivery charge = each item's selected courier rate.
+     NOTE: the rate returned by the backend already reflects the full parcel
+     weight for this line (product.weight × item.quantity), so it must NOT be
+     multiplied by quantity again here — that was the bug causing delivery
+     charges to double when quantity increased. */
   const itemDeliveryCharge = (item) => {
     const entry = courierMap[item.cartId];
-    return Math.round((entry?.selected?.rate ?? 0) * (item.quantity ?? 1) * 100) / 100;
+    return Math.round((entry?.selected?.rate ?? 0) * 100) / 100;
   };
   const deliveryCharge = Math.round(cart.reduce((sum, item) => sum + itemDeliveryCharge(item), 0) * 100) / 100;
   // null when pincode not entered yet (no couriers fetched)
@@ -374,6 +378,13 @@ export default function Checkout() {
       // the order — without it, checkout couldn't tell "Green" from "Blue" apart
       // and the order always fell back to the product's default photo.
       variantId: i.variantId || null,
+      // BUG FIX: carry the exact cart row id through to the order. Without this,
+      // the backend could only match a cart row by product+variant, so a product
+      // bought BOTH as a normal item and as a campaign deal item in the same
+      // checkout would have both order rows resolve to the same (deal) cart row
+      // — pricing the normal item at the deal's hold price and wrongly
+      // subtracting the deal's deposit from it too. See orderService.js placeOrder.
+      cartId: i.cartId,
       quantity: i.quantity,
       deliveryCharge: itemDeliveryCharge(i),
       courierId:   courierMap[i.cartId]?.selected?.courierId   ?? null,
@@ -427,6 +438,11 @@ export default function Checkout() {
           const items = cart.map(i => ({
             productId: i.productId,
             variantId: i.variantId || null,
+            // BUG FIX: see placeCOD above — send the exact cart row id so the
+            // backend can price/deposit this line from the cart row it actually
+            // came from, instead of guessing by product+variant (which breaks
+            // when the same product is bought both normally and via deal).
+            cartId: i.cartId,
             quantity: i.quantity,
             deliveryCharge: itemDeliveryCharge(i),
             courierId:   courierMap[i.cartId]?.selected?.courierId   ?? null,
