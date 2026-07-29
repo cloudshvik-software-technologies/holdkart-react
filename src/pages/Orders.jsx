@@ -39,8 +39,8 @@ const STATUS_DOT = {
   Returned:               { color: '#666',    text: '#666'    },
   'Cancellation Requested': { color: '#b7860b', text: '#b7860b' },
   'Return Requested':       { color: '#b7860b', text: '#b7860b' },
+  'Delivery Failed':        { color: '#dc2626', text: '#dc2626' },
 };
-
 const CANCEL_REASONS = [
   'I want to change my delivery address',
   'I want to change the item or size',
@@ -82,14 +82,31 @@ function matchesTab(order, tab) {
 }
 
 /* ─── Cancel / Return Modal ───────────────────────────────────── */
+const SELLER_FAULT_REASONS = [
+  'Item is defective or damaged',
+  'Item does not match description',
+  'Wrong item was delivered',
+  'Item is of poor quality',
+  'Missing parts or accessories',
+];
+
 function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' }) {
   // steps: 'reason' → 'resolution' → 'confirm' → 'done'
   const [step,       setStep]      = useState('reason');
   const [reason,     setReason]    = useState('');
   const [custom,     setCustom]    = useState('');
   const [resolution, setResolution] = useState(''); // 'Refund' | 'Replace'
+  const [photos,     setPhotos]    = useState([]);
+  const [videoThreshold, setVideoThreshold] = useState(5000);
+  useEffect(() => {
+    fetch('/api/customer/config/return-video-threshold').then(r => r.json()).then(d => setVideoThreshold(d.threshold)).catch(() => {});
+  }, []);
 
   const isReturn        = mode === 'return';
+  const isSellerFault = SELLER_FAULT_REASONS.includes(reason);
+  const orderValue    = (Number(order.order_amount) || 0) + (Number(order.advance_amount) || 0);
+  const needsVideo     = isReturn && orderValue >= videoThreshold;
+  const hasVideo       = photos.some(f => f.type.startsWith('video/'));
   const isDelivered     = order.order_status === 'Delivered';
   const isPreShipment   = ['Pending', 'Confirmed'].includes(order.order_status);
   const approverLabel   = isPreShipment ? 'Holdkart' : 'the seller';
@@ -107,12 +124,14 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
   const reasonLabel     = isReturn ? 'Why do you want to return this item?' : 'Why do you want to cancel this item?';
   const doneTitle       = isReturn ? '🔄 Refund Request Submitted!' : '✅ Request Submitted!';
   const selectedReason  = reason === 'Other reason' ? custom.trim() : reason;
-  const canProceed      = reason && (reason !== 'Other reason' || custom.trim().length > 0);
+  const canProceed      = reason && (reason !== 'Other reason' || custom.trim().length > 0)
+    && (!isReturn || !isSellerFault || photos.length > 0)
+    && (!needsVideo || hasVideo);
 
   const orderNum = order.order_number || String(order.id || order._id || '').slice(-8).toUpperCase();
 
   const handleConfirm = async () => {
-    await onConfirm(order.id || order._id, selectedReason, resolution);
+    await onConfirm(order.id || order._id, selectedReason, resolution, photos);
     setStep('done');
   };
 
@@ -154,6 +173,29 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
         {reason === 'Other reason' && (
           <textarea className="cm-textarea" placeholder="Please describe your reason..."
             value={custom} onChange={e => setCustom(e.target.value)} maxLength={300} rows={3} />
+        )}
+
+        {isReturn && reason && (
+          <div style={{ marginTop: 12 }}>
+            <p className="cm-label">
+              {needsVideo
+                ? `This order is over ₹${videoThreshold.toLocaleString('en-IN')} — an unboxing video is required`
+                : isSellerFault ? 'Photo of the item and packaging (required)' : 'Photo of the item (optional)'}
+            </p>
+            <input type="file" accept={needsVideo ? 'image/*,video/*' : 'image/*'} multiple
+              onChange={e => setPhotos(Array.from(e.target.files || []).slice(0, 5))}
+              style={{ display: 'block', fontSize: 13 }} />
+            {needsVideo && !hasVideo && photos.length > 0 && (
+              <div style={{ color: '#dc2626', fontSize: 12, marginTop: 4 }}>At least one file must be a video.</div>
+            )}
+            {photos.length > 0 && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                {photos.map((f, i) => (
+                  <img key={i} src={URL.createObjectURL(f)} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6, border: '1px solid #e2e8f0' }} />
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         <div className="cm-footer">
@@ -532,7 +574,8 @@ function OrderCard({ order, onCancelClick, onReturnClick, onReviewClick }) {
   const isRequested     = status === 'Cancellation Requested';
   const isReturnRequested = status === 'Return Requested';
   // Can cancel before shipment OR once shipped (refund only, seller approves when shipped)
-  const canCancel       = ['Pending', 'Confirmed', 'Shipped'].includes(status);
+  const canCancel       = ['Pending', 'Confirmed'].includes(status);
+  const isInTransit     = status === 'Shipped';
 
   return (
     <div className="ord-card">
@@ -643,6 +686,11 @@ function OrderCard({ order, onCancelClick, onReturnClick, onReviewClick }) {
                   Cancel order
                 </button>
               )}
+              {isInTransit && (
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 6, padding: '8px 10px', background: '#f8fafc', borderRadius: 6 }}>
+                  This order is on its way and can't be cancelled — you can refuse it when the courier arrives, or return it once delivered.
+                </div>
+              )}
               {isDelivered && (
                 <button className="ord-btn-secondary" onClick={() => onReturnClick(order)}>
                   Return or replace
@@ -750,10 +798,10 @@ export default function Orders() {
 
   const handleReviewClick = (order) => setReviewOrder(order);
 
-  const handleReturnConfirm = async (orderId, reason, resolution) => {
+  const handleReturnConfirm = async (orderId, reason, resolution, photos = []) => {
     setSubmitting(true);
     try {
-      await returnOrderApi({ orderId, cancellation_reason: reason, resolution_type: resolution });
+      await returnOrderApi({ orderId, cancellation_reason: reason, resolution_type: resolution, evidencePhotos: photos });
       toast.success('Return request sent to seller');
       fetchOrders();
     } catch (e) {

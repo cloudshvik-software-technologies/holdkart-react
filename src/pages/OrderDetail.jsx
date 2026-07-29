@@ -21,6 +21,10 @@ const CANCEL_LIKE_META = {
   'Cancellation Requested': { color: '#b7860b', label: 'Cancellation Requested' },
   'Returned':               { color: '#666',    label: 'Order Returned' },
   'Return Requested':       { color: '#b7860b', label: 'Return Requested' },
+  'Refund Approved':        { color: '#FF6B00', label: 'Refund Approved' },
+  'Refund Processed':       { color: '#16a34a', label: 'Refund Processed' },
+  'Refunded':               { color: '#16a34a', label: 'Refunded' },
+  'Delivery Failed':        { color: '#dc2626', label: 'Delivery Attempt Failed' },
 };
 
 /* Build a timeline of tracking steps from order data */
@@ -533,6 +537,22 @@ export default function OrderDetail() {
                       color: CANCEL_LIKE_META[order.order_status].color,
                     }}>
                       {CANCEL_LIKE_META[order.order_status].label}
+                    </div>
+                  )}
+                  {order.order_status === 'Refund Approved' && (
+                    <div style={{
+                      background: '#fff8ed', border: '1px solid #FF6B00', borderRadius: 8,
+                      padding: '10px 14px', margin: '8px 0', fontSize: '0.83rem', color: '#1f2937',
+                    }}>
+                      <strong>Refund of ₹{fmt(grandTotal)} approved.</strong> It will reflect in your original payment method within 5–7 business days.
+                    </div>
+                  )}
+                  {order.order_status === 'Delivery Failed' && (
+                    <div style={{
+                      background: '#fef2f2', border: '1px solid #dc2626', borderRadius: 8,
+                      padding: '10px 14px', margin: '8px 0', fontSize: '0.83rem', color: '#1f2937',
+                    }}>
+                      <strong>We couldn't deliver your order.</strong> The courier will make another attempt. If nobody's available or the address needs updating, chat with us below to reschedule.
                     </div>
                   )}
                   <div className="od-prod-price">₹{fmt(grandTotal)}</div>
