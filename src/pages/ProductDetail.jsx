@@ -578,7 +578,7 @@ function GroupBuySection({ product, localHold, onJoin, onLeave, onAddProduct, jo
   const remaining       = holdTarget - safeHold;
   // Current effective price scales toward deal price as more people join
   const discountedPrice = safeHold > 0
-    ? Math.round(retailPrice - (retailPrice - finalPrice) * (safeHold / holdTarget))
+    ? (retailPrice - (retailPrice - finalPrice) * (safeHold / holdTarget))
     : retailPrice;
 
   return (
@@ -666,6 +666,7 @@ export default function ProductDetail() {
   const [selectedSize, setSelectedSize]     = useState(null);
   const [variantWarning, setVariantWarning] = useState(false);
   const variantSectionRef = useRef(null);
+  const reviewsSectionRef = useRef(null);
   const [reviews, setReviews]         = useState([]);
   const [showAllReviews, setShowAllReviews] = useState(false);
   const [lightbox, setLightbox] = useState(null); // { images: [...], index: 0, isReview: bool }
@@ -1464,7 +1465,7 @@ export default function ProductDetail() {
     : 0;
   // Display price scales toward deal price proportionally as slots fill
   const displayPrice = hasGroupBuy && safeHold > 0 && campaignHoldTarget > 0
-    ? Math.round(effectiveRetailPrice - (effectiveRetailPrice - bestGroupPrice) * (safeHold / campaignHoldTarget))
+    ? (effectiveRetailPrice - (effectiveRetailPrice - bestGroupPrice) * (safeHold / campaignHoldTarget))
     : effectiveRetailPrice;
   // If the campaign is PAUSED, treat product as out of stock for all customers.
   // remainingStock is the number of units available for regular Add to Cart
@@ -1681,7 +1682,15 @@ export default function ProductDetail() {
             {reviews.length > 0 && (
               <div style={S.ratingRow}>
                 <StarRating rating={avgRating} />
-                <span style={S.ratingCount} onClick={() => setTab('reviews')}>
+                <span
+                  style={{ ...S.ratingCount, cursor: 'pointer' }}
+                  onClick={() => {
+                    setTab('reviews');
+                    setTimeout(() => {
+                      reviewsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 0);
+                  }}
+                >
                   {avgRating.toFixed(1)} · {reviews.length} rating{reviews.length !== 1 ? 's' : ''}
                 </span>
               </div>
@@ -1992,7 +2001,7 @@ export default function ProductDetail() {
         </div>
 
         {/* ── Tabs: Description + Reviews ── */}
-        <div>
+        <div ref={reviewsSectionRef}>
           <div style={S.tabNav}>
             {[['desc', 'Product Description'], ['reviews', `Customer Reviews (${reviews.length})`]].map(([key, label]) => (
               <button key={key} style={S.tabBtn(tab === key)} onClick={() => setTab(key)}>{label}</button>
@@ -2333,7 +2342,7 @@ export default function ProductDetail() {
             const itemImg = resolveSellerImg(item.images?.[0] || '');
             const hasDiscount = item.holdTarget > 0;
             const discountedPrice = hasDiscount
-              ? Math.round(item.retailPrice * (1 - item.holdTarget / 100))
+              ? (item.retailPrice * (1 - item.holdTarget / 100))
               : item.retailPrice;
             return (
               <div
@@ -2747,11 +2756,19 @@ export default function ProductDetail() {
               style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #d1d5db', background: '#fff', fontSize: '1.1rem', fontWeight: 700, color: leaveQty >= (myJoinedQty || 1) ? '#d1d5db' : '#1f2937', cursor: leaveQty >= (myJoinedQty || 1) ? 'default' : 'pointer' }}
             >+</button>
           </div>
-          <p style={{ margin: '0 0 18px', fontSize: '0.78rem', color: '#9ca3af', textAlign: 'center' }}>
+          <p style={{ margin: '0 0 14px', fontSize: '0.78rem', color: '#9ca3af', textAlign: 'center' }}>
             {leaveQty >= myJoinedQty
               ? "You'll leave the deal completely."
               : `You'll still have ${myJoinedQty - leaveQty} ${myJoinedQty - leaveQty === 1 ? 'unit' : 'units'} in this deal.`}
           </p>
+          {/* Refund warning — the initial/advance amount paid when joining is
+              not returned when a customer leaves a hold deal. */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '10px 12px', marginBottom: 18 }}>
+            <span style={{ fontSize: '1rem', lineHeight: 1 }}>⚠️</span>
+            <p style={{ margin: 0, fontSize: '0.76rem', color: '#92400e', lineHeight: 1.45 }}>
+              Your initial payment for the unit(s) you're leaving will <strong>not be refunded</strong>.
+            </p>
+          </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <button
               type="button"

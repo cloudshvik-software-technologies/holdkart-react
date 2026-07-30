@@ -237,12 +237,12 @@ function ListProductCard({ product, alreadyJoined = false }) {
     : (product.holdPrice && product.holdPrice !== product.retailPrice && product.retailPrice > 0
         ? Math.round((1 - product.holdPrice / product.retailPrice) * 100) : 0);
   const listDisplayPrice = hasGroupDeal && discount > 0
-    ? Math.round(product.retailPrice * (1 - discount / 100))
+    ? (product.retailPrice * (1 - discount / 100))
     : (product.holdPrice && product.holdPrice !== product.retailPrice ? product.holdPrice : product.retailPrice);
 
   const maxDiscountPct = hasGroupDeal ? product.holdTarget : 0;
   const bestGroupPrice = hasGroupDeal
-    ? Math.round(product.retailPrice * (1 - maxDiscountPct / 100))
+    ? (product.retailPrice * (1 - maxDiscountPct / 100))
     : product.retailPrice;
 
   const handleCart = async (e) => {
@@ -361,7 +361,7 @@ function ListProductCard({ product, alreadyJoined = false }) {
           {/* Group Deal progress — updated after joining */}
           {hasGroupDeal && (() => {
             const progressPct = Math.round((safeHold / product.holdTarget) * 100);
-            const finalPrice  = Math.round(product.retailPrice * (1 - product.holdTarget / 100));
+            const finalPrice  = (product.retailPrice * (1 - product.holdTarget / 100));
             return (
               <div style={{ marginTop: 6 }}>
                 <div style={{ height: 4, background: '#e5e7eb', borderRadius: 99, overflow: 'hidden', marginBottom: 4 }}>

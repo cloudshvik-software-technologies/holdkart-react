@@ -3,5 +3,14 @@ import api from './api.js';
   export const listOrders  = ()     => api.get('/api/customer/orders/list');
   export const getOrder    = (id)   => api.get(`/api/customer/orders/${id}`);
   export const cancelOrder = (data) => api.put('/api/customer/orders/cancel', data);
-  export const returnOrder = (data) => api.put('/api/customer/orders/return', data);
+  export const returnOrder = (data) => {
+    const { evidencePhotos, ...fields } = data;
+    if (!evidencePhotos || !evidencePhotos.length) {
+      return api.put('/api/customer/orders/return', fields);
+    }
+    const formData = new FormData();
+    Object.entries(fields).forEach(([k, v]) => { if (v != null) formData.append(k, v); });
+    evidencePhotos.forEach(f => formData.append('evidencePhotos', f));
+    return api.put('/api/customer/orders/return', formData);
+  };
   export const trackOrder  = (id)   => api.get(`/api/customer/orders/track/${id}`);

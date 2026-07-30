@@ -39,8 +39,8 @@ const STATUS_DOT = {
   Returned:               { color: '#666',    text: '#666'    },
   'Cancellation Requested': { color: '#b7860b', text: '#b7860b' },
   'Return Requested':       { color: '#b7860b', text: '#b7860b' },
+  'Delivery Failed':        { color: '#dc2626', text: '#dc2626' },
 };
-
 const CANCEL_REASONS = [
   'I want to change my delivery address',
   'I want to change the item or size',
@@ -82,14 +82,31 @@ function matchesTab(order, tab) {
 }
 
 /* ─── Cancel / Return Modal ───────────────────────────────────── */
+const SELLER_FAULT_REASONS = [
+  'Item is defective or damaged',
+  'Item does not match description',
+  'Wrong item was delivered',
+  'Item is of poor quality',
+  'Missing parts or accessories',
+];
+
 function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' }) {
   // steps: 'reason' → 'resolution' → 'confirm' → 'done'
   const [step,       setStep]      = useState('reason');
   const [reason,     setReason]    = useState('');
   const [custom,     setCustom]    = useState('');
   const [resolution, setResolution] = useState(''); // 'Refund' | 'Replace'
+  const [photos,     setPhotos]    = useState([]);
+  const [videoThreshold, setVideoThreshold] = useState(5000);
+  useEffect(() => {
+    fetch('/api/customer/config/return-video-threshold').then(r => r.json()).then(d => setVideoThreshold(d.threshold)).catch(() => {});
+  }, []);
 
   const isReturn        = mode === 'return';
+  const isSellerFault = SELLER_FAULT_REASONS.includes(reason);
+  const orderValue    = (Number(order.order_amount) || 0) + (Number(order.advance_amount) || 0);
+  const needsVideo     = isReturn && orderValue >= videoThreshold;
+  const hasVideo       = photos.some(f => f.type.startsWith('video/'));
   const isDelivered     = order.order_status === 'Delivered';
   const isPreShipment   = ['Pending', 'Confirmed'].includes(order.order_status);
   const approverLabel   = isPreShipment ? 'Holdkart' : 'the seller';
@@ -107,12 +124,14 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
   const reasonLabel     = isReturn ? 'Why do you want to return this item?' : 'Why do you want to cancel this item?';
   const doneTitle       = isReturn ? '🔄 Refund Request Submitted!' : '✅ Request Submitted!';
   const selectedReason  = reason === 'Other reason' ? custom.trim() : reason;
-  const canProceed      = reason && (reason !== 'Other reason' || custom.trim().length > 0);
+  const canProceed      = reason && (reason !== 'Other reason' || custom.trim().length > 0)
+    && (!isReturn || !isSellerFault || photos.length > 0)
+    && (!needsVideo || hasVideo);
 
   const orderNum = order.order_number || String(order.id || order._id || '').slice(-8).toUpperCase();
 
   const handleConfirm = async () => {
-    await onConfirm(order.id || order._id, selectedReason, resolution);
+    await onConfirm(order.id || order._id, selectedReason, resolution, photos);
     setStep('done');
   };
 
@@ -154,6 +173,29 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
         {reason === 'Other reason' && (
           <textarea className="cm-textarea" placeholder="Please describe your reason..."
             value={custom} onChange={e => setCustom(e.target.value)} maxLength={300} rows={3} />
+        )}
+
+        {isReturn && reason && (
+          <div style={{ marginTop: 12 }}>
+            <p className="cm-label">
+              {needsVideo
+                ? `This order is over ₹${videoThreshold.toLocaleString('en-IN')} — an unboxing video is required`
+                : isSellerFault ? 'Photo of the item and packaging (required)' : 'Photo of the item (optional)'}
+            </p>
+            <input type="file" accept={needsVideo ? 'image/*,video/*' : 'image/*'} multiple
+              onChange={e => setPhotos(Array.from(e.target.files || []).slice(0, 5))}
+              style={{ display: 'block', fontSize: 13 }} />
+            {needsVideo && !hasVideo && photos.length > 0 && (
+              <div style={{ color: '#dc2626', fontSize: 12, marginTop: 4 }}>At least one file must be a video.</div>
+            )}
+            {photos.length > 0 && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                {photos.map((f, i) => (
+                  <img key={i} src={URL.createObjectURL(f)} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6, border: '1px solid #e2e8f0' }} />
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         <div className="cm-footer">
@@ -525,14 +567,15 @@ function OrderCard({ order, onCancelClick, onReturnClick, onReviewClick }) {
   const productId = order.product_id || '';
   // What the customer actually paid for this product = item price (deal-locked
   // price minus deposit, if it was a deal) + shipping for this item.
-  const itemTotal = (Number(order.order_amount) || 0) + (Number(order.delivery_charge) || 0);
+  const itemTotal = (Number(order.order_amount) || 0) + (Number(order.advance_amount) || 0) + (Number(order.delivery_charge) || 0) + (Number(order.platform_fee) || 0);
 
   const isDelivered     = status === 'Delivered';
   const isCancelled     = status === 'Cancelled' || status === 'Returned';
   const isRequested     = status === 'Cancellation Requested';
   const isReturnRequested = status === 'Return Requested';
   // Can cancel before shipment OR once shipped (refund only, seller approves when shipped)
-  const canCancel       = ['Pending', 'Confirmed', 'Shipped'].includes(status);
+  const canCancel       = ['Pending', 'Confirmed'].includes(status);
+  const isInTransit     = status === 'Shipped';
 
   return (
     <div className="ord-card">
@@ -603,14 +646,40 @@ function OrderCard({ order, onCancelClick, onReturnClick, onReviewClick }) {
           <div className="ord-prod-info">
             <div className="ord-prod-name"
               onClick={() => productId && navigate(`/product/${productId}`)}
-              style={{ cursor: productId ? 'pointer' : 'default' }}>
+              style={{ cursor: productId ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 8 }}>
               {order.product_name}
+              {/* Distinguish a converted campaign/deal order (had an advance
+                  deposit) from a normal, full-price order at a glance. */}
+              {Number(order.advance_amount) > 0 ? (
+                <span style={{
+                  fontSize: 11, fontWeight: 700, color: '#7c3aed', background: '#f5f3ff',
+                  border: '1px solid #ddd6fe', borderRadius: 999, padding: '2px 8px',
+                  whiteSpace: 'nowrap',
+                }}>
+                  🏷️ Campaign Deal
+                </span>
+              ) : (
+                <span style={{
+                  fontSize: 11, fontWeight: 700, color: '#374151', background: '#f3f4f6',
+                  border: '1px solid #e5e7eb', borderRadius: 999, padding: '2px 8px',
+                  whiteSpace: 'nowrap',
+                }}>
+                  Normal Order
+                </span>
+              )}
             </div>
             {order.category && <div className="ord-prod-meta">{order.category}</div>}
             <div className="ord-prod-meta">
               Qty: {order.quantity || 1}
               {order.size && <> &nbsp;·&nbsp; Size: {order.size}</>}
             </div>
+            {/* For a deal order, spell out the two-part payment right here so
+                the ₹ total on this card isn't a mystery next to a normal order. */}
+            {Number(order.advance_amount) > 0 && (
+              <div className="ord-prod-meta" style={{ color: '#7c3aed' }}>
+                Advance ₹{Number(order.advance_amount).toLocaleString('en-IN')} + Balance ₹{Number(order.order_amount || 0).toLocaleString('en-IN')}
+              </div>
+            )}
             {(order.variant_color || order.variant_size) && (
               <div className="ord-prod-meta" style={{ fontWeight: 600, color: '#374151' }}>
                 {[order.variant_color, order.variant_size].filter(Boolean).join(' / ')}
@@ -633,7 +702,15 @@ function OrderCard({ order, onCancelClick, onReturnClick, onReviewClick }) {
 
             <div className="ord-actions">
               {isDelivered && (
-                <button className="ord-btn-primary" onClick={() => navigate('/products')}>Buy it again</button>
+                // BUG FIX: this went to the generic /products listing page,
+                // ignoring which product the order was even for. Send the
+                // customer straight to the exact product they're re-buying.
+                <button
+                  className="ord-btn-primary"
+                  onClick={() => productId ? navigate(`/product/${productId}`) : navigate('/products')}
+                >
+                  Buy it again
+                </button>
               )}
               <button className="ord-btn-secondary" onClick={() => navigate(`/order/${orderId}`)}>
                 View order
@@ -642,6 +719,11 @@ function OrderCard({ order, onCancelClick, onReturnClick, onReviewClick }) {
                 <button className="ord-btn-cancel" onClick={() => onCancelClick(order)}>
                   Cancel order
                 </button>
+              )}
+              {isInTransit && (
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 6, padding: '8px 10px', background: '#f8fafc', borderRadius: 6 }}>
+                  This order is on its way and can't be cancelled — you can refuse it when the courier arrives, or return it once delivered.
+                </div>
               )}
               {isDelivered && (
                 <button className="ord-btn-secondary" onClick={() => onReturnClick(order)}>
@@ -690,6 +772,7 @@ export default function Orders() {
   const navigate = useNavigate();
   const [orders,      setOrders]      = useState([]);
   const [loading,     setLoading]     = useState(true);
+  const [fetchError,  setFetchError]  = useState(null);
   const [tab,         setTab]         = useState('all');
   const [period,      setPeriod]      = useState('3m');
   const [search,      setSearch]      = useState('');
@@ -700,6 +783,7 @@ export default function Orders() {
 
   const fetchOrders = async () => {
     try {
+      setFetchError(null);
       const data = await orderService.listOrders();
       const list = Array.isArray(data) ? data : [];
       setOrders(list);
@@ -707,8 +791,17 @@ export default function Orders() {
       list
         .filter(o => o.order_status === 'Delivered')
         .forEach(o => orderService.getOrder(o.id).catch(() => {}));
-    } catch {
-      setOrders([]);
+    } catch (err) {
+      // FIX: this used to swallow every error (network failure, 401, 500,
+      // bad response shape) and silently render the same "No orders found"
+      // empty state as a genuinely empty account — making a broken API call
+      // indistinguishable from "you have no orders." Surface the real
+      // message so it's actually debuggable, and don't clear existing
+      // orders out from under the user on a transient failure.
+      console.error('[Orders] failed to load orders:', err);
+      setFetchError(
+        err?.response?.data?.message || err?.message || 'Failed to load your orders. Please try again.'
+      );
     } finally {
       setLoading(false);
     }
@@ -739,10 +832,10 @@ export default function Orders() {
 
   const handleReviewClick = (order) => setReviewOrder(order);
 
-  const handleReturnConfirm = async (orderId, reason, resolution) => {
+  const handleReturnConfirm = async (orderId, reason, resolution, photos = []) => {
     setSubmitting(true);
     try {
-      await returnOrderApi({ orderId, cancellation_reason: reason, resolution_type: resolution });
+      await returnOrderApi({ orderId, cancellation_reason: reason, resolution_type: resolution, evidencePhotos: photos });
       toast.success('Return request sent to seller');
       fetchOrders();
     } catch (e) {
@@ -996,6 +1089,19 @@ export default function Orders() {
                 </div>
               </div>
             ))}
+          </div>
+        ) : fetchError ? (
+          <div className="ord-empty">
+            <div style={{ fontSize: '3rem', marginBottom: 16 }}>⚠️</div>
+            <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#c40000', marginBottom: 8 }}>
+              Couldn't load your orders
+            </div>
+            <div style={{ color: '#6b7280', marginBottom: 24, fontSize: '0.9rem' }}>
+              {fetchError}
+            </div>
+            <button className="ord-btn-primary" onClick={() => { setLoading(true); fetchOrders(); }}>
+              Try again
+            </button>
           </div>
         ) : filtered.length === 0 ? (
           <div className="ord-empty">

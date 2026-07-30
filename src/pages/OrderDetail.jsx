@@ -10,6 +10,10 @@ const fmtDate = (d, short = false) => {
   return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
+// Always show 2 decimal places (₹50.00, not ₹50) — matches Invoice.jsx's fmt()
+// so amounts are formatted consistently across the order and invoice pages.
+const fmt = (v) => Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 /* Status metadata for cancelled/return-related states — mirrors the colors
    used on the Orders list page so the indication is consistent site-wide */
 const CANCEL_LIKE_META = {
@@ -17,6 +21,10 @@ const CANCEL_LIKE_META = {
   'Cancellation Requested': { color: '#b7860b', label: 'Cancellation Requested' },
   'Returned':               { color: '#666',    label: 'Order Returned' },
   'Return Requested':       { color: '#b7860b', label: 'Return Requested' },
+  'Refund Approved':        { color: '#FF6B00', label: 'Refund Approved' },
+  'Refund Processed':       { color: '#16a34a', label: 'Refund Processed' },
+  'Refunded':               { color: '#16a34a', label: 'Refunded' },
+  'Delivery Failed':        { color: '#dc2626', label: 'Delivery Attempt Failed' },
 };
 
 /* Build a timeline of tracking steps from order data */
@@ -62,6 +70,7 @@ export default function OrderDetail() {
   const [myReview, setMyReview] = useState(null);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [deletingReview, setDeletingReview] = useState(false);
+  const [editingReview, setEditingReview] = useState(false);
   const [writeReview, setWriteReview] = useState({ rating: 0, comment: '', submitting: false, hover: 0, images: [], previews: [] });
   const [tracking, setTracking]         = useState(null);
   const [trackingUrl, setTrackingUrl]   = useState(null);
@@ -76,7 +85,13 @@ export default function OrderDetail() {
   };
 
   const removeReviewImage = (i) => {
-    const images = writeReview.images.filter((_, idx) => idx !== i);
+    // In edit mode, previews can start with existing (already-uploaded) photo
+    // URLs that have no corresponding File in `images`. Only drop from
+    // `images` if the removed preview is one of the newly-added files.
+    const existingCount = writeReview.previews.length - writeReview.images.length;
+    const images = i < existingCount
+      ? writeReview.images
+      : writeReview.images.filter((_, idx) => idx !== i - existingCount);
     const previews = writeReview.previews.filter((_, idx) => idx !== i);
     setWriteReview(p => ({ ...p, images, previews }));
   };
@@ -92,11 +107,33 @@ export default function OrderDetail() {
       writeReview.images.forEach(img => fd.append('reviewImages', img));
       await reviewService.addReview(fd);
       await fetchMyReview(order.id);
+      setEditingReview(false);
+      setWriteReview({ rating: 0, comment: '', submitting: false, hover: 0, images: [], previews: [] });
     } catch {
       alert('Failed to submit review. Please try again.');
     } finally {
       setWriteReview(p => ({ ...p, submitting: false }));
     }
+  };
+
+  const handleEditReview = () => {
+    if (!myReview) return;
+    setWriteReview({
+      rating: myReview.rating || 0,
+      comment: myReview.comment || '',
+      submitting: false,
+      hover: 0,
+      images: [],
+      // Show existing photos as read-only previews; uploading new ones will
+      // replace them (the backend re-saves all images on every update).
+      previews: myReview.images || [],
+    });
+    setEditingReview(true);
+  };
+
+  const handleCancelEditReview = () => {
+    setEditingReview(false);
+    setWriteReview({ rating: 0, comment: '', submitting: false, hover: 0, images: [], previews: [] });
   };
 
   const fetchMyReview = async (orderId) => {
@@ -153,14 +190,20 @@ export default function OrderDetail() {
   const isCOD = (order.payment_method || '').toUpperCase().includes('COD') || (order.payment_method || '').toUpperCase().includes('CASH');
 
   // What the customer actually paid for this product — deal-locked price minus
-  // deposit (if it was a deal) — plus shipping and any other applicable fees.
-  // Platform fee is intentionally excluded from this page.
+  // deposit (if it was a deal) — plus shipping, platform fee, and any other applicable fees.
   const prodAmt    = Number(order.order_amount) || 0;
+  const advAmt     = Number(order.advance_amount) || 0;   // deposit already paid at deal-hold time (0 for regular orders)
+  const fullItemPrice = prodAmt + advAmt;                  // true item price, for display only
   const shipFee    = Number(order.delivery_charge) || 0;
+  const platFee    = Number(order.platform_fee) || 0;
   const phFee      = Number(order.payment_handling_fee) || 0;
   const ppFee      = Number(order.protect_promise_fee)  || 0;
   const otherFees  = phFee + ppFee;
-  const grandTotal = prodAmt + shipFee + otherFees;
+  // Total = full item price (advance + balance) + shipping + platform fee +
+  // other fees — matches order.total_amount exactly, and keeps Item Price /
+  // Shipping / Platform Fee / Total internally consistent (they add up on
+  // the page, not just in the DB).
+  const grandTotal = fullItemPrice + shipFee + platFee + otherFees;
 
   const breadcrumb = [
     { label: 'Home', path: '/home' },
@@ -330,6 +373,17 @@ export default function OrderDetail() {
         }
         .od-delete-review-btn:hover { background: #fef2f2; }
         .od-delete-review-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .od-edit-review-btn {
+          background: #fff; color: #2a5298; border: 1px solid #2a5298; border-radius: 20px;
+          padding: 7px 18px; font-size: 0.84rem; font-weight: 600; cursor: pointer; font-family: inherit;
+        }
+        .od-edit-review-btn:hover { background: #eef3fb; }
+        .od-cancel-edit-review-btn {
+          margin-top: 12px; background: #fff; color: #6b7280; border: 1px solid #d1d5db; border-radius: 20px;
+          padding: 8px 22px; font-size: 0.88rem; font-weight: 600; cursor: pointer; font-family: inherit;
+        }
+        .od-cancel-edit-review-btn:hover:not(:disabled) { background: #f4f6fa; }
+        .od-cancel-edit-review-btn:disabled { opacity: 0.6; cursor: not-allowed; }
         .od-star-btn { background: none; border: none; font-size: 1.6rem; cursor: pointer; padding: 0 2px; line-height: 1; transition: transform 0.1s; }
         .od-star-btn:hover { transform: scale(1.2); }
         .od-review-textarea { width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 10px 12px; font-size: 0.88rem; font-family: inherit; resize: vertical; min-height: 80px; box-sizing: border-box; margin-top: 10px; }
@@ -525,7 +579,23 @@ export default function OrderDetail() {
                       {CANCEL_LIKE_META[order.order_status].label}
                     </div>
                   )}
-                  <div className="od-prod-price">₹{grandTotal.toLocaleString('en-IN')}</div>
+                  {order.order_status === 'Refund Approved' && (
+                    <div style={{
+                      background: '#fff8ed', border: '1px solid #FF6B00', borderRadius: 8,
+                      padding: '10px 14px', margin: '8px 0', fontSize: '0.83rem', color: '#1f2937',
+                    }}>
+                      <strong>Refund of ₹{fmt(grandTotal)} approved.</strong> It will reflect in your original payment method within 5–7 business days.
+                    </div>
+                  )}
+                  {order.order_status === 'Delivery Failed' && (
+                    <div style={{
+                      background: '#fef2f2', border: '1px solid #dc2626', borderRadius: 8,
+                      padding: '10px 14px', margin: '8px 0', fontSize: '0.83rem', color: '#1f2937',
+                    }}>
+                      <strong>We couldn't deliver your order.</strong> The courier will make another attempt. If nobody's available or the address needs updating, chat with us below to reschedule.
+                    </div>
+                  )}
+                  <div className="od-prod-price">₹{fmt(grandTotal)}</div>
                 </div>
               </div>
           </div>
@@ -559,13 +629,21 @@ export default function OrderDetail() {
             </div>
             <div>
               <div className="od-summary-title">Order Summary</div>
-              <div className="od-price-row"><span>Item(s) Subtotal:</span><span>₹{prodAmt.toLocaleString('en-IN')}</span></div>
-              <div className="od-price-row"><span>Shipping:</span><span>₹{shipFee.toLocaleString('en-IN')}</span></div>
-              {otherFees > 0 && (
-                <div className="od-price-row"><span>Fees:</span><span>₹{otherFees.toLocaleString('en-IN')}</span></div>
+              <div className="od-price-row"><span>Item Price:</span><span>₹{fmt(fullItemPrice)}</span></div>
+              {advAmt > 0 && (
+                <div style={{ fontSize: '0.72rem', color: 'var(--muted)', margin: '-4px 0 6px' }}>
+                  (includes ₹{fmt(advAmt)} advance already paid at deal-hold time)
+                </div>
               )}
-              <div className="od-price-row"><span>Total:</span><span>₹{grandTotal.toLocaleString('en-IN')}</span></div>
-              <div className="od-price-total"><span>Grand Total:</span><span>₹{grandTotal.toLocaleString('en-IN')}</span></div>
+              <div className="od-price-row"><span>Shipping:</span><span>₹{fmt(shipFee)}</span></div>
+              {platFee > 0 && (
+                <div className="od-price-row"><span>Platform Fee:</span><span>₹{fmt(platFee)}</span></div>
+              )}
+              {otherFees > 0 && (
+                <div className="od-price-row"><span>Fees:</span><span>₹{fmt(otherFees)}</span></div>
+              )}
+              <div className="od-price-row"><span>Total:</span><span>₹{fmt(grandTotal)}</span></div>
+              <div className="od-price-total"><span>Grand Total:</span><span>₹{fmt(grandTotal)}</span></div>
             </div>
           </div>
 
@@ -597,7 +675,7 @@ export default function OrderDetail() {
             </div>
 
             {/* Rate your experience */}
-            {order.order_status === 'Delivered' && !reviewLoading && myReview && (
+            {order.order_status === 'Delivered' && !reviewLoading && myReview && !editingReview && (
               <div className="od-card">
                 <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 12 }}>Your Review</div>
                 <div className="od-review-box">
@@ -612,21 +690,29 @@ export default function OrderDetail() {
                   {myReview.created_date && (
                     <div className="od-review-meta">Reviewed on {fmtDate(myReview.created_date)}</div>
                   )}
-                  <button
-                    className="od-delete-review-btn"
-                    onClick={handleDeleteReview}
-                    disabled={deletingReview}
-                  >
-                    {deletingReview ? 'Deleting…' : 'Delete Review'}
-                  </button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      className="od-edit-review-btn"
+                      onClick={handleEditReview}
+                    >
+                      Edit Review
+                    </button>
+                    <button
+                      className="od-delete-review-btn"
+                      onClick={handleDeleteReview}
+                      disabled={deletingReview}
+                    >
+                      {deletingReview ? 'Deleting…' : 'Delete Review'}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
 
-            {order.order_status === 'Delivered' && !reviewLoading && !myReview && (
+            {order.order_status === 'Delivered' && !reviewLoading && (!myReview || editingReview) && (
               <div className="od-card">
-                <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 4 }}>Rate this product</div>
-                <div style={{ fontSize: '0.82rem', color: '#6b7280', marginBottom: 12 }}>Share your experience to help other buyers</div>
+                <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 4 }}>{editingReview ? 'Edit your review' : 'Rate this product'}</div>
+                <div style={{ fontSize: '0.82rem', color: '#6b7280', marginBottom: 12 }}>{editingReview ? 'Update your rating, comment, or photos' : 'Share your experience to help other buyers'}</div>
                 <div style={{ display: 'flex', gap: 2, marginBottom: 4 }}>
                   {[1,2,3,4,5].map(s => (
                     <button
@@ -666,13 +752,24 @@ export default function OrderDetail() {
                     </div>
                   )}
                 </div>
-                <button
-                  className="od-submit-review-btn"
-                  onClick={handleSubmitReview}
-                  disabled={writeReview.submitting || !writeReview.rating}
-                >
-                  {writeReview.submitting ? 'Submitting…' : 'Submit Review'}
-                </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    className="od-submit-review-btn"
+                    onClick={handleSubmitReview}
+                    disabled={writeReview.submitting || !writeReview.rating}
+                  >
+                    {writeReview.submitting ? 'Submitting…' : editingReview ? 'Update Review' : 'Submit Review'}
+                  </button>
+                  {editingReview && (
+                    <button
+                      className="od-cancel-edit-review-btn"
+                      onClick={handleCancelEditReview}
+                      disabled={writeReview.submitting}
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 

@@ -95,9 +95,12 @@ export default function CampaignDetail() {
   const [campaign, setCampaign] = useState(null);
   const [loading, setLoading]   = useState(true);
   const [joined, setJoined]     = useState(false);
+  const [myJoinedQty, setMyJoinedQty] = useState(1);
   const [acting, setActing]     = useState(false);
   const [imgError, setImgError] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [leaveQty, setLeaveQty] = useState(1);
 
   const countdown = useCountdown(campaign?.end_time);
 
@@ -112,8 +115,10 @@ export default function CampaignDetail() {
     if (isAuthenticated) {
       campaignService.getMyCampaigns()
         .then(mine => {
-          const ids = new Set((Array.isArray(mine) ? mine : []).map(m => String(m.campaign_id)));
-          setJoined(ids.has(String(id)));
+          const list = Array.isArray(mine) ? mine : [];
+          const mineRow = list.find(m => String(m.campaign_id) === String(id));
+          setJoined(!!mineRow);
+          setMyJoinedQty(mineRow ? (Number(mineRow.mySlots) || 1) : 1);
         })
         .catch(() => {});
     }
@@ -137,8 +142,10 @@ export default function CampaignDetail() {
     if (!isAuthenticated || !id) return;
     campaignService.getMyCampaigns()
       .then(mine => {
-        const ids = new Set((Array.isArray(mine) ? mine : []).map(m => String(m.campaign_id)));
-        setJoined(ids.has(String(id)));
+        const list = Array.isArray(mine) ? mine : [];
+        const mineRow = list.find(m => String(m.campaign_id) === String(id));
+        setJoined(!!mineRow);
+        setMyJoinedQty(mineRow ? (Number(mineRow.mySlots) || 1) : 1);
       })
       .catch(() => {});
   }, [id, isAuthenticated]);
@@ -160,12 +167,20 @@ export default function CampaignDetail() {
     load();
   };
 
-  const handleLeave = async () => {
-    if (!window.confirm('Leave this campaign? Your spot will be released.')) return;
+  // Opens the same "how many units to leave" modal used on the product
+  // page, instead of a bare window.confirm — also resets the stepper to
+  // the customer's full joined quantity each time it's opened.
+  const handleLeave = () => {
+    setLeaveQty(myJoinedQty || 1);
+    setShowLeaveModal(true);
+  };
+
+  const handleConfirmLeave = async (qty) => {
     setActing(true);
     try {
-      await campaignService.leaveCampaign({ campaignId: Number(id) });
+      await campaignService.leaveCampaign({ campaignId: Number(id), quantity: qty });
       toast.success('Left campaign');
+      setShowLeaveModal(false);
       load();
     } catch (e) {
       toast.error(e?.response?.data?.message || 'Failed to leave');
@@ -464,6 +479,67 @@ export default function CampaignDetail() {
             campaignService.joinCampaign({ campaignId: Number(id), quantity: qty, cashfreeOrderId, depositAmount })
           }
         />
+      )}
+
+      {/* ── Leave Campaign Modal (choose how many units to leave) ── */}
+      {showLeaveModal && (
+        <div
+          onClick={() => !acting && setShowLeaveModal(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 8, width: '100%', maxWidth: 380, padding: '24px 24px 20px' }}
+          >
+            <h3 style={{ margin: '0 0 8px', fontSize: '1.05rem', color: '#1f2937' }}>Leave Campaign</h3>
+            <p style={{ margin: '0 0 18px', fontSize: '0.85rem', color: '#6b7280' }}>
+              You joined this deal with {myJoinedQty} {myJoinedQty === 1 ? 'unit' : 'units'}. How many would you like to leave?
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 18 }}>
+              <button
+                type="button"
+                onClick={() => setLeaveQty(q => Math.max(1, q - 1))}
+                disabled={leaveQty <= 1}
+                style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #d1d5db', background: '#fff', fontSize: '1.1rem', fontWeight: 700, color: leaveQty <= 1 ? '#d1d5db' : '#1f2937', cursor: leaveQty <= 1 ? 'default' : 'pointer' }}
+              >−</button>
+              <span style={{ fontSize: '1.3rem', fontWeight: 700, color: '#1f2937', minWidth: 30, textAlign: 'center' }}>{leaveQty}</span>
+              <button
+                type="button"
+                onClick={() => setLeaveQty(q => Math.min(myJoinedQty || 1, q + 1))}
+                disabled={leaveQty >= (myJoinedQty || 1)}
+                style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #d1d5db', background: '#fff', fontSize: '1.1rem', fontWeight: 700, color: leaveQty >= (myJoinedQty || 1) ? '#d1d5db' : '#1f2937', cursor: leaveQty >= (myJoinedQty || 1) ? 'default' : 'pointer' }}
+              >+</button>
+            </div>
+            <p style={{ margin: '0 0 14px', fontSize: '0.78rem', color: '#9ca3af', textAlign: 'center' }}>
+              {leaveQty >= myJoinedQty
+                ? "You'll leave the campaign completely."
+                : `You'll still have ${myJoinedQty - leaveQty} ${myJoinedQty - leaveQty === 1 ? 'unit' : 'units'} in this deal.`}
+            </p>
+            {/* Refund warning — the initial/advance amount paid when joining is
+                not returned when a customer leaves a hold campaign. */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '10px 12px', marginBottom: 18 }}>
+              <span style={{ fontSize: '1rem', lineHeight: 1 }}>⚠️</span>
+              <p style={{ margin: 0, fontSize: '0.76rem', color: '#92400e', lineHeight: 1.45 }}>
+                Your initial payment for the unit(s) you're leaving will <strong>not be refunded</strong>.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setShowLeaveModal(false)}
+                disabled={acting}
+                style={{ flex: 1, padding: '10px 0', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: '#374151', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer', fontFamily: 'inherit' }}
+              >Cancel</button>
+              <button
+                type="button"
+                onClick={() => handleConfirmLeave(leaveQty)}
+                disabled={acting}
+                style={{ flex: 1, padding: '10px 0', borderRadius: 4, border: 'none', background: '#dc2626', color: '#fff', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer', fontFamily: 'inherit' }}
+              >{acting ? 'Leaving…' : 'Confirm'}</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
