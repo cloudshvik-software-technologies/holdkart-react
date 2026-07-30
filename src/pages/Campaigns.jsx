@@ -88,6 +88,7 @@ function CampaignRow({ item, leaving, onLeave }) {
   const maxDiscountPct   = retailPrice > 0 && bestPrice < retailPrice
     ? Math.round((1 - bestPrice / retailPrice) * 100)
     : 0;
+  const advancePaid     = Number(item.advancePaid || 0);
   const joined_date     = item.joined_date
     ? new Date(item.joined_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
     : '';
@@ -180,9 +181,16 @@ function CampaignRow({ item, leaving, onLeave }) {
 
         {/* Bottom row: joined date + leave button */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-          {joined_date && (
-            <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Joined on {joined_date}</span>
-          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {joined_date && (
+              <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Joined on {joined_date}</span>
+            )}
+            {advancePaid > 0 && (
+              <span style={{ fontSize: '0.75rem', color: '#166534', fontWeight: 600 }}>
+                Advance Paid: ₹{advancePaid.toLocaleString('en-IN')}
+              </span>
+            )}
+          </div>
           {status === 'PAUSED' && (
             <span style={{ fontSize: '0.72rem', color: '#92400e', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 3, padding: '2px 8px' }}>
               Campaign paused — purchases temporarily unavailable
@@ -190,7 +198,7 @@ function CampaignRow({ item, leaving, onLeave }) {
           )}
           {(status === 'ACTIVE' || status === 'PAUSED') && (
             <button
-              onClick={e => { e.stopPropagation(); onLeave(campaignId); }}
+              onClick={e => { e.stopPropagation(); onLeave(campaignId, Number(item.mySlots) || 1); }}
               disabled={leaving === campaignId}
               style={{
                 padding: '5px 14px',
@@ -227,6 +235,11 @@ export default function Campaigns() {
   const [leaving, setLeaving] = useState(null);
   const [filter, setFilter]   = useState('ALL');
 
+  // Leave modal state — mirrors the "how many units to leave" picker used
+  // on the campaign detail page, instead of a bare window.confirm here.
+  const [leaveTarget, setLeaveTarget] = useState(null); // { campaignId, maxQty }
+  const [leaveQty, setLeaveQty]       = useState(1);
+
   const fetchMine = async () => {
     try {
       const m = await campaignService.getMyCampaigns();
@@ -239,12 +252,19 @@ export default function Campaigns() {
     else { setLoading(false); }
   }, [isAuthenticated]);
 
-  const handleLeave = async (campaignId) => {
-    if (!window.confirm('Leave this group deal? Your spot will be released.')) return;
+  const handleLeave = (campaignId, maxQty) => {
+    setLeaveQty(maxQty || 1);
+    setLeaveTarget({ campaignId, maxQty: maxQty || 1 });
+  };
+
+  const handleConfirmLeave = async (qty) => {
+    if (!leaveTarget) return;
+    const campaignId = leaveTarget.campaignId;
     setLeaving(campaignId);
     try {
-      await campaignService.leaveCampaign({ campaignId });
+      await campaignService.leaveCampaign({ campaignId, quantity: qty });
       toast.success('Left the group deal');
+      setLeaveTarget(null);
       fetchMine();
     } catch (e) {
       toast.error(e?.response?.data?.message || 'Failed to leave');
@@ -425,6 +445,67 @@ export default function Campaigns() {
           </div>
         )}
       </div>
+
+      {/* ── Leave Deal Modal (choose how many units to leave) — same as campaign detail page ── */}
+      {leaveTarget && (
+        <div
+          onClick={() => leaving !== leaveTarget.campaignId && setLeaveTarget(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 8, width: '100%', maxWidth: 380, padding: '24px 24px 20px' }}
+          >
+            <h3 style={{ margin: '0 0 8px', fontSize: '1.05rem', color: '#1f2937' }}>Leave Deal</h3>
+            <p style={{ margin: '0 0 18px', fontSize: '0.85rem', color: '#6b7280' }}>
+              You joined this deal with {leaveTarget.maxQty} {leaveTarget.maxQty === 1 ? 'unit' : 'units'}. How many would you like to leave?
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 18 }}>
+              <button
+                type="button"
+                onClick={() => setLeaveQty(q => Math.max(1, q - 1))}
+                disabled={leaveQty <= 1}
+                style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #d1d5db', background: '#fff', fontSize: '1.1rem', fontWeight: 700, color: leaveQty <= 1 ? '#d1d5db' : '#1f2937', cursor: leaveQty <= 1 ? 'default' : 'pointer' }}
+              >−</button>
+              <span style={{ fontSize: '1.3rem', fontWeight: 700, color: '#1f2937', minWidth: 30, textAlign: 'center' }}>{leaveQty}</span>
+              <button
+                type="button"
+                onClick={() => setLeaveQty(q => Math.min(leaveTarget.maxQty || 1, q + 1))}
+                disabled={leaveQty >= (leaveTarget.maxQty || 1)}
+                style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid #d1d5db', background: '#fff', fontSize: '1.1rem', fontWeight: 700, color: leaveQty >= (leaveTarget.maxQty || 1) ? '#d1d5db' : '#1f2937', cursor: leaveQty >= (leaveTarget.maxQty || 1) ? 'default' : 'pointer' }}
+              >+</button>
+            </div>
+            <p style={{ margin: '0 0 14px', fontSize: '0.78rem', color: '#9ca3af', textAlign: 'center' }}>
+              {leaveQty >= leaveTarget.maxQty
+                ? "You'll leave the campaign completely."
+                : `You'll still have ${leaveTarget.maxQty - leaveQty} ${leaveTarget.maxQty - leaveQty === 1 ? 'unit' : 'units'} in this deal.`}
+            </p>
+            {/* Refund warning — the initial/advance amount paid when joining is
+                not returned when a customer leaves a hold campaign. */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '10px 12px', marginBottom: 18 }}>
+              <span style={{ fontSize: '1rem', lineHeight: 1 }}>⚠️</span>
+              <p style={{ margin: 0, fontSize: '0.76rem', color: '#92400e', lineHeight: 1.45 }}>
+                Your initial payment for the unit(s) you're leaving will <strong>not be refunded</strong>.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setLeaveTarget(null)}
+                disabled={leaving === leaveTarget.campaignId}
+                style={{ flex: 1, padding: '10px 0', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: '#374151', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer', fontFamily: 'inherit' }}
+              >Cancel</button>
+              <button
+                type="button"
+                onClick={() => handleConfirmLeave(leaveQty)}
+                disabled={leaving === leaveTarget.campaignId}
+                style={{ flex: 1, padding: '10px 0', borderRadius: 4, border: 'none', background: '#dc2626', color: '#fff', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer', fontFamily: 'inherit' }}
+              >{leaving === leaveTarget.campaignId ? 'Leaving…' : 'Confirm'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
