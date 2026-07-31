@@ -25,6 +25,10 @@ const CANCEL_LIKE_META = {
   'Refund Processed':       { color: '#16a34a', label: 'Refund Processed' },
   'Refunded':               { color: '#16a34a', label: 'Refunded' },
   'Delivery Failed':        { color: '#dc2626', label: 'Delivery Attempt Failed' },
+  // BUG FIX: set by the seller/admin reject flows but never mapped here,
+  // so a rejected request rendered with no label/color at all.
+  'Cancellation Rejected':  { color: '#dc2626', label: 'Cancellation Rejected' },
+  'Refund Rejected':        { color: '#dc2626', label: 'Refund Rejected' },
 };
 
 /* Build a timeline of tracking steps from order data */
@@ -204,6 +208,14 @@ export default function OrderDetail() {
   // Shipping / Platform Fee / Total internally consistent (they add up on
   // the page, not just in the DB).
   const grandTotal = fullItemPrice + shipFee + platFee + otherFees;
+
+  // What's actually refunded to the customer on approval/processing is the
+  // product price only (order.order_amount) — delivery, platform fee, and
+  // other fees are never refunded, matching financeService.updateRefundStatus
+  // and orderService.computeItemizedRefund on the backend. grandTotal must
+  // never be used for refund messaging — it's the full order value, not the
+  // refund amount.
+  const refundedAmount = prodAmt;
 
   const breadcrumb = [
     { label: 'Home', path: '/home' },
@@ -584,7 +596,7 @@ export default function OrderDetail() {
                       background: '#fff8ed', border: '1px solid #FF6B00', borderRadius: 8,
                       padding: '10px 14px', margin: '8px 0', fontSize: '0.83rem', color: '#1f2937',
                     }}>
-                      <strong>Refund of ₹{fmt(grandTotal)} approved.</strong> It will reflect in your original payment method within 5–7 business days.
+                      <strong>Refund of ₹{fmt(refundedAmount)} approved.</strong> It will reflect in your original payment method within 5–7 business days.
                     </div>
                   )}
                   {order.order_status === 'Delivery Failed' && (
@@ -595,7 +607,9 @@ export default function OrderDetail() {
                       <strong>We couldn't deliver your order.</strong> The courier will make another attempt. If nobody's available or the address needs updating, chat with us below to reschedule.
                     </div>
                   )}
-                  <div className="od-prod-price">₹{fmt(grandTotal)}</div>
+                  <div className="od-prod-price">
+                    ₹{fmt(order.order_status === 'Refunded' ? refundedAmount : grandTotal)}
+                  </div>
                 </div>
               </div>
           </div>
