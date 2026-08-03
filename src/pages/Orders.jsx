@@ -123,6 +123,31 @@ function computePreShipmentRefundEstimate(order) {
   return Number(order.order_amount) || 0;
 }
 
+// FEATURE: "Ask about return" — shared by CancelModal and OrderCard so both
+// agree on whether a delivered order's product can still be returned.
+// is_returnable/return_window_days come from the product table join in
+// customer_node's listOrders/getOrder; delivered_email_sent_at is the
+// timestamp customer_node stamps exactly once, the first time an order's
+// status becomes 'Delivered' — the same signal the backend's returnOrder()
+// enforcement uses, so this always agrees with what the server will accept.
+function getReturnWindowInfo(order) {
+  const isReturnable = order.is_returnable === true || order.is_returnable === 1;
+  const windowDays = Number(order.return_window_days) || 0;
+  if (!isReturnable || windowDays <= 0) {
+    return { isReturnable: false, windowDays: 0, daysLeft: 0, expired: true };
+  }
+  const deliveredAt = order.delivered_email_sent_at || order.updated_at || order.created_date;
+  if (!deliveredAt) {
+    // No delivery timestamp to measure from — treat conservatively as open
+    // (backend still enforces this properly at request time).
+    return { isReturnable: true, windowDays, daysLeft: windowDays, expired: false };
+  }
+  const deadline = new Date(new Date(deliveredAt).getTime() + windowDays * 24 * 60 * 60 * 1000);
+  const msLeft = deadline - new Date();
+  const daysLeft = Math.max(0, Math.ceil(msLeft / (24 * 60 * 60 * 1000)));
+  return { isReturnable: true, windowDays, daysLeft, expired: msLeft <= 0 };
+}
+
 function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' }) {
   // steps: 'reason' → 'resolution' → 'confirm' → 'done'
   const [step,       setStep]      = useState('reason');
@@ -131,9 +156,27 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
   const [resolution, setResolution] = useState(''); // 'Refund' | 'Replace'
   const [photos,     setPhotos]    = useState([]);
   const [videoThreshold, setVideoThreshold] = useState(5000);
+  const [dragOver,   setDragOver]  = useState(false);
+  const photoInputRef = useRef(null);
   useEffect(() => {
     fetch('/api/customer/config/return-video-threshold').then(r => r.json()).then(d => setVideoThreshold(d.threshold)).catch(() => {});
   }, []);
+
+  // Object URLs for previews — created once per photos change and revoked
+  // on cleanup/change instead of calling URL.createObjectURL() directly in
+  // the render (which leaked a new blob URL every re-render before).
+  const photoPreviews = useMemo(
+    () => photos.map(f => ({ url: URL.createObjectURL(f), isVideo: f.type.startsWith('video/'), name: f.name })),
+    [photos]
+  );
+  useEffect(() => () => photoPreviews.forEach(p => URL.revokeObjectURL(p.url)), [photoPreviews]);
+
+  const addPhotos = (fileList) => {
+    const incoming = Array.from(fileList || []);
+    if (!incoming.length) return;
+    setPhotos(prev => [...prev, ...incoming].slice(0, 5));
+  };
+  const removePhoto = (i) => setPhotos(prev => prev.filter((_, idx) => idx !== i));
 
   const isReturn        = mode === 'return';
   const isSellerFault = SELLER_FAULT_REASONS.includes(reason);
@@ -146,12 +189,39 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
   const isOnline        = (order.payment_method || '').toLowerCase() === 'online';
   // COD orders: no money collected, so no refund card — show cancellation request instead
   const isCOD           = !isOnline;
-  // Replacement card: delivered orders only
-  const showReplacement = isDelivered;
+  // FEATURE: "Ask about return" — the parent gate for the whole
+  // post-delivery return/refund/replace flow (see getReturnWindowInfo).
+  const returnWindow    = getReturnWindowInfo(order);
+  const canReturnAtAll  = isDelivered && returnWindow.isReturnable && !returnWindow.expired;
+  // FEATURE: "Ask about replacement" — only offer the Replace option when
+  // the product itself has been marked eligible (seller-set, admin can
+  // override), AND the parent return window above is open.
+  const isReplacementEligibleProduct = order.is_replacement_eligible !== false;
+  // Replacement card: delivered orders only, within the return window, and only for eligible products
+  const showReplacement = canReturnAtAll && isReplacementEligibleProduct;
   // COD + not delivered = single "Request Cancellation" card, no resolution choices
   const isCODCancelOnly = isCOD && !isDelivered;
+  // Why no resolution is available at all, for a delivered order — checked
+  // in priority order: not returnable > window expired > (COD-only) no
+  // replacement option left once refund is ruled out by COD.
+  const noResolutionReason = !isDelivered ? null
+    : !returnWindow.isReturnable ? 'not_returnable'
+    : returnWindow.expired ? 'window_expired'
+    : (isCOD && !isReplacementEligibleProduct) ? 'cod_no_replacement'
+    : null;
+  const noResolutionAvailable = Boolean(noResolutionReason);
 
-  const hasReplacement  = !!(order.has_replacement || order.resolution_type === 'Replace');
+  // BUG FIX: this used to also fall back to `order.resolution_type === 'Replace'`.
+  // That column is set on the orders table the moment ANY replace request is
+  // *submitted* (listOrders/returnOrder in customer_node) and is never reset —
+  // not even when the seller rejects it. So a customer whose replacement
+  // request was rejected (or is still just pending) would be permanently
+  // blocked from ever requesting a replacement again, even though none was
+  // ever actually used. `order.has_replacement` alone is the accurate count —
+  // it only counts requests that are resolution_type='Replace' AND
+  // status='Approved' (see listOrders' SQL) — so that's the only signal
+  // that should gate this.
+  const hasReplacement  = Number(order.has_replacement) > 0;
   const reasons         = isReturn ? RETURN_REASONS : CANCEL_REASONS;
   const modalTitle      = isReturn ? 'Return / Replace Item' : 'Cancel Order';
   const reasonLabel     = isReturn ? 'Why do you want to return this item?' : 'Why do you want to cancel this item?';
@@ -215,17 +285,77 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
                 ? `This order is over ₹${videoThreshold.toLocaleString('en-IN')} — an unboxing video is required`
                 : isSellerFault ? 'Photo of the item and packaging (required)' : 'Photo of the item (optional)'}
             </p>
-            <input type="file" accept={needsVideo ? 'image/*,video/*' : 'image/*'} multiple
-              onChange={e => setPhotos(Array.from(e.target.files || []).slice(0, 5))}
-              style={{ display: 'block', fontSize: 13 }} />
+
+            <div
+              onClick={() => photoInputRef.current?.click()}
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={e => {
+                e.preventDefault();
+                setDragOver(false);
+                addPhotos(e.dataTransfer.files);
+              }}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                gap: 4, textAlign: 'center', cursor: photos.length >= 5 ? 'default' : 'pointer',
+                border: `2px dashed ${dragOver ? '#FF6B00' : '#d5d9d9'}`,
+                background: dragOver ? '#fff7f0' : '#fafafa',
+                borderRadius: 8, padding: '18px 12px', transition: 'border-color 0.15s, background 0.15s',
+                opacity: photos.length >= 5 ? 0.6 : 1,
+                pointerEvents: photos.length >= 5 ? 'none' : 'auto',
+              }}
+            >
+              <span style={{ fontSize: '1.6rem' }}>{needsVideo ? '🎥' : '📷'}</span>
+              <span style={{ fontSize: '0.82rem', color: '#374151', fontWeight: 600 }}>
+                Drag & drop {needsVideo ? 'a video' : 'photos'} here, or click to browse
+              </span>
+              <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>
+                Up to 5 files{needsVideo ? ' · at least one must be a video' : ''}
+              </span>
+            </div>
+            <input ref={photoInputRef} type="file" accept={needsVideo ? 'image/*,video/*' : 'image/*'} multiple
+              onChange={e => { addPhotos(e.target.files); e.target.value = ''; }}
+              style={{ display: 'none' }} />
+
             {needsVideo && !hasVideo && photos.length > 0 && (
-              <div style={{ color: '#dc2626', fontSize: 12, marginTop: 4 }}>At least one file must be a video.</div>
+              <div style={{ color: '#dc2626', fontSize: 12, marginTop: 6 }}>⚠ At least one file must be a video.</div>
             )}
-            {photos.length > 0 && (
-              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-                {photos.map((f, i) => (
-                  <img key={i} src={URL.createObjectURL(f)} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6, border: '1px solid #e2e8f0' }} />
+
+            {photoPreviews.length > 0 && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                {photoPreviews.map((p, i) => (
+                  <div key={i} style={{ position: 'relative', width: 64, height: 64 }}>
+                    {p.isVideo ? (
+                      <div style={{
+                        width: 64, height: 64, borderRadius: 6, border: '1px solid #e2e8f0',
+                        background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '1.4rem',
+                      }}>🎥</div>
+                    ) : (
+                      <img src={p.url} alt={p.name} style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6, border: '1px solid #e2e8f0' }} />
+                    )}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); removePhoto(i); }}
+                      style={{
+                        position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%',
+                        background: '#c40000', border: '2px solid #fff', color: '#fff', fontSize: '0.6rem',
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                        lineHeight: 1,
+                      }}
+                    >✕</button>
+                  </div>
                 ))}
+                {photos.length < 5 && (
+                  <div onClick={() => photoInputRef.current?.click()} style={{
+                    width: 64, height: 64, border: '2px dashed #d5d9d9', borderRadius: 6,
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', color: '#888', fontSize: '0.65rem', gap: 2,
+                  }}>
+                    <span style={{ fontSize: '1.1rem' }}>+</span>
+                    Add
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -267,8 +397,9 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
                 : "Your request will be sent to the seller for approval. Please choose how you'd like to proceed once approved:"}
           </p>
 
-          {/* Refund option — online payments only */}
-          {isOnline && (() => {
+          {/* Refund option — online payments only, and only within the
+              product's return window (FEATURE: "Ask about return") */}
+          {isOnline && canReturnAtAll && (() => {
             const est = computeRefundEstimate(order);
             return (
               <label className={`cm-res-card ${resolution === 'Refund' ? 'selected' : ''}`}>
@@ -280,13 +411,40 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
                   <div className="cm-res-title">Request a Refund</div>
                   <div className="cm-res-sub">
                     ₹{est.refundable.toLocaleString('en-IN')} will be refunded to your original payment method within <strong>5–7 business days</strong> after {approverLabel} approves.
+                    {returnWindow.windowDays > 0 && (
+                      <> <strong>{returnWindow.daysLeft} day{returnWindow.daysLeft === 1 ? '' : 's'}</strong> left to request this.</>
+                    )}
                   </div>
                 </div>
               </label>
             );
           })()}
 
-          {/* Replace option — delivered orders only (both COD and online) */}
+          {/* No resolution available for a delivered order — reason
+              depends on why: not returnable at all, the return window has
+              closed, or (COD only) there's no refund path and this
+              particular product also isn't replacement-eligible. */}
+          {noResolutionAvailable && (
+            <div className="cm-res-card" style={{ opacity: 0.7, cursor: 'not-allowed', pointerEvents: 'none' }}>
+              <div className="cm-res-icon">🚫</div>
+              <div className="cm-res-body">
+                <div className="cm-res-title">No Resolution Available</div>
+                <div className="cm-res-sub" style={{ color: '#c40000' }}>
+                  {noResolutionReason === 'not_returnable' &&
+                    "This product isn't eligible for return, refund, or replacement."}
+                  {noResolutionReason === 'window_expired' &&
+                    `The ${returnWindow.windowDays}-day return window for this product has closed.`}
+                  {noResolutionReason === 'cod_no_replacement' &&
+                    "This product isn't eligible for replacement, and this was a Cash on Delivery order with no payment to refund."}
+                  {' '}Please contact support for help with this order.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Replace option — delivered orders only, within the return
+              window (both COD and online), and only when the product
+              itself is marked eligible */}
           {showReplacement && (
             !hasReplacement ? (
               <label className={`cm-res-card ${resolution === 'Replace' ? 'selected' : ''}`}>
@@ -312,6 +470,23 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
                 </div>
               </div>
             )
+          )}
+
+          {/* Explains the absence of a Replace card for a delivered online
+              order whose product is otherwise returnable, just not
+              replacement-eligible (COD's equivalent case, and the
+              not-returnable/window-expired cases, are handled by
+              noResolutionAvailable above). */}
+          {isOnline && canReturnAtAll && !isReplacementEligibleProduct && (
+            <div className="cm-res-card" style={{ opacity: 0.6, cursor: 'default', pointerEvents: 'none' }}>
+              <div className="cm-res-icon">🔄</div>
+              <div className="cm-res-body">
+                <div className="cm-res-title">Replacement Not Available</div>
+                <div className="cm-res-sub">
+                  This product isn't eligible for replacement. A refund is available above.
+                </div>
+              </div>
+            </div>
           )}
 
           <div className="cm-seller-notice">
@@ -761,11 +936,37 @@ function OrderCard({ order, onCancelClick, onReturnClick, onReviewClick }) {
                   This order is on its way and can't be cancelled — you can refuse it when the courier arrives, or return it once delivered.
                 </div>
               )}
-              {isDelivered && (
-                <button className="ord-btn-secondary" onClick={() => onReturnClick(order)}>
-                  Return or replace
-                </button>
-              )}
+              {/* FEATURE: "Ask about return" — the button only appears
+                  while the product is actually returnable and its window
+                  is open; otherwise show a plain status line instead of a
+                  dead-end button. */}
+              {isDelivered && (() => {
+                const rw = getReturnWindowInfo(order);
+                if (!rw.isReturnable) {
+                  return (
+                    <div style={{ fontSize: 12, color: '#94a3b8', padding: '8px 0' }}>
+                      Return / replacement not available for this product
+                    </div>
+                  );
+                }
+                if (rw.expired) {
+                  return (
+                    <div style={{ fontSize: 12, color: '#dc2626', padding: '8px 0' }}>
+                      Return window closed
+                    </div>
+                  );
+                }
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button className="ord-btn-secondary" onClick={() => onReturnClick(order)}>
+                      Return or replace
+                    </button>
+                    <span style={{ fontSize: 11, color: '#64748b' }}>
+                      {rw.daysLeft} day{rw.daysLeft === 1 ? '' : 's'} left to return
+                    </span>
+                  </div>
+                );
+              })()}
               {isDelivered && !order.has_reviewed && (
                 <button className="ord-btn-review" onClick={() => onReviewClick(order)}>
                   ★ Write a Review

@@ -1990,7 +1990,23 @@ export default function ProductDetail() {
 
             {/* Trust badges */}
             <div className="hk-pd-badge-grid" style={S.badgeGrid}>
-              {[['📦', 'Quality Certified'], ['🔄', '7-Day Returns'], ['🛡️', 'Warranty'], ['🚚', 'Fast Delivery']].map(([icon, label]) => (
+              {[
+                ['📦', 'Quality Certified'],
+                // FEATURE: "Ask about return" — replaces the old hardcoded
+                // "7-Day Returns" badge. Shows the actual seller/admin-set
+                // return window, or "No Returns" if the product isn't
+                // returnable at all. Replacement is a nested sub-option of
+                // returnability, so it only ever shows as its own badge
+                // when the product is both returnable AND replacement-eligible.
+                product.isReturnable
+                  ? ['↩️', `${product.returnWindowDays}-Day Returns`]
+                  : ['🚫', 'No Returns'],
+                product.isReturnable && product.isReplacementEligible
+                  ? ['🔄', 'Replacement Available']
+                  : null,
+                ['🛡️', 'Warranty'],
+                ['🚚', 'Fast Delivery'],
+              ].filter(Boolean).map(([icon, label]) => (
                 <div key={label} style={S.badgeItem}>
                   <span>{icon}</span>
                   <span>{label}</span>

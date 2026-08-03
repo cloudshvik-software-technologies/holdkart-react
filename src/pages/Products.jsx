@@ -341,6 +341,22 @@ function ListProductCard({ product, alreadyJoined = false }) {
           </div>
           <div style={{ fontWeight: 600, fontSize: '1rem', color: '#111', lineHeight: 1.4 }}>{product.name}</div>
 
+          {/* FEATURE: "Ask about return" — replacement is a sub-option of
+              returnability, so it's only shown as a separate badge when
+              the product is actually returnable in the first place. */}
+          {product.isReturnable && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', fontWeight: 700, color: '#0e7490', background: '#ecfeff', border: '1px solid #a5f3fc', borderRadius: 4, padding: '2px 7px', width: 'fit-content' }}>
+                ↩️ {product.returnWindowDays}-Day Returns
+              </div>
+              {product.isReplacementEligible && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', fontWeight: 700, color: '#1e3c72', background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 4, padding: '2px 7px', width: 'fit-content' }}>
+                  🔄 Replacement Available
+                </div>
+              )}
+            </div>
+          )}
+
           {product.avgRating > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <div style={{ background: '#16a34a', color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: '0.75rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
