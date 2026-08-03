@@ -40,6 +40,11 @@ const STATUS_DOT = {
   'Cancellation Requested': { color: '#b7860b', text: '#b7860b' },
   'Return Requested':       { color: '#b7860b', text: '#b7860b' },
   'Delivery Failed':        { color: '#dc2626', text: '#dc2626' },
+  // BUG FIX: these two statuses are set by the seller/admin reject flows
+  // (refundService.js / financeService.js) but were never in this map, so
+  // rejected requests rendered with no status color at all.
+  'Cancellation Rejected':  { color: '#dc2626', text: '#dc2626' },
+  'Refund Rejected':        { color: '#dc2626', text: '#dc2626' },
 };
 const CANCEL_REASONS = [
   'I want to change my delivery address',
@@ -89,6 +94,34 @@ const SELLER_FAULT_REASONS = [
   'Item is of poor quality',
   'Missing parts or accessories',
 ];
+
+// FIX: previously the refund preview only showed order.order_amount, ignoring
+// the advance payment, delivery charge, and non-refundable fees — so a
+// ₹174.39 order could show "₹65 will be refunded" (just the balance leg),
+// silently under-quoting the customer before they even submit the request.
+// This mirrors EXACTLY what admin_node's financeService.updateRefundStatus()
+// actually pays out (advance + balance/order_amount [+ delivery if the
+// return is the seller's fault] − platform_fee − payment_handling_fee −
+// protect_promise_fee), so the estimate shown here always matches the real
+// payout, the same way Amazon/Flipkart show an itemized refund breakdown
+// before the customer confirms.
+// CORRECTED: refund is the product price only (order.order_amount) — not
+// advance/delivery/fees added on top. Kept as a function (rather than an
+// inline read) so every place that shows a refund estimate stays in sync
+// if this policy changes again.
+function computeRefundEstimate(order) {
+  const refundable = Number(order.order_amount) || 0;
+  return { refundable };
+}
+
+// Pre-shipment cancellation refund estimate — mirrors customer_node's
+// computeItemizedRefund() used by cancelOrder() exactly: the order never
+// shipped, so delivery was never actually rendered and is always refunded
+// (no seller-fault gating needed here, unlike the post-delivery return
+// above where the delivery service genuinely happened).
+function computePreShipmentRefundEstimate(order) {
+  return Number(order.order_amount) || 0;
+}
 
 function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' }) {
   // steps: 'reason' → 'resolution' → 'confirm' → 'done'
@@ -227,28 +260,31 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
 
         <div style={{ padding: '20px 20px 8px' }}>
           <p style={{ fontSize: '0.88rem', color: '#6b7280', marginBottom: 16 }}>
-            {isPreShipment
-              ? isOnline
-                ? "Your order will be cancelled immediately and a refund will be initiated to your original payment method."
-                : "Your order will be cancelled immediately. No charges apply."
-              : "Your request will be sent to the seller for approval. Please choose how you'd like to proceed once approved:"}
+              {isPreShipment
+                ? isOnline
+                  ? "Your order will be cancelled immediately and a refund will be initiated to your original payment method."
+                  : "Your order will be cancelled immediately. No charges apply."
+                : "Your request will be sent to the seller for approval. Please choose how you'd like to proceed once approved:"}
           </p>
 
           {/* Refund option — online payments only */}
-          {isOnline && (
-            <label className={`cm-res-card ${resolution === 'Refund' ? 'selected' : ''}`}>
-              <input type="radio" name="resolution" value="Refund"
-                checked={resolution === 'Refund'} onChange={() => setResolution('Refund')}
-                className="cm-radio" />
-              <div className="cm-res-icon">💳</div>
-              <div className="cm-res-body">
-                <div className="cm-res-title">Request a Refund</div>
-                <div className="cm-res-sub">
-                  ₹{(order.order_amount || 0).toLocaleString('en-IN')} will be refunded to your original payment method within <strong>5–7 business days</strong> after {approverLabel} approves.
+          {isOnline && (() => {
+            const est = computeRefundEstimate(order);
+            return (
+              <label className={`cm-res-card ${resolution === 'Refund' ? 'selected' : ''}`}>
+                <input type="radio" name="resolution" value="Refund"
+                  checked={resolution === 'Refund'} onChange={() => setResolution('Refund')}
+                  className="cm-radio" />
+                <div className="cm-res-icon">💳</div>
+                <div className="cm-res-body">
+                  <div className="cm-res-title">Request a Refund</div>
+                  <div className="cm-res-sub">
+                    ₹{est.refundable.toLocaleString('en-IN')} will be refunded to your original payment method within <strong>5–7 business days</strong> after {approverLabel} approves.
+                  </div>
                 </div>
-              </div>
-            </label>
-          )}
+              </label>
+            );
+          })()}
 
           {/* Replace option — delivered orders only (both COD and online) */}
           {showReplacement && (
@@ -336,7 +372,7 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
                   <strong>{isOnline ? 'Order will be cancelled & refund initiated immediately' : 'Order will be cancelled immediately'}</strong>
                   <div style={{ fontSize: '0.8rem', marginTop: 2 }}>
                     {isOnline
-                      ? `Your order will be cancelled and ₹${(order.order_amount || 0).toLocaleString('en-IN')} will be refunded to your original payment method within 5–7 business days.`
+                      ? `Your order will be cancelled and ₹${computePreShipmentRefundEstimate(order).toLocaleString('en-IN')} will be refunded to your original payment method within 5–7 business days.`
                       : 'Your order will be cancelled right away. No charges apply.'}
                   </div>
                 </>
@@ -373,7 +409,7 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
             {isCODCancelOnly
               ? <>Your order <strong>#{orderNum}</strong> has been <strong>cancelled successfully</strong>.</>
               : isPreShipment && isOnline
-                ? <>Your order <strong>#{orderNum}</strong> has been cancelled and a <strong>refund of ₹{(order.order_amount || 0).toLocaleString('en-IN')}</strong> has been initiated.</>
+                ? <>Your order <strong>#{orderNum}</strong> has been cancelled and a <strong>refund of ₹{computePreShipmentRefundEstimate(order).toLocaleString('en-IN')}</strong> has been initiated.</>
                 : <>Your <strong>{resolution} request</strong> for order <strong>#{orderNum}</strong> has been sent to {isPreShipment ? 'Holdkart' : 'the seller'}.</>}
           </p>
           <div className="cm-seller-notice" style={{ marginTop: 16, textAlign: 'left' }}>

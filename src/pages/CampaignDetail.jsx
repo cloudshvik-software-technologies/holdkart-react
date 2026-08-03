@@ -96,6 +96,7 @@ export default function CampaignDetail() {
   const [loading, setLoading]   = useState(true);
   const [joined, setJoined]     = useState(false);
   const [myJoinedQty, setMyJoinedQty] = useState(1);
+  const [myAdvancePaid, setMyAdvancePaid] = useState(0);
   const [acting, setActing]     = useState(false);
   const [imgError, setImgError] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -119,6 +120,7 @@ export default function CampaignDetail() {
           const mineRow = list.find(m => String(m.campaign_id) === String(id));
           setJoined(!!mineRow);
           setMyJoinedQty(mineRow ? (Number(mineRow.mySlots) || 1) : 1);
+          setMyAdvancePaid(mineRow ? (Number(mineRow.advancePaid) || 0) : 0);
         })
         .catch(() => {});
     }
@@ -146,6 +148,7 @@ export default function CampaignDetail() {
         const mineRow = list.find(m => String(m.campaign_id) === String(id));
         setJoined(!!mineRow);
         setMyJoinedQty(mineRow ? (Number(mineRow.mySlots) || 1) : 1);
+        setMyAdvancePaid(mineRow ? (Number(mineRow.advancePaid) || 0) : 0);
       })
       .catch(() => {});
   }, [id, isAuthenticated]);
@@ -392,6 +395,11 @@ export default function CampaignDetail() {
                   <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 10, padding: '12px 16px', textAlign: 'center', marginBottom: 12 }}>
                     <div style={{ color: '#16a34a', fontWeight: 700, fontSize: '0.9rem', marginBottom: 2 }}>You are in this deal!</div>
                     <div style={{ color: '#4ade80', fontSize: '0.75rem' }}>Your spot is reserved at the deal price.</div>
+                    {myAdvancePaid > 0 && (
+                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed #86efac', color: '#166534', fontSize: '0.8rem', fontWeight: 600 }}>
+                        Advance Paid: ₹{myAdvancePaid.toLocaleString('en-IN')}
+                      </div>
+                    )}
                   </div>
                   <button
                     onClick={handleLeave} disabled={acting}
@@ -443,6 +451,9 @@ export default function CampaignDetail() {
                 { label: 'Regular Price',    value: `₹${Number(campaign.retail_price).toLocaleString()}`, muted: true },
                 { label: 'Group Deal Price', value: `₹${Number(campaign.hold_price).toLocaleString()}`, bold: true },
                 { label: 'You Save',         value: `₹${saved.toLocaleString()} (${Math.round((saved / campaign.retail_price) * 100)}%)`, green: true },
+                ...(joined && myAdvancePaid > 0
+                  ? [{ label: 'Advance Paid', value: `₹${myAdvancePaid.toLocaleString('en-IN')}`, bold: true }]
+                  : []),
               ].map(r => (
                 <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: r.label === 'Group Deal Price' ? '1px dashed #fde68a' : 'none' }}>
                   <span style={{ fontSize: '0.83rem', color: r.muted ? '#9ca3af' : '#374151' }}>{r.label}</span>
