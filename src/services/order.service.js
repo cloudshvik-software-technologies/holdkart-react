@@ -9,7 +9,14 @@ import api from './api.js';
       return api.put('/api/customer/orders/return', fields);
     }
     const formData = new FormData();
-    Object.entries(fields).forEach(([k, v]) => { if (v != null) formData.append(k, v); });
+    Object.entries(fields).forEach(([k, v]) => {
+      if (v == null) return;
+      // FIX: FormData stringifies objects as "[object Object]" — JSON-encode
+      // non-primitive fields (e.g. refundPayoutDetails) so the backend gets
+      // real data instead of a useless string, same as evidencePhotos being
+      // handled separately below.
+      formData.append(k, typeof v === 'object' ? JSON.stringify(v) : v);
+    });
     evidencePhotos.forEach(f => formData.append('evidencePhotos', f));
     return api.put('/api/customer/orders/return', formData);
   };

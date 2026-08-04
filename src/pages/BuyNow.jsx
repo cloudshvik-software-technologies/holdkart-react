@@ -506,10 +506,16 @@ export default function BuyNow() {
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '14px 18px', marginTop: 12 }}>
         {[
           ['✅', '100% Secure Checkout'],
-          ['🔄', '7-Day Easy Returns'],
+          // FEATURE: "Ask about return" — this used to hardcode
+          // "7-Day Easy Returns" for every checkout regardless of the
+          // actual product. Now reflects the real seller/admin-set policy.
+          item.isReturnable
+            ? ['↩️', `${item.returnWindowDays}-Day Easy Returns`]
+            : ['🚫', 'No Returns on This Item'],
+          item.isReturnable && item.isReplacementEligible ? ['🔄', 'Replacement Available'] : null,
           ['🚚', 'Fast & Reliable Delivery'],
           ['📦', 'Quality Certified Products'],
-        ].map(([icon, label]) => (
+        ].filter(Boolean).map(([icon, label]) => (
           <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.78rem', color: '#374151', marginBottom: 8 }}>
             <span>{icon}</span>
             <span>{label}</span>

@@ -789,6 +789,14 @@ export default function Checkout() {
                               {item.name}
                             </p>
                             <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0 0 4px' }}>Qty: {item.quantity}</p>
+                            {/* FEATURE: "Ask about return" — shows THIS item's
+                                actual return policy instead of a generic
+                                sidebar claim that doesn't vary per product. */}
+                            <p style={{ fontSize: '0.7rem', margin: '0 0 4px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, color: item.isReturnable ? '#0e7490' : '#94a3b8' }}>
+                              {item.isReturnable
+                                ? <>↩️ {item.returnWindowDays}-day return{item.isReplacementEligible ? ' · 🔄 Replaceable' : ''}</>
+                                : <>🚫 Non-returnable</>}
+                            </p>
                             {item.hasGroupDeal && item.discountPct > 0 && (
                               <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#eef2ff', color: '#1e3c72', border: '1px solid #c7d8f8', borderRadius: 3, padding: '1px 6px' }}>
                                 🤝 {item.discountPct}% group deal
@@ -1144,12 +1152,31 @@ export default function Checkout() {
 
               {/* Trust badges */}
               <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '14px 18px', marginTop: 12 }}>
-                {[
-                  ['✅', '100% Secure Checkout'],
-                  ['🔄', '7-Day Easy Returns'],
-                  ['🚚', 'Fast & Reliable Delivery'],
-                  ['📦', 'Quality Certified Products'],
-                ].map(([icon, label]) => (
+                {(() => {
+                  // FEATURE: "Ask about return" — this badge used to
+                  // hardcode "7-Day Easy Returns" for every checkout,
+                  // regardless of the actual product(s) in the cart. A
+                  // cart can mix returnable and non-returnable items with
+                  // different windows, so summarise honestly instead of
+                  // repeating a single fixed claim.
+                  const returnableItems = cart.filter(i => i.isReturnable);
+                  let returnsBadge;
+                  if (cart.length === 0 || returnableItems.length === 0) {
+                    returnsBadge = ['🚫', 'No Returns on These Items'];
+                  } else if (returnableItems.length < cart.length) {
+                    returnsBadge = ['↩️', 'Returns Available on Select Items'];
+                  } else {
+                    const windows = returnableItems.map(i => Number(i.returnWindowDays) || 0);
+                    const min = Math.min(...windows), max = Math.max(...windows);
+                    returnsBadge = ['↩️', min === max ? `${min}-Day Easy Returns` : `Returns Within ${min}–${max} Days`];
+                  }
+                  return [
+                    ['✅', '100% Secure Checkout'],
+                    returnsBadge,
+                    ['🚚', 'Fast & Reliable Delivery'],
+                    ['📦', 'Quality Certified Products'],
+                  ];
+                })().map(([icon, label]) => (
                   <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.78rem', color: '#374151', marginBottom: 8 }}>
                     <span>{icon}</span>
                     <span>{label}</span>

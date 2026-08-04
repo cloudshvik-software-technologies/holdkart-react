@@ -1479,7 +1479,10 @@ export default function ProductDetail() {
     inStock          && `In Stock: ${remainingStock} unit${remainingStock !== 1 ? 's' : ''} available`,
     product.warehouseLocation && `Dispatched from: ${product.warehouseLocation}`,
     'Quality Certified by HoldKart',
-    '7-Day Returns',
+    // FEATURE: "Ask about return" — this was a second hardcoded
+    // "7-Day Returns" claim on the page (separate from the trust-badge
+    // grid below), missed in the first pass. Now matches the real policy.
+    product.isReturnable ? `${product.returnWindowDays}-Day Returns` : 'Non-returnable',
   ].filter(Boolean);
 
   const isNarrow = typeof window !== 'undefined' && window.innerWidth < 900;

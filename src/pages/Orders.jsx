@@ -5,6 +5,7 @@ import { returnOrder as returnOrderApi } from '../services/order.service.js';
 import { addReview } from '../services/review.service.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import toast from 'react-hot-toast';
+import { isValidUpiId } from '../utils/upiValidation.js';
 
 /* ─── Helpers ─────────────────────────────────────────────────── */
 const fmt = (d) =>
@@ -45,6 +46,11 @@ const STATUS_DOT = {
   // rejected requests rendered with no status color at all.
   'Cancellation Rejected':  { color: '#dc2626', text: '#dc2626' },
   'Refund Rejected':        { color: '#dc2626', text: '#dc2626' },
+  // BUG FIX: seller approval sets the order to one of these two statuses
+  // (refundService.js) but neither was in this map either — same
+  // no-color bug as the rejections above.
+  'Refund Approved':        { color: '#2563eb', text: '#2563eb' },
+  'Replacement Approved':   { color: '#2563eb', text: '#2563eb' },
 };
 const CANCEL_REASONS = [
   'I want to change my delivery address',
@@ -154,6 +160,14 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
   const [reason,     setReason]    = useState('');
   const [custom,     setCustom]    = useState('');
   const [resolution, setResolution] = useState(''); // 'Refund' | 'Replace'
+  // COD refund payout — collected only when resolution === 'Refund' on a COD
+  // order, since COD has no "original payment method" to send money back to.
+  const [payoutMethod,  setPayoutMethod]  = useState('UPI'); // 'UPI' | 'BANK'
+  const [upiId,         setUpiId]         = useState('');
+  const [accNumber,     setAccNumber]     = useState('');
+  const [ifsc,          setIfsc]          = useState('');
+  const [accHolder,     setAccHolder]     = useState('');
+  const [payoutError,   setPayoutError]   = useState('');
   const [photos,     setPhotos]    = useState([]);
   const [videoThreshold, setVideoThreshold] = useState(5000);
   const [dragOver,   setDragOver]  = useState(false);
@@ -187,7 +201,9 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
   const isPreShipment   = ['Pending', 'Confirmed'].includes(order.order_status);
   const approverLabel   = isPreShipment ? 'Holdkart' : 'the seller';
   const isOnline        = (order.payment_method || '').toLowerCase() === 'online';
-  // COD orders: no money collected, so no refund card — show cancellation request instead
+  // COD orders: no money was ever collected online, so "refund" pays out to
+  // a UPI/bank account the customer provides instead of an "original
+  // payment method" — see the Refund card below.
   const isCOD           = !isOnline;
   // FEATURE: "Ask about return" — the parent gate for the whole
   // post-delivery return/refund/replace flow (see getReturnWindowInfo).
@@ -202,12 +218,12 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
   // COD + not delivered = single "Request Cancellation" card, no resolution choices
   const isCODCancelOnly = isCOD && !isDelivered;
   // Why no resolution is available at all, for a delivered order — checked
-  // in priority order: not returnable > window expired > (COD-only) no
-  // replacement option left once refund is ruled out by COD.
+  // in priority order: not returnable > window expired. (COD can now always
+  // fall back to a Refund-to-UPI/bank when Replace isn't offered, so that no
+  // longer strands a COD order with zero options.)
   const noResolutionReason = !isDelivered ? null
     : !returnWindow.isReturnable ? 'not_returnable'
     : returnWindow.expired ? 'window_expired'
-    : (isCOD && !isReplacementEligibleProduct) ? 'cod_no_replacement'
     : null;
   const noResolutionAvailable = Boolean(noResolutionReason);
 
@@ -234,7 +250,10 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
   const orderNum = order.order_number || String(order.id || order._id || '').slice(-8).toUpperCase();
 
   const handleConfirm = async () => {
-    await onConfirm(order.id || order._id, selectedReason, resolution, photos);
+    const refundPayout = (resolution === 'Refund' && !isOnline)
+      ? { refundPayoutMethod: payoutMethod, refundPayoutDetails: payoutMethod === 'UPI' ? { upiId: upiId.trim() } : { accountNumber: accNumber.trim(), ifsc: ifsc.trim(), accountHolder: accHolder.trim() } }
+      : null;
+    await onConfirm(order.id || order._id, selectedReason, resolution, photos, refundPayout);
     setStep('done');
   };
 
@@ -397,9 +416,12 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
                 : "Your request will be sent to the seller for approval. Please choose how you'd like to proceed once approved:"}
           </p>
 
-          {/* Refund option — online payments only, and only within the
-              product's return window (FEATURE: "Ask about return") */}
-          {isOnline && canReturnAtAll && (() => {
+          {/* Refund option — available for both online and COD orders now,
+              within the product's return window (FEATURE: "Ask about
+              return"). COD has no original payment method to refund to, so
+              it pays out to a UPI/bank account the customer enters below
+              instead (collected further down when this card is selected). */}
+          {canReturnAtAll && (() => {
             const est = computeRefundEstimate(order);
             return (
               <label className={`cm-res-card ${resolution === 'Refund' ? 'selected' : ''}`}>
@@ -410,20 +432,61 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
                 <div className="cm-res-body">
                   <div className="cm-res-title">Request a Refund</div>
                   <div className="cm-res-sub">
-                    ₹{est.refundable.toLocaleString('en-IN')} will be refunded to your original payment method within <strong>5–7 business days</strong> after {approverLabel} approves.
+                    {isOnline
+                      ? <>₹{est.refundable.toLocaleString('en-IN')} will be refunded to your original payment method within <strong>5–7 business days</strong> after {approverLabel} approves.</>
+                      : <>₹{est.refundable.toLocaleString('en-IN')} will be paid out to your UPI or bank account within <strong>5–7 business days</strong> after {approverLabel} approves (this was a Cash on Delivery order, so we'll need your payout details below).</>}
                     {returnWindow.windowDays > 0 && (
                       <> <strong>{returnWindow.daysLeft} day{returnWindow.daysLeft === 1 ? '' : 's'}</strong> left to request this.</>
                     )}
                   </div>
+
+                  {/* COD payout details — only shown once Refund is selected on a COD order */}
+                  {!isOnline && resolution === 'Refund' && (
+                    <div onClick={e => e.stopPropagation()} style={{ marginTop: 12, padding: 12, background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                        {['UPI', 'BANK'].map(m => (
+                          <button key={m} type="button"
+                            onClick={() => { setPayoutMethod(m); setPayoutError('') }}
+                            style={{
+                              padding: '6px 14px', borderRadius: 20, fontSize: '0.78rem', fontWeight: 700,
+                              border: `1.5px solid ${payoutMethod === m ? '#2a5298' : '#d1d5db'}`,
+                              background: payoutMethod === m ? '#2a5298' : '#fff',
+                              color: payoutMethod === m ? '#fff' : '#374151', cursor: 'pointer',
+                            }}>
+                            {m === 'UPI' ? 'UPI ID' : 'Bank Account'}
+                          </button>
+                        ))}
+                      </div>
+
+                      {payoutMethod === 'UPI' ? (
+                        <input type="text" placeholder="yourname@bank" value={upiId}
+                          onChange={e => { setUpiId(e.target.value); setPayoutError('') }}
+                          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.85rem' }} />
+                      ) : (
+                        <div style={{ display: 'grid', gap: 8 }}>
+                          <input type="text" placeholder="Account number" value={accNumber}
+                            onChange={e => { setAccNumber(e.target.value); setPayoutError('') }}
+                            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.85rem' }} />
+                          <input type="text" placeholder="IFSC code" value={ifsc}
+                            onChange={e => { setIfsc(e.target.value.toUpperCase()); setPayoutError('') }}
+                            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.85rem' }} />
+                          <input type="text" placeholder="Account holder name" value={accHolder}
+                            onChange={e => { setAccHolder(e.target.value); setPayoutError('') }}
+                            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.85rem' }} />
+                        </div>
+                      )}
+                      {payoutError && <div style={{ color: '#dc2626', fontSize: '0.78rem', marginTop: 6 }}>⚠ {payoutError}</div>}
+                    </div>
+                  )}
                 </div>
               </label>
             );
           })()}
 
           {/* No resolution available for a delivered order — reason
-              depends on why: not returnable at all, the return window has
-              closed, or (COD only) there's no refund path and this
-              particular product also isn't replacement-eligible. */}
+              depends on why: not returnable at all, or the return window
+              has closed. (Refund is now offered for COD too, so this no
+              longer happens just because a product isn't replacement-eligible.) */}
           {noResolutionAvailable && (
             <div className="cm-res-card" style={{ opacity: 0.7, cursor: 'not-allowed', pointerEvents: 'none' }}>
               <div className="cm-res-icon">🚫</div>
@@ -434,8 +497,6 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
                     "This product isn't eligible for return, refund, or replacement."}
                   {noResolutionReason === 'window_expired' &&
                     `The ${returnWindow.windowDays}-day return window for this product has closed.`}
-                  {noResolutionReason === 'cod_no_replacement' &&
-                    "This product isn't eligible for replacement, and this was a Cash on Delivery order with no payment to refund."}
                   {' '}Please contact support for help with this order.
                 </div>
               </div>
@@ -504,7 +565,22 @@ function CancelModal({ order, onClose, onConfirm, submitting, mode = 'cancel' })
         <div className="cm-footer">
           <button className="cm-btn-outline" onClick={() => setStep('reason')}>Back</button>
           <button className="cm-btn-primary" disabled={!resolution}
-            onClick={() => setStep('confirm')}>
+            onClick={() => {
+              if (resolution === 'Refund' && !isOnline) {
+                if (payoutMethod === 'UPI') {
+                  if (!isValidUpiId(upiId)) {
+                    setPayoutError('Please enter a valid UPI ID (e.g. name@okhdfcbank, name@ybl, name@paytm).');
+                    return;
+                  }
+                } else {
+                  if (accNumber.trim().length < 6 || !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc.trim()) || !accHolder.trim()) {
+                    setPayoutError('Please enter a valid account number, IFSC code, and account holder name.');
+                    return;
+                  }
+                }
+              }
+              setStep('confirm');
+            }}>
             Continue
           </button>
         </div>
@@ -784,6 +860,8 @@ function OrderCard({ order, onCancelClick, onReturnClick, onReviewClick }) {
   const isCancelled     = status === 'Cancelled' || status === 'Returned';
   const isRequested     = status === 'Cancellation Requested';
   const isReturnRequested = status === 'Return Requested';
+  const isRefundApproved = status === 'Refund Approved';
+  const isReplacementApproved = status === 'Replacement Approved';
   // Can cancel before shipment OR once shipped (refund only, seller approves when shipped)
   const canCancel       = ['Pending', 'Confirmed'].includes(status);
   const isInTransit     = status === 'Shipped';
@@ -897,7 +975,7 @@ function OrderCard({ order, onCancelClick, onReturnClick, onReviewClick }) {
               </div>
             )}
 
-            {!isCancelled && !isRequested && !isReturnRequested && <OrderProgress status={status} />}
+            {!isCancelled && !isRequested && !isReturnRequested && !isRefundApproved && !isReplacementApproved && <OrderProgress status={status} />}
 
             {isRequested && (
               <div className="ord-requested-badge">
@@ -908,6 +986,18 @@ function OrderCard({ order, onCancelClick, onReturnClick, onReviewClick }) {
             {isReturnRequested && (
               <div className="ord-requested-badge" style={{ background: '#eef6ff', borderColor: '#90c2f5', color: '#1a56a0' }}>
                 🔄 Return awaiting seller response · You'll be notified within 24–48 hrs
+              </div>
+            )}
+
+            {isRefundApproved && (
+              <div className="ord-requested-badge" style={{ background: '#eef6ff', borderColor: '#90c2f5', color: '#1a56a0' }}>
+                ✅ Refund approved by seller · Being processed for payout
+              </div>
+            )}
+
+            {isReplacementApproved && (
+              <div className="ord-requested-badge" style={{ background: '#eef6ff', borderColor: '#90c2f5', color: '#1a56a0' }}>
+                ✅ Replacement approved by seller · A replacement item will be shipped to you
               </div>
             )}
 
@@ -1069,10 +1159,16 @@ export default function Orders() {
 
   const handleReviewClick = (order) => setReviewOrder(order);
 
-  const handleReturnConfirm = async (orderId, reason, resolution, photos = []) => {
+  const handleReturnConfirm = async (orderId, reason, resolution, photos = [], refundPayout = null) => {
     setSubmitting(true);
     try {
-      await returnOrderApi({ orderId, cancellation_reason: reason, resolution_type: resolution, evidencePhotos: photos });
+      await returnOrderApi({
+        orderId,
+        cancellation_reason: reason,
+        resolution_type: resolution,
+        evidencePhotos: photos,
+        ...(refundPayout || {}),
+      });
       toast.success('Return request sent to seller');
       fetchOrders();
     } catch (e) {
